@@ -121,3 +121,60 @@
   background: rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* Shiny Text Animation */
+.shiny-text {
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--foreground)) 25%,
+    hsl(var(--primary)) 50%,
+    hsl(var(--foreground)) 75%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 3s linear infinite;
+}
+
+@keyframes shine {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+/* Shiny Button Animation */
+.shiny-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.shiny-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.shiny-button:hover::before {
+  left: 100%;
+}
+
+/* Enhanced hover animations */
+.shiny-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

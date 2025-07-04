@@ -1,124 +1,138 @@
 'use client'
 
 import React from 'react'
-import { Film, Heart, Mail, Github, Linkedin, Instagram, MessageCircle } from 'lucide-react'
-import { Button } from "@/components/ui/button"
+import { Heart, Github, Twitter, Mail, Instagram, Music, MessageCircle, Linkedin, Phone } from 'lucide-react'
 
 const Footer = () => {
     return (
-        <footer className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 mt-16">
+        <footer className="w-full border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 mt-16">
             <div className="container mx-auto px-4 py-12">
-                {/* Main Footer Content */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    {/* Brand Section */}
-                    <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                            <Film className="h-8 w-8 text-primary" />
-                            <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                                CineMind
-                            </h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                    {/* Left Column: About & Features */}
+                    <div className="space-y-8">
+                        {/* About */}
+                        <div className="space-y-4">
+                            <h3 className="text-xl font-bold shiny-text">About CineMind</h3>
+                            <p className="text-muted-foreground leading-relaxed">
+                                Discover your perfect movie based on your current mood. 
+                                Cinema meets Mind - where emotions guide your entertainment.
+                            </p>
                         </div>
-                        <p className="text-muted-foreground leading-relaxed">
-                            <span className="font-semibold text-primary">Cinema + Mind</span> - Discover your perfect movie based on your current mood. 
-                            Let your emotions guide you to the ideal cinematic experience.
-                        </p>
-                        <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                            <span>Made with</span>
-                            <Heart className="h-4 w-4 text-red-500 fill-current" />
-                            <span>by Nam Phuong</span>
+
+                        {/* Features */}
+                        <div className="space-y-4">
+                            <h3 className="text-xl font-bold shiny-text">Features</h3>
+                            <ul className="space-y-3 text-muted-foreground">
+                                <li className="flex items-center space-x-2">
+                                    <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                    <span>Mood-based recommendations</span>
+                                </li>
+                                <li className="flex items-center space-x-2">
+                                    <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                    <span>Genre filtering</span>
+                                </li>
+                                <li className="flex items-center space-x-2">
+                                    <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                    <span>Advanced sorting options</span>
+                                </li>
+                                <li className="flex items-center space-x-2">
+                                    <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                    <span>Year-based filtering</span>
+                                </li>
+                            </ul>
                         </div>
                     </div>
 
-                    {/* About Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">About CineMind</h3>
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                            <p>🎭 Choose movies based on your mood</p>
-                            <p>🎬 Discover films across multiple genres</p>
-                            <p>⭐ Get personalized recommendations</p>
-                            <p>📱 Responsive design for all devices</p>
-                            <p>🌙 Dark/Light theme support</p>
+                    {/* Right Column: Connect */}
+                    <div className="space-y-6">
+                        <h3 className="text-xl font-bold shiny-text">Connect</h3>
+                        
+                        {/* Professional Links */}
+                        <div className="space-y-4">
+                            <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Professional</h4>
+                            <div className="flex space-x-6">
+                                <a href="https://github.com/nam-techie" className="group flex flex-col items-center space-y-2 text-muted-foreground hover:text-primary transition-all duration-300" title="GitHub">
+                                    <div className="p-3 rounded-full bg-accent/50 group-hover:bg-primary/20 transition-colors">
+                                        <Github className="h-5 w-5" />
+                                    </div>
+                                    <span className="text-xs">GitHub</span>
+                                </a>
+                                <a href="https://www.linkedin.com/in/nam-ph%C6%B0%C6%A1ng-4a3503309?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app" className="group flex flex-col items-center space-y-2 text-muted-foreground hover:text-primary transition-all duration-300" title="LinkedIn">
+                                    <div className="p-3 rounded-full bg-accent/50 group-hover:bg-primary/20 transition-colors">
+                                        <Linkedin className="h-5 w-5" />
+                                    </div>
+                                    <span className="text-xs">LinkedIn</span>
+                                </a>
+                                <a href="mailto:nam.dpwork04@gmail.com" className="group flex flex-col items-center space-y-2 text-muted-foreground hover:text-primary transition-all duration-300" title="Email">
+                                    <div className="p-3 rounded-full bg-accent/50 group-hover:bg-primary/20 transition-colors">
+                                        <Mail className="h-5 w-5" />
+                                    </div>
+                                    <span className="text-xs">Email</span>
+                                </a>
+                            </div>
                         </div>
-                    </div>
-
-                    {/* Contact Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Connect With Me</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            Have questions or suggestions? Feel free to reach out!
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                asChild
-                                className="hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
-                            >
-                                <a href="mailto:nam.dpwork04@gmail.com" target="_blank" rel="noopener noreferrer">
-                                    <Mail className="h-4 w-4 mr-1" />
-                                    Gmail
+                        
+                        {/* Social Media */}
+                        <div className="space-y-4">
+                            <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Social</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <a 
+                                    href="https://www.instagram.com/pwanm.ie?igsh=MXVzdTltMjlhN3dxeA==" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent"
+                                >
+                                    <Instagram className="h-4 w-4" />
+                                    <span className="text-sm font-medium">Instagram</span>
                                 </a>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                asChild
-                                className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors"
-                            >
-                                <a href="https://www.linkedin.com/in/nam-phương-4a3503309" target="_blank" rel="noopener noreferrer">
-                                    <Linkedin className="h-4 w-4 mr-1" />
-                                    LinkedIn
+                                <a 
+                                    href="https://www.facebook.com/share/1E1jwCnKug/" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent"
+                                >
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                    </svg>
+                                    <span className="text-sm font-medium">Facebook</span>
                                 </a>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                asChild
-                                className="hover:bg-gray-800 hover:text-white hover:border-gray-800 transition-colors"
-                            >
-                                <a href="https://github.com/nam-techie" target="_blank" rel="noopener noreferrer">
-                                    <Github className="h-4 w-4 mr-1" />
-                                    GitHub
+                                <a 
+                                    href="https://www.threads.com/@pwanm.ie" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent"
+                                >
+                                    <MessageCircle className="h-4 w-4" />
+                                    <span className="text-sm font-medium">Threads</span>
                                 </a>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                asChild
-                                className="hover:bg-indigo-500 hover:text-white hover:border-indigo-500 transition-colors"
-                            >
-                                <a href="https://discordapp.com/users/995694235946844261" target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                    Discord
+                                <a 
+                                    href="https://open.spotify.com/user/317shpyjqyc7fn3nxgonfaaa7hqe" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent"
+                                >
+                                    <Music className="h-4 w-4" />
+                                    <span className="text-sm font-medium">Spotify</span>
                                 </a>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                asChild
-                                className="hover:bg-pink-500 hover:text-white hover:border-pink-500 transition-colors"
-                            >
-                                <a href="https://www.instagram.com/pwanm.ie" target="_blank" rel="noopener noreferrer">
-                                    <Instagram className="h-4 w-4 mr-1" />
-                                    Instagram
+                                <a 
+                                    href="tel:0834090509" 
+                                    className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent col-span-2 justify-center"
+                                >
+                                    <Phone className="h-4 w-4" />
+                                    <span className="text-sm font-medium">Zalo: 0834090509</span>
                                 </a>
-                            </Button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Bottom Bar */}
-                <div className="border-t pt-6">
-                    <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-                        <div className="text-sm text-muted-foreground">
-                            © 2025 CineMind. All rights reserved.
-                        </div>
-                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                            <span>Powered by TMDB API</span>
-                            <span>•</span>
-                            <span>Built with Next.js</span>
-                        </div>
-                    </div>
+                <div className="mt-8 pt-8 border-t text-center">
+                    <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                        Made with <Heart className="h-4 w-4 text-red-500 fill-current" /> for movie lovers
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Powered by The Movie Database (TMDB) API
+                    </p>
                 </div>
             </div>
         </footer>
