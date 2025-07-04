@@ -244,60 +244,60 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
     return (
         <>
-            <Card className="group overflow-hidden transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:scale-[1.02] border border-border/50 bg-gradient-to-br from-card via-card to-card/90 backdrop-blur-xl">
-                <div className="relative overflow-hidden aspect-[2/3]">
-                    {!imageLoaded && (
-                        <Skeleton className="w-full h-full" />
-                    )}
-                    <img
-                        src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
-                        alt={`${movie.title} poster`}
-                        className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                        onLoad={() => setImageLoaded(true)}
-                    />
-                    
-                    {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
-                    {/* Floating Heart Button */}
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                        <Button
-                            size="icon"
-                            variant="secondary"
-                            className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300"
-                            onClick={() => setIsLiked(!isLiked)}
-                        >
-                            <Heart className={`h-4 w-4 transition-all duration-300 ${isLiked ? 'fill-red-500 text-red-500 scale-110' : 'text-white'}`} />
-                        </Button>
-                    </div>
+        <Card className="group overflow-hidden transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:scale-[1.02] border border-border/50 bg-gradient-to-br from-card via-card to-card/90 backdrop-blur-xl">
+            <div className="relative overflow-hidden aspect-[2/3]">
+                {!imageLoaded && (
+                    <Skeleton className="w-full h-full" />
+                )}
+                <img
+                    src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
+                    alt={`${movie.title} poster`}
+                    className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    onLoad={() => setImageLoaded(true)}
+                />
+                
+                {/* Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                
+                {/* Floating Heart Button */}
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+                    <Button
+                        size="icon"
+                        variant="secondary"
+                        className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300"
+                        onClick={() => setIsLiked(!isLiked)}
+                    >
+                        <Heart className={`h-4 w-4 transition-all duration-300 ${isLiked ? 'fill-red-500 text-red-500 scale-110' : 'text-white'}`} />
+                    </Button>
+                </div>
 
-                    {/* Rating Badge */}
-                    <div className="absolute top-3 left-3">
-                        <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 shadow-lg">
-                            <Star className="h-3 w-3 text-white mr-1 fill-current" />
-                            {movie.vote_average.toFixed(1)}
-                        </Badge>
-                    </div>
+                {/* Rating Badge */}
+                <div className="absolute top-3 left-3">
+                    <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 shadow-lg">
+                        <Star className="h-3 w-3 text-white mr-1 fill-current" />
+                        {movie.vote_average.toFixed(1)}
+                    </Badge>
+                </div>
 
-                    {/* Language Badge */}
-                    <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                        <Badge variant="secondary" className="bg-black/40 backdrop-blur-md text-white border-0">
-                            <Globe className="h-3 w-3 mr-1" />
-                            {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
-                        </Badge>
-                    </div>
+                {/* Language Badge */}
+                <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+                    <Badge variant="secondary" className="bg-black/40 backdrop-blur-md text-white border-0">
+                        <Globe className="h-3 w-3 mr-1" />
+                        {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
+                    </Badge>
+                </div>
 
-                    {/* Popularity Badge */}
-                    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                        <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white border-0">
-                            <Users className="h-3 w-3 mr-1" />
-                            {formatPopularity(movie.popularity)}
-                        </Badge>
-                    </div>
+                {/* Popularity Badge */}
+                <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+                    <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white border-0">
+                        <Users className="h-3 w-3 mr-1" />
+                        {formatPopularity(movie.popularity)}
+                    </Badge>
+                </div>
 
-                    {/* Play Button Overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
-                        <div className="transform scale-75 group-hover:scale-100 transition-transform duration-500">
+                {/* Play Button Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
+                    <div className="transform scale-75 group-hover:scale-100 transition-transform duration-500">
                             <Button 
                                 size="icon" 
                                 className="h-16 w-16 rounded-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-2xl border-4 border-white/20 disabled:opacity-70"
@@ -307,130 +307,130 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                                 {loadingTrailer ? (
                                     <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                 ) : (
-                                    <Play className="h-7 w-7 ml-1 text-white" />
+                            <Play className="h-7 w-7 ml-1 text-white" />
                                 )}
-                            </Button>
+                        </Button>
                         </div>
-                    </div>
                 </div>
+            </div>
 
-                <CardHeader className="pb-3 pt-4">
-                    <CardTitle className="text-lg font-bold line-clamp-2 group-hover:text-primary transition-colors duration-300 leading-tight">
-                        {movie.title}
-                    </CardTitle>
-                    <CardDescription className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(movie.release_date).getFullYear()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Award className="h-3 w-3" />
-                            {movie.vote_count.toLocaleString()} votes
-                        </span>
-                    </CardDescription>
-                </CardHeader>
+            <CardHeader className="pb-3 pt-4">
+                <CardTitle className="text-lg font-bold line-clamp-2 group-hover:text-primary transition-colors duration-300 leading-tight">
+                    {movie.title}
+                </CardTitle>
+                <CardDescription className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(movie.release_date).getFullYear()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <Award className="h-3 w-3" />
+                        {movie.vote_count.toLocaleString()} votes
+                    </span>
+                </CardDescription>
+            </CardHeader>
 
-                <CardFooter className="pt-0 pb-4">
-                    <Dialog>
-                        <DialogTrigger asChild>
-                            <Button 
-                                variant="outline" 
-                                className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
-                            >
-                                <Info className="h-4 w-4 mr-2" />
-                                View Details
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
-                            <div className="relative">
-                                {movie.backdrop_path && (
-                                    <div className="relative overflow-hidden rounded-xl mb-6">
-                                        <img
-                                            src={`https://image.tmdb.org/t/p/w1280${movie.backdrop_path}`}
-                                            alt={`${movie.title} backdrop`}
-                                            className="w-full h-64 object-cover"
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <CardFooter className="pt-0 pb-4">
+                <Dialog>
+                    <DialogTrigger asChild>
+                        <Button 
+                            variant="outline" 
+                            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
+                        >
+                            <Info className="h-4 w-4 mr-2" />
+                            View Details
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
+                        <div className="relative">
+                            {movie.backdrop_path && (
+                                <div className="relative overflow-hidden rounded-xl mb-6">
+                                    <img
+                                        src={`https://image.tmdb.org/t/p/w1280${movie.backdrop_path}`}
+                                        alt={`${movie.title} backdrop`}
+                                        className="w-full h-64 object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                </div>
+                            )}
+                            <DialogHeader>
+                                <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
+                                    {movie.title}
+                                </DialogTitle>
+                                <DialogDescription className="flex flex-wrap items-center gap-4 text-base">
+                                    <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
+                                        <Star className="h-4 w-4 mr-1 fill-current" />
+                                        {movie.vote_average.toFixed(1)}/10
+                                    </Badge>
+                                    <Badge variant="secondary">
+                                        <Calendar className="h-4 w-4 mr-1" />
+                                        {new Date(movie.release_date).getFullYear()}
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        <Award className="h-4 w-4 mr-1" />
+                                        {movie.vote_count.toLocaleString()} votes
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        <Globe className="h-4 w-4 mr-1" />
+                                        {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
+                                    </Badge>
+                                </DialogDescription>
+                            </DialogHeader>
+                            
+                            <div className="mt-6 space-y-6">
+                                {movie.original_title !== movie.title && (
+                                    <div className="p-4 rounded-lg bg-muted/50">
+                                        <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                            <Globe className="h-4 w-4" />
+                                            Original Title
+                                        </h4>
+                                        <p className="text-muted-foreground">{movie.original_title}</p>
                                     </div>
                                 )}
-                                <DialogHeader>
-                                    <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
-                                        {movie.title}
-                                    </DialogTitle>
-                                    <DialogDescription className="flex flex-wrap items-center gap-4 text-base">
-                                        <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
-                                            <Star className="h-4 w-4 mr-1 fill-current" />
-                                            {movie.vote_average.toFixed(1)}/10
-                                        </Badge>
-                                        <Badge variant="secondary">
-                                            <Calendar className="h-4 w-4 mr-1" />
-                                            {new Date(movie.release_date).getFullYear()}
-                                        </Badge>
-                                        <Badge variant="outline">
-                                            <Award className="h-4 w-4 mr-1" />
-                                            {movie.vote_count.toLocaleString()} votes
-                                        </Badge>
-                                        <Badge variant="outline">
-                                            <Globe className="h-4 w-4 mr-1" />
-                                            {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
-                                        </Badge>
-                                    </DialogDescription>
-                                </DialogHeader>
                                 
-                                <div className="mt-6 space-y-6">
-                                    {movie.original_title !== movie.title && (
-                                        <div className="p-4 rounded-lg bg-muted/50">
-                                            <h4 className="font-semibold mb-2 flex items-center gap-2">
-                                                <Globe className="h-4 w-4" />
-                                                Original Title
-                                            </h4>
-                                            <p className="text-muted-foreground">{movie.original_title}</p>
-                                        </div>
-                                    )}
-                                    
-                                    <div>
-                                        <h4 className="font-semibold mb-3 text-lg flex items-center gap-2">
-                                            <Info className="h-5 w-5" />
-                                            Overview
-                                        </h4>
-                                        <p className="text-muted-foreground leading-relaxed text-base">{movie.overview}</p>
-                                    </div>
+                                <div>
+                                    <h4 className="font-semibold mb-3 text-lg flex items-center gap-2">
+                                        <Info className="h-5 w-5" />
+                                        Overview
+                                    </h4>
+                                    <p className="text-muted-foreground leading-relaxed text-base">{movie.overview}</p>
+                                </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t">
-                                        <div className="text-center p-4 rounded-lg bg-gradient-to-br from-yellow-500/10 to-orange-500/10">
-                                            <Star className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
-                                            <h5 className="font-medium mb-1">Rating</h5>
-                                            <p className="text-2xl font-bold text-yellow-600">{movie.vote_average.toFixed(1)}</p>
-                                            <p className="text-xs text-muted-foreground">out of 10</p>
-                                        </div>
-                                        <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10">
-                                            <Globe className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                                            <h5 className="font-medium mb-1">Language</h5>
-                                            <p className="text-sm font-semibold text-blue-600">
-                                                {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
-                                            </p>
-                                        </div>
-                                        <div className="text-center p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10">
-                                            <Users className="h-6 w-6 text-green-500 mx-auto mb-2" />
-                                            <h5 className="font-medium mb-1">Popularity</h5>
-                                            <p className="text-xl font-bold text-green-600">{formatPopularity(movie.popularity)}</p>
-                                        </div>
-                                        <div className="text-center p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-pink-500/10">
-                                            <Award className="h-6 w-6 text-purple-500 mx-auto mb-2" />
-                                            <h5 className="font-medium mb-1">Votes</h5>
-                                            <p className="text-lg font-bold text-purple-600">{movie.vote_count.toLocaleString()}</p>
-                                        </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t">
+                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-yellow-500/10 to-orange-500/10">
+                                        <Star className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
+                                        <h5 className="font-medium mb-1">Rating</h5>
+                                        <p className="text-2xl font-bold text-yellow-600">{movie.vote_average.toFixed(1)}</p>
+                                        <p className="text-xs text-muted-foreground">out of 10</p>
+                                    </div>
+                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10">
+                                        <Globe className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                                        <h5 className="font-medium mb-1">Language</h5>
+                                        <p className="text-sm font-semibold text-blue-600">
+                                            {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
+                                        </p>
+                                    </div>
+                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10">
+                                        <Users className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                                        <h5 className="font-medium mb-1">Popularity</h5>
+                                        <p className="text-xl font-bold text-green-600">{formatPopularity(movie.popularity)}</p>
+                                    </div>
+                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+                                        <Award className="h-6 w-6 text-purple-500 mx-auto mb-2" />
+                                        <h5 className="font-medium mb-1">Votes</h5>
+                                        <p className="text-lg font-bold text-purple-600">{movie.vote_count.toLocaleString()}</p>
                                     </div>
                                 </div>
                             </div>
-                        </DialogContent>
-                    </Dialog>
-                </CardFooter>
-            </Card>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </CardFooter>
+        </Card>
 
             {/* Trailer Modal */}
             <Dialog open={showTrailerModal} onOpenChange={setShowTrailerModal}>
-                <DialogContent className="max-w-4xl max-h-[85vh] p-0 bg-black border-0">
+                <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] p-0 bg-black border-0">
                     <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
                         {trailerKey && (
                             <iframe
@@ -442,9 +442,9 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                             />
                         )}
                     </div>
-                    <div className="p-4 bg-gradient-to-br from-background via-background to-muted/30">
-                        <h3 className="text-xl font-bold text-white mb-2">{movie.title}</h3>
-                        <p className="text-muted-foreground">Official Trailer</p>
+                    <div className="p-3 sm:p-4 bg-gradient-to-br from-background via-background to-muted/30">
+                        <h3 className="text-lg sm:text-xl font-bold text-white mb-1 sm:mb-2">{movie.title}</h3>
+                        <p className="text-sm sm:text-base text-muted-foreground">Official Trailer</p>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -454,22 +454,22 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
 const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year, setYear, onSubmit, loading }: SelectionFormProps) => {
     return (
-        <div className="mb-16">
+        <div className="mb-8 sm:mb-16 px-4 sm:px-6 lg:px-8">
             {/* Hero Section */}
-            <div className="text-center mb-12 relative">
+            <div className="text-center mb-8 sm:mb-12 relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-purple-600/10 to-pink-600/10 blur-3xl -z-10" />
                 <div className="relative">
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-purple-600/20 border border-primary/30 mb-6">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">AI-Powered Movie Discovery</span>
+                    <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-primary/20 to-purple-600/20 border border-primary/30 mb-4 sm:mb-6">
+                        <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+                        <span className="text-xs sm:text-sm font-medium">AI-Powered Movie Discovery</span>
                     </div>
-                    <h1 className="text-5xl md:text-6xl font-bold shiny-text mb-4 leading-tight">
+                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold shiny-text mb-3 sm:mb-4 leading-tight">
                         CineMind
                     </h1>
-                    <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-2 leading-relaxed">
+                    <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-2 leading-relaxed">
                         Where <span className="font-semibold text-primary">Cinema</span> meets <span className="font-semibold text-purple-600">Mind</span>
                     </p>
-                    <p className="text-lg text-muted-foreground/80 max-w-2xl mx-auto">
+                    <p className="text-base sm:text-lg text-muted-foreground/80 max-w-2xl mx-auto">
                         Discover your perfect movie based on your current mood and preferences
                     </p>
                 </div>
@@ -477,29 +477,29 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
 
             {/* Selection Form */}
             <Card className="max-w-7xl mx-auto border-0 bg-gradient-to-br from-card/80 via-card to-card/60 backdrop-blur-xl shadow-2xl shadow-primary/5">
-                <CardContent className="p-8 md:p-10">
-                    <form onSubmit={onSubmit} className="space-y-8">
+                <CardContent className="p-4 sm:p-6 md:p-8 lg:p-10">
+                    <form onSubmit={onSubmit} className="space-y-6 sm:space-y-8">
                         {/* Mood Selection */}
-                        <div className="space-y-4">
-                            <Label className="text-xl font-bold shiny-text flex items-center gap-2">
-                                <span className="text-2xl">🎭</span>
+                        <div className="space-y-3 sm:space-y-4">
+                            <Label className="text-lg sm:text-xl font-bold shiny-text flex items-center gap-2">
+                                <span className="text-xl sm:text-2xl">🎭</span>
                                 How are you feeling today?
                             </Label>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                                 {MOODS.map(({ value, label, color, description }) => (
                                     <button
                                         key={value}
                                         type="button"
                                         onClick={() => setMood(mood === value ? '' : value)}
-                                        className={`p-4 rounded-xl border-2 transition-all duration-300 text-left ${
+                                        className={`p-3 sm:p-4 rounded-xl border-2 transition-all duration-300 text-left ${
                                             mood === value
                                                 ? `border-primary bg-gradient-to-br ${color} text-white shadow-lg scale-105`
                                                 : 'border-border/50 hover:border-primary/50 hover:shadow-md bg-card'
                                         }`}
                                     >
-                                        <div className="text-2xl mb-2">{label.split(' ')[0]}</div>
-                                        <div className="font-medium text-sm">{label.split(' ').slice(1).join(' ')}</div>
-                                        <div className={`text-xs mt-1 ${mood === value ? 'text-white/80' : 'text-muted-foreground'}`}>
+                                        <div className="text-xl sm:text-2xl mb-1.5 sm:mb-2">{label.split(' ')[0]}</div>
+                                        <div className="font-medium text-xs sm:text-sm">{label.split(' ').slice(1).join(' ')}</div>
+                                        <div className={`text-xs mt-1 ${mood === value ? 'text-white/80' : 'text-muted-foreground'} hidden sm:block`}>
                                             {description}
                                         </div>
                                     </button>
@@ -508,37 +508,37 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
                         </div>
 
                         {/* Advanced Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="space-y-3">
-                                <Label htmlFor="genre" className="text-lg font-semibold shiny-text flex items-center gap-2">
-                                    <span className="text-xl">🎬</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                            <div className="space-y-2 sm:space-y-3">
+                                <Label htmlFor="genre" className="text-base sm:text-lg font-semibold shiny-text flex items-center gap-2">
+                                    <span className="text-lg sm:text-xl">🎬</span>
                                     Genre
                                 </Label>
                                 <Select onValueChange={setGenre} value={genre || undefined}>
-                                    <SelectTrigger id="genre" className="h-14 text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
+                                    <SelectTrigger id="genre" className="h-11 sm:h-14 text-sm sm:text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
                                         <SelectValue placeholder="Choose a genre..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all" className="text-base py-3">All Genres</SelectItem>
+                                        <SelectItem value="all" className="text-sm sm:text-base py-2 sm:py-3">All Genres</SelectItem>
                                         {GENRES.map(({ id, name }) => (
-                                            <SelectItem key={id} value={id} className="text-base py-3">{name}</SelectItem>
+                                            <SelectItem key={id} value={id} className="text-sm sm:text-base py-2 sm:py-3">{name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            <div className="space-y-3">
-                                <Label htmlFor="sortBy" className="text-lg font-semibold flex items-center gap-2">
-                                    <Filter className="h-5 w-5" />
+                            <div className="space-y-2 sm:space-y-3">
+                                <Label htmlFor="sortBy" className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
                                     Sort by
                                 </Label>
                                 <Select onValueChange={setSortBy} value={sortBy}>
-                                    <SelectTrigger id="sortBy" className="h-14 text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
+                                    <SelectTrigger id="sortBy" className="h-11 sm:h-14 text-sm sm:text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
                                         <SelectValue placeholder="Sort movies..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {SORT_OPTIONS.map(({ value, label, icon }) => (
-                                            <SelectItem key={value} value={value} className="text-base py-3">
+                                            <SelectItem key={value} value={value} className="text-sm sm:text-base py-2 sm:py-3">
                                                 <span className="flex items-center gap-2">
                                                     <span>{icon}</span>
                                                     {label}
@@ -549,34 +549,34 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
                                 </Select>
                             </div>
 
-                            <div className="space-y-3">
-                                <Label htmlFor="year" className="text-lg font-semibold flex items-center gap-2">
-                                    <span className="text-xl">📅</span>
+                            <div className="space-y-2 sm:space-y-3">
+                                <Label htmlFor="year" className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                                    <span className="text-lg sm:text-xl">📅</span>
                                     Release Year
                                 </Label>
                                 <Select onValueChange={setYear} value={year}>
-                                    <SelectTrigger id="year" className="h-14 text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
+                                    <SelectTrigger id="year" className="h-11 sm:h-14 text-sm sm:text-base bg-card/50 border-border/50 hover:border-primary/50 transition-colors">
                                         <SelectValue placeholder="Any year..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all" className="text-base py-3">Any Year</SelectItem>
+                                        <SelectItem value="all" className="text-sm sm:text-base py-2 sm:py-3">Any Year</SelectItem>
                                         {YEARS.map(({ value, label }) => (
-                                            <SelectItem key={value} value={value} className="text-base py-3">{label}</SelectItem>
+                                            <SelectItem key={value} value={value} className="text-sm sm:text-base py-2 sm:py-3">{label}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
                         
-                        <div className="flex justify-center pt-4">
+                        <div className="flex justify-center pt-2 sm:pt-4">
                             <Button 
                                 type="submit" 
                                 disabled={loading} 
-                                className="shiny-button w-full h-14 text-lg font-semibold bg-gradient-to-r from-primary to-purple-600 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
+                                className="shiny-button w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-gradient-to-r from-primary to-purple-600 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
                             >
-                                <Sparkles className="h-5 w-5 mr-2" />
+                                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                                 Discover Amazing Movies
-                                <Play className="h-5 w-5 ml-2" />
+                                <Play className="h-4 w-4 sm:h-5 sm:w-5 ml-2" />
                             </Button>
                         </div>
                     </form>
@@ -587,7 +587,7 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
 }
 
 const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginationProps) => {
-    const siblingsCount = 2
+    const siblingsCount = 1
     const totalNumbers = siblingsCount * 2 + 3
 
     const getPageNumbers = () => {
@@ -624,8 +624,8 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
     const pages = getPageNumbers()
 
     return (
-        <Pagination className="mt-16">
-            <PaginationContent className="gap-2">
+        <Pagination className="mt-8 sm:mt-16">
+            <PaginationContent className="gap-1 sm:gap-2">
                 <PaginationItem>
                     <PaginationPrevious
                         href="#"
@@ -633,17 +633,21 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                             e.preventDefault()
                             if (currentPage > 1) onPageChange(currentPage - 1)
                         }}
-                        className={`${currentPage === 1 ? "pointer-events-none opacity-50" : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"} transition-all duration-300`}
+                        className={`h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-sm ${
+                            currentPage === 1 
+                                ? "pointer-events-none opacity-50" 
+                                : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"
+                        } transition-all duration-300`}
                     />
                 </PaginationItem>
 
                 {pages.map((page, index) => (
                     page === 'ellipsis' ? (
-                        <PaginationItem key={`ellipsis-${index}`}>
+                        <PaginationItem key={`ellipsis-${index}`} className="hidden sm:block">
                             <PaginationEllipsis />
                         </PaginationItem>
                     ) : (
-                        <PaginationItem key={page}>
+                        <PaginationItem key={page} className={page === currentPage ? 'block' : 'hidden sm:block'}>
                             <PaginationLink
                                 href="#"
                                 onClick={(e) => {
@@ -651,7 +655,11 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                                     onPageChange(page)
                                 }}
                                 isActive={currentPage === page}
-                                className={`transition-all duration-300 ${currentPage === page ? "bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg" : "hover:bg-gradient-to-r hover:from-primary/20 hover:to-purple-600/20"}`}
+                                className={`h-9 sm:h-10 w-9 sm:w-10 text-xs sm:text-sm transition-all duration-300 ${
+                                    currentPage === page 
+                                        ? "bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg" 
+                                        : "hover:bg-gradient-to-r hover:from-primary/20 hover:to-purple-600/20"
+                                }`}
                             >
                                 {page}
                             </PaginationLink>
@@ -666,7 +674,11 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                             e.preventDefault()
                             if (currentPage < totalPages) onPageChange(currentPage + 1)
                         }}
-                        className={`${currentPage === totalPages ? "pointer-events-none opacity-50" : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"} transition-all duration-300`}
+                        className={`h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-sm ${
+                            currentPage === totalPages 
+                                ? "pointer-events-none opacity-50" 
+                                : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"
+                        } transition-all duration-300`}
                     />
                 </PaginationItem>
             </PaginationContent>
@@ -790,11 +802,11 @@ export function MovieMoodRecommender() {
 
             {!loading && movies.length > 0 && (
                 <>
-                    <div className="mb-10 text-center">
-                        <h2 className="text-3xl font-bold mb-3 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                    <div className="mb-6 sm:mb-10 text-center px-4 sm:px-0">
+                        <h2 className="text-2xl sm:text-3xl font-bold mb-2 sm:mb-3 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
                             Your Perfect Movie Collection
                         </h2>
-                        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                        <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
                             Found <span className="font-semibold text-primary">{movies.length}</span> amazing movies curated just for you
                             {year && year !== 'all' && (
                                 <span className="block mt-1">
@@ -802,24 +814,24 @@ export function MovieMoodRecommender() {
                                 </span>
                             )}
                         </p>
-                        <div className="flex items-center justify-center gap-2 mt-4">
-                            <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white">
+                        <div className="flex flex-wrap items-center justify-center gap-2 mt-3 sm:mt-4">
+                            <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white text-xs sm:text-sm">
                                 {SORT_OPTIONS.find(opt => opt.value === sortBy)?.label}
                             </Badge>
                             {mood && (
-                                <Badge variant="outline">
+                                <Badge variant="outline" className="text-xs sm:text-sm">
                                     {MOODS.find(m => m.value === mood)?.label}
                                 </Badge>
                             )}
                             {genre && (
-                                <Badge variant="outline">
+                                <Badge variant="outline" className="text-xs sm:text-sm">
                                     {GENRES.find(g => g.id === genre)?.name}
                                 </Badge>
                             )}
                         </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6 lg:gap-8 px-4 sm:px-6 lg:px-8">
                         {movies.map(movie => (
                             <MovieCard key={movie.id} movie={movie} />
                         ))}

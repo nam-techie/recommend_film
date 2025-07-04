@@ -5,6 +5,36 @@ import { Film, Moon, Sun } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 
+// Component RotatingText để tạo hiệu ứng xoay chữ
+const RotatingText = () => {
+    const words = ['nam-techie', 'developer', 'creator', 'innovator']
+    const [index, setIndex] = React.useState(0)
+
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            setIndex((prev) => (prev + 1) % words.length)
+        }, 2000)
+        return () => clearInterval(interval)
+    }, [])
+
+    return (
+        <div className="relative h-6 overflow-hidden">
+            {words.map((word, i) => (
+                <span
+                    key={word}
+                    className={`absolute w-full text-right transition-transform duration-500 ${
+                        i === index 
+                            ? 'translate-y-0 opacity-100'
+                            : 'translate-y-8 opacity-0'
+                    } bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent font-bold`}
+                >
+                    {word}
+                </span>
+            ))}
+        </div>
+    )
+}
+
 const Navbar = () => {
     const { theme, setTheme } = useTheme()
 
@@ -25,8 +55,11 @@ const Navbar = () => {
                         </div>
                     </div>
 
-                    {/* Theme Toggle */}
-                    <div className="flex items-center space-x-2">
+                    {/* Theme Toggle and Username */}
+                    <div className="flex items-center space-x-4">
+                        <div className="hidden sm:block w-32">
+                            <RotatingText />
+                        </div>
                         <Button
                             variant="ghost"
                             size="icon"
