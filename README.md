@@ -1,8 +1,10 @@
-# Moviewiser - Ứng dụng Gợi Ý Phim Dựa Trên Tâm Trạng
+# CineMind - Cinema + Mind
 
 ## 📖 Mô tả dự án
 
-Moviewiser là một ứng dụng web được xây dựng bằng Next.js giúp người dùng tìm kiếm và gợi ý phim dựa trên tâm trạng hiện tại hoặc thể loại phim yêu thích. Ứng dụng sử dụng API của The Movie Database (TMDB) để lấy dữ liệu phim và cung cấp giao diện người dùng thân thiện.
+**CineMind** là một ứng dụng web được xây dựng bằng Next.js giúp người dùng tìm kiếm và gợi ý phim dựa trên tâm trạng hiện tại hoặc thể loại phim yêu thích. Tên "CineMind" được tạo thành từ **Cinema** (Rạp chiếu phim) + **Mind** (Tâm trí), thể hiện ý tưởng kết nối giữa trạng thái tâm lý của người xem với việc lựa chọn phim phù hợp.
+
+Ứng dụng sử dụng API của The Movie Database (TMDB) để lấy dữ liệu phim và cung cấp giao diện người dùng thân thiện với thiết kế hiện đại.
 
 ## 🎯 Chức năng chính
 
@@ -26,7 +28,7 @@ Moviewiser là một ứng dụng web được xây dựng bằng Next.js giúp 
 - Hiển thị poster phim với chất lượng cao
 - Thông tin chi tiết: tên phim, năm phát hành, đánh giá
 - Modal xem thông tin chi tiết phim
-- Phân trang với 9 phim mỗi trang
+- Phân trang với 12 phim mỗi trang
 - Responsive design cho mobile và desktop
 
 ### 4. Giao diện người dùng
@@ -34,13 +36,13 @@ Moviewiser là một ứng dụng web được xây dựng bằng Next.js giúp 
 - UI components từ Radix UI
 - Styling với Tailwind CSS
 - Icons từ Lucide React
-- Giao diện responsive
+- Giao diện responsive với hiệu ứng mượt mà
 
 ## 🛠️ Công nghệ sử dụng
 
 ### Frontend
-- **Next.js 15** - React framework với App Router
-- **React 19** - UI library
+- **Next.js 14** - React framework với App Router
+- **React 18** - UI library
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Styling framework
 - **Radix UI** - Accessible UI components
@@ -56,7 +58,7 @@ Moviewiser là một ứng dụng web được xây dựng bằng Next.js giúp 
 ## 📁 Cấu trúc dự án
 
 ```
-moviewiser/
+cinemind/
 ├── app/                    # Next.js App Router
 │   ├── [id]/              # Dynamic route cho chi tiết phim
 │   ├── globals.css        # Global styles
@@ -66,6 +68,7 @@ moviewiser/
 │   ├── ui/               # Reusable UI components
 │   ├── movie-mood-recommender.tsx  # Component chính
 │   ├── Navbar.tsx        # Navigation bar
+│   ├── Footer.tsx        # Footer với thông tin liên hệ
 │   └── theme-provider.tsx # Theme provider
 ├── lib/                  # Utility functions
 ├── public/               # Static assets
@@ -81,7 +84,7 @@ moviewiser/
 ### Bước 1: Clone dự án
 ```bash
 git clone <repository-url>
-cd moviewiser
+cd cinemind
 ```
 
 ### Bước 2: Cài đặt dependencies
@@ -198,7 +201,7 @@ Dự án sử dụng các UI components từ thư viện Radix UI:
 Ứng dụng được thiết kế responsive:
 - **Mobile**: 1 cột phim
 - **Tablet**: 2 cột phim  
-- **Desktop**: 3 cột phim
+- **Desktop**: 3-4 cột phim
 
 ## 🔒 Bảo mật
 
@@ -220,6 +223,15 @@ Dự án sử dụng các UI components từ thư viện Radix UI:
 - Heroku
 - AWS Amplify
 
+## 💡 Ý tưởng đằng sau tên "CineMind"
+
+**CineMind** = **Cinema** + **Mind**
+
+- **Cinema** (Rạp chiếu phim): Đại diện cho thế giới điện ảnh, nơi lưu giữ hàng ngàn bộ phim với đa dạng thể loại và cảm xúc
+- **Mind** (Tâm trí): Đại diện cho trạng thái tâm lý, cảm xúc và tâm trạng của người xem
+
+Sự kết hợp này thể hiện triết lý của ứng dụng: **"Kết nối tâm trạng với điện ảnh"** - giúp người dùng tìm ra những bộ phim phù hợp nhất với trạng thái cảm xúc hiện tại của họ, tạo ra trải nghiệm xem phim tối ưu và ý nghĩa.
+
 ## 🤝 Đóng góp
 
 1. Fork dự án
@@ -234,4 +246,26 @@ Dự án này được phát hành dưới MIT License.
 
 ## 📞 Liên hệ
 
-Nếu có câu hỏi hoặc góp ý, vui lòng tạo issue trên GitHub repository.
+Nếu có câu hỏi hoặc góp ý, vui lòng liên hệ qua:
+
+<div align="center">
+  <a href="mailto:nam.dpwork04@gmail.com">
+    <img src="https://img.shields.io/badge/GMAIL-EA4335?style=for-the-badge&logo=gmail&logoColor=white" alt="Gmail"/>
+  </a>
+  <a href="https://www.linkedin.com/in/nam-phương-4a3503309">
+    <img src="https://img.shields.io/badge/LINKEDIN-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn"/>
+  </a>
+  <a href="https://github.com/nam-techie">
+    <img src="https://img.shields.io/badge/GITHUB-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"/>
+  </a>
+  <a href="https://discordapp.com/users/995694235946844261">
+    <img src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/>
+  </a>
+  <a href="https://www.instagram.com/pwanm.ie">
+    <img src="https://img.shields.io/badge/INSTAGRAM-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram"/>
+  </a>
+</div>
+
+---
+
+**CineMind** - *Where your mood meets the perfect movie* 🎬✨

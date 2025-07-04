@@ -14,7 +14,7 @@ const Navbar = () => {
                 <div className="flex items-center space-x-2">
                     <Film className="h-8 w-8 text-primary" />
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                        Moviewiser
+                        CineMind
                     </h1>
                 </div>
                 
