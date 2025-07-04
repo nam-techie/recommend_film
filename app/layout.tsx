@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
     title: "Moviewiser",
-    description: "A Moviewiser for recommandtion based on your mood",
+    description: "A Moviewiser for recommendation based on your mood",
     icons: {
         icon: '/favicon.ico',
     },
@@ -19,7 +19,7 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <body
-                className={`antialiased font-poppins container mx-auto m-4`}
+                className={`antialiased font-poppins min-h-screen bg-gradient-to-br from-background via-background to-muted/20`}
             >
                 <ThemeProvider
                     attribute="class"
@@ -27,7 +27,10 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    {children}
+                    <Navbar />
+                    <main className="container mx-auto px-4 py-8">
+                        {children}
+                    </main>
                 </ThemeProvider>
             </body>
         </html>
