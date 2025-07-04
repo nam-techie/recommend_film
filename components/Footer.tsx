@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Heart, Github, Twitter, Mail, Instagram, Music, MessageCircle, Linkedin, Phone } from 'lucide-react'
+import { SiZalo } from 'react-icons/si'
 
 const Footer = () => {
     return (
@@ -115,11 +116,12 @@ const Footer = () => {
                                     <span className="text-sm font-medium">Spotify</span>
                                 </a>
                                 <a 
-                                    href="tel:0834090509" 
+                                    href="https://zalo.me/0834090509"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="shiny-button flex items-center space-x-2 text-muted-foreground hover:text-primary transition-all duration-300 p-3 rounded-lg hover:bg-accent col-span-2 justify-center"
                                 >
-                                    <Phone className="h-4 w-4" />
-                                    <span className="text-sm font-medium">Zalo: 0834090509</span>
+                                    <span className="text-sm font-medium">Zalo</span>
                                 </a>
                             </div>
                         </div>

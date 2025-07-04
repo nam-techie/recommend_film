@@ -310,7 +310,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                             <Play className="h-7 w-7 ml-1 text-white" />
                                 )}
                         </Button>
-                        </div>
+                    </div>
                 </div>
             </div>
 
