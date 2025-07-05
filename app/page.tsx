@@ -1,9 +1,5 @@
-import { MovieMoodRecommender } from "@/components/movie-mood-recommender";
+import { HomePage } from "@/components/pages/HomePage"
 
 export default function Home() {
-    return (
-        <div>
-            <MovieMoodRecommender />
-        </div>
-    );
+    return <HomePage />
 }
