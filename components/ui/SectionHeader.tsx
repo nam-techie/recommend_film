@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, LucideIcon } from 'lucide-react'
+import { ChevronRight, DivideIcon as LucideIcon } from 'lucide-react'
 
 interface SectionHeaderProps {
     title: string
