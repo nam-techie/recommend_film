@@ -1,13 +1,15 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MovieCard } from '@/components/ui/MovieCard'
-import { Search, Filter, SlidersHorizontal, User, Globe, Calendar, Film } from 'lucide-react'
+import { Search, Filter, SlidersHorizontal } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { searchMovies, fetchGenres, fetchCountries, Movie, Genre, Country } from '@/lib/api'
 
 export function SearchPage() {
     const [searchQuery, setSearchQuery] = useState('')
@@ -18,81 +20,38 @@ export function SearchPage() {
     const [selectedLanguage, setSelectedLanguage] = useState('all')
     const [sortBy, setSortBy] = useState('modified_time')
     const [sortType, setSortType] = useState('desc')
+    
+    const [searchResults, setSearchResults] = useState<Movie[]>([])
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [genres, setGenres] = useState<Genre[]>([])
+    const [countries, setCountries] = useState<Country[]>([])
+    const [totalResults, setTotalResults] = useState(0)
+    const [currentPage, setCurrentPage] = useState(1)
 
-    // Mock search results
-    const searchResults = [
-        {
-            id: 1,
-            title: "Ngôi Trường Xác Sống",
-            poster: "https://image.tmdb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg",
-            rating: 8.2,
-            year: 2022,
-            genres: ["Hành động", "Kinh dị"],
-            description: "Một trường cấp ba trở thành điểm bùng phát virus thây ma...",
-            duration: "65 phút/tập"
-        },
-        {
-            id: 2,
-            title: "Bạn Trai Tôi Là Hồ Ly",
-            poster: "https://image.tmdb.org/t/p/w500/2g0dhYtq4irTY1GPXvft6k4YLjm.jpg",
-            rating: 8.3,
-            year: 2020,
-            genres: ["Tình cảm", "Thần thoại"],
-            description: "Câu chuyện tình yêu giữa con người và hồ ly chín đuôi...",
-            duration: "70 phút/tập"
-        },
-        // Add more mock results...
-    ]
+    // Load genres and countries on component mount
+    useEffect(() => {
+        const loadFilters = async () => {
+            try {
+                const [genresData, countriesData] = await Promise.all([
+                    fetchGenres(),
+                    fetchCountries()
+                ])
+                setGenres(genresData)
+                setCountries(countriesData)
+            } catch (err) {
+                console.error('Error loading filters:', err)
+            }
+        }
+        loadFilters()
+    }, [])
 
     const searchTypes = [
-        { value: 'all', label: '🔍 Tất cả', icon: Search },
-        { value: 'title', label: '🎬 Tên phim', icon: Film },
-        { value: 'actor', label: '👤 Diễn viên', icon: User },
-        { value: 'director', label: '🎭 Đạo diễn', icon: User },
-        { value: 'keyword', label: '🏷️ Từ khóa', icon: Search },
-    ]
-
-    const genres = [
-        { value: 'all', label: 'Tất cả thể loại' },
-        { value: 'hanh-dong', label: '💥 Hành động' },
-        { value: 'hai-huoc', label: '😂 Hài hước' },
-        { value: 'chinh-kich', label: '🎭 Chính kịch' },
-        { value: 'kinh-di', label: '👻 Kinh dị' },
-        { value: 'tinh-cam', label: '💕 Tình cảm' },
-        { value: 'vien-tuong', label: '🚀 Viễn tưởng' },
-        { value: 'phieu-luu', label: '🗺️ Phiêu lưu' },
-        { value: 'vo-thuat', label: '🥋 Võ thuật' },
-        { value: 'than-thoai', label: '✨ Thần thoại' },
-        { value: 'hoc-duong', label: '🎓 Học đường' },
-        { value: 'gia-dinh', label: '👨‍👩‍👧‍👦 Gia đình' },
-        { value: 'tai-lieu', label: '📚 Tài liệu' },
-        { value: 'am-nhac', label: '🎵 Âm nhạc' },
-        { value: 'the-thao', label: '⚽ Thể thao' },
-        { value: 'chien-tranh', label: '⚔️ Chiến tranh' },
-        { value: 'lich-su', label: '📜 Lịch sử' },
-        { value: 'co-trang', label: '👘 Cổ trang' },
-        { value: 'bi-an', label: '🔍 Bí ẩn' },
-        { value: 'hinh-su', label: '🚔 Hình sự' },
-        { value: 'tam-ly', label: '🧠 Tâm lý' },
-    ]
-
-    const countries = [
-        { value: 'all', label: 'Tất cả quốc gia' },
-        { value: 'viet-nam', label: '🇻🇳 Việt Nam' },
-        { value: 'han-quoc', label: '🇰🇷 Hàn Quốc' },
-        { value: 'trung-quoc', label: '🇨🇳 Trung Quốc' },
-        { value: 'nhat-ban', label: '🇯🇵 Nhật Bản' },
-        { value: 'thai-lan', label: '🇹🇭 Thái Lan' },
-        { value: 'au-my', label: '🇺🇸 Âu Mỹ' },
-        { value: 'an-do', label: '🇮🇳 Ấn Độ' },
-        { value: 'hong-kong', label: '🇭🇰 Hồng Kông' },
-        { value: 'dai-loan', label: '🇹🇼 Đài Loan' },
-        { value: 'anh', label: '🇬🇧 Anh' },
-        { value: 'phap', label: '🇫🇷 Pháp' },
-        { value: 'duc', label: '🇩🇪 Đức' },
-        { value: 'nga', label: '🇷🇺 Nga' },
-        { value: 'canada', label: '🇨🇦 Canada' },
-        { value: 'uc', label: '🇦🇺 Úc' },
+        { value: 'all', label: '🔍 Tất cả' },
+        { value: 'title', label: '🎬 Tên phim' },
+        { value: 'actor', label: '👤 Diễn viên' },
+        { value: 'director', label: '🎭 Đạo diễn' },
+        { value: 'keyword', label: '🏷️ Từ khóa' },
     ]
 
     const years = [
@@ -114,7 +73,6 @@ export function SearchPage() {
         { value: 'modified_time', label: '🕒 Mới cập nhật' },
         { value: 'year', label: '📅 Năm phát hành' },
         { value: 'view', label: '👁️ Lượt xem' },
-        { value: 'rating', label: '⭐ Đánh giá' },
         { value: 'name', label: '🔤 Tên phim A-Z' },
     ]
 
@@ -123,18 +81,52 @@ export function SearchPage() {
         { value: 'asc', label: 'Tăng dần' },
     ]
 
-    const handleSearch = () => {
-        // Implement search logic here
-        console.log('Searching with:', {
-            query: searchQuery,
-            type: searchType,
-            genre: selectedGenre,
-            country: selectedCountry,
-            year: selectedYear,
-            language: selectedLanguage,
-            sortBy,
-            sortType
-        })
+    const handleSearch = async () => {
+        if (!searchQuery.trim() && selectedGenre === 'all' && selectedCountry === 'all' && selectedYear === 'all') {
+            return
+        }
+
+        try {
+            setLoading(true)
+            setError(null)
+            
+            const params = {
+                keyword: searchQuery.trim() || undefined,
+                page: 1,
+                sort_field: sortBy,
+                sort_type: sortType as 'asc' | 'desc',
+                sort_lang: selectedLanguage !== 'all' ? selectedLanguage : undefined,
+                category: selectedGenre !== 'all' ? selectedGenre : undefined,
+                country: selectedCountry !== 'all' ? selectedCountry : undefined,
+                year: selectedYear !== 'all' ? selectedYear : undefined,
+                limit: 24
+            }
+
+            const response = await searchMovies(params)
+            
+            if (response.items) {
+                setSearchResults(response.items)
+                setTotalResults(response.pagination?.totalItems || response.items.length)
+            } else if (response.data?.items) {
+                setSearchResults(response.data.items)
+                setTotalResults(response.data.params?.pagination?.totalItems || response.data.items.length)
+            } else {
+                setSearchResults([])
+                setTotalResults(0)
+            }
+            setCurrentPage(1)
+        } catch (err) {
+            setError('Có lỗi xảy ra khi tìm kiếm. Vui lòng thử lại.')
+            console.error('Search error:', err)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSearch()
+        }
     }
 
     return (
@@ -186,7 +178,7 @@ export function SearchPage() {
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-10 h-11 sm:h-12 text-sm sm:text-base bg-background/50 border-border/50 focus:border-primary/50"
-                                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                                onKeyPress={handleKeyPress}
                             />
                         </div>
                     </div>
@@ -206,9 +198,10 @@ export function SearchPage() {
                                         <SelectValue placeholder="Chọn thể loại" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="all">Tất cả thể loại</SelectItem>
                                         {genres.map((genre) => (
-                                            <SelectItem key={genre.value} value={genre.value} className="text-sm">
-                                                {genre.label}
+                                            <SelectItem key={genre._id} value={genre.slug} className="text-sm">
+                                                {genre.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -222,9 +215,10 @@ export function SearchPage() {
                                         <SelectValue placeholder="Chọn quốc gia" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="all">Tất cả quốc gia</SelectItem>
                                         {countries.map((country) => (
-                                            <SelectItem key={country.value} value={country.value} className="text-sm">
-                                                {country.label}
+                                            <SelectItem key={country._id} value={country.slug} className="text-sm">
+                                                {country.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -303,10 +297,11 @@ export function SearchPage() {
                     {/* Search Button */}
                     <Button 
                         onClick={handleSearch}
+                        disabled={loading}
                         className="w-full h-11 sm:h-12 text-sm sm:text-base bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 font-semibold"
                     >
                         <Search className="h-4 w-4 mr-2" />
-                        Tìm kiếm phim
+                        {loading ? 'Đang tìm kiếm...' : 'Tìm kiếm phim'}
                     </Button>
                 </CardContent>
             </Card>
@@ -324,12 +319,12 @@ export function SearchPage() {
                             )}
                             {selectedGenre !== 'all' && (
                                 <Badge variant="secondary" className="text-xs">
-                                    {genres.find(g => g.value === selectedGenre)?.label}
+                                    {genres.find(g => g.slug === selectedGenre)?.name}
                                 </Badge>
                             )}
                             {selectedCountry !== 'all' && (
                                 <Badge variant="secondary" className="text-xs">
-                                    {countries.find(c => c.value === selectedCountry)?.label}
+                                    {countries.find(c => c.slug === selectedCountry)?.name}
                                 </Badge>
                             )}
                             {selectedYear !== 'all' && (
@@ -355,18 +350,41 @@ export function SearchPage() {
                     </h2>
                     <div className="flex items-center gap-2 text-muted-foreground">
                         <SlidersHorizontal className="h-4 w-4" />
-                        <span className="text-sm">Tìm thấy {searchResults.length} kết quả</span>
+                        <span className="text-sm">Tìm thấy {totalResults} kết quả</span>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
-                    {searchResults.map((movie) => (
-                        <MovieCard key={movie.id} movie={movie} />
-                    ))}
-                </div>
+                {loading && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
+                        {Array.from({ length: 12 }).map((_, i) => (
+                            <div key={i} className="space-y-3">
+                                <Skeleton className="w-full aspect-[2/3] rounded-lg" />
+                                <Skeleton className="h-4 w-3/4" />
+                                <Skeleton className="h-3 w-1/2" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {error && (
+                    <div className="text-center py-12">
+                        <div className="text-6xl mb-4">😔</div>
+                        <h3 className="text-xl font-semibold mb-2">Có lỗi xảy ra</h3>
+                        <p className="text-muted-foreground mb-4">{error}</p>
+                        <Button onClick={handleSearch}>Thử lại</Button>
+                    </div>
+                )}
+
+                {!loading && !error && searchResults.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
+                        {searchResults.map((movie) => (
+                            <MovieCard key={movie._id} movie={movie} />
+                        ))}
+                    </div>
+                )}
 
                 {/* No Results */}
-                {searchResults.length === 0 && (
+                {!loading && !error && searchResults.length === 0 && (searchQuery || selectedGenre !== 'all' || selectedCountry !== 'all' || selectedYear !== 'all') && (
                     <div className="text-center py-12">
                         <div className="text-6xl mb-4">🔍</div>
                         <h3 className="text-xl font-semibold mb-2">Không tìm thấy kết quả</h3>
