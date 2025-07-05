@@ -119,12 +119,12 @@ export function MovieCard({ movie }: MovieCardProps) {
                         </span>
                     </div>
                     <div className="flex flex-wrap gap-1 mt-2">
-                        {movie.category.slice(0, 2).map((genre) => (
+                        {(movie.category || []).slice(0, 2).map((genre) => (
                             <Badge key={genre.id} variant="outline" className="text-xs">
                                 {genre.name}
                             </Badge>
                         ))}
-                        {movie.category.length > 2 && (
+                        {movie.category && movie.category.length > 2 && (
                             <Badge variant="outline" className="text-xs">
                                 +{movie.category.length - 2}
                             </Badge>
@@ -178,7 +178,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         </Badge>
                                         <Badge variant="outline">
                                             <Globe className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                            {movie.country[0]?.name || 'N/A'}
+                                            {movie.country && movie.country[0]?.name || 'N/A'}
                                         </Badge>
                                         {movie.tmdb?.vote_count && (
                                             <Badge variant="outline">
@@ -239,7 +239,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         <div>
                                             <h4 className="font-semibold mb-2">Thể loại</h4>
                                             <div className="flex flex-wrap gap-2">
-                                                {movie.category.map((genre) => (
+                                                {(movie.category || []).map((genre) => (
                                                     <Badge key={genre.id} variant="outline">
                                                         {genre.name}
                                                     </Badge>
@@ -249,7 +249,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         <div>
                                             <h4 className="font-semibold mb-2">Quốc gia</h4>
                                             <div className="flex flex-wrap gap-2">
-                                                {movie.country.map((country) => (
+                                                {(movie.country || []).map((country) => (
                                                     <Badge key={country.id} variant="outline">
                                                         {country.name}
                                                     </Badge>
