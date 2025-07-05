@@ -3,12 +3,11 @@
 import React from 'react'
 import { Button } from '@/components/ui/button'
 import { ChevronRight } from 'lucide-react'
-import { DivideIcon as LucideIcon } from 'lucide-react'
 
 interface SectionHeaderProps {
     title: string
     subtitle?: string
-    icon?: LucideIcon
+    icon?: React.ComponentType<{ className?: string }>
     showViewAll?: boolean
     onViewAll?: () => void
 }

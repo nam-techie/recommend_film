@@ -138,7 +138,7 @@ function buildApiUrl(endpoint: string, params?: Record<string, any>): string {
 // API Functions
 export async function fetchNewMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/v1/api/danh-sach/phim-moi-cap-nhat', { page }))
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }))
     if (!response.ok) throw new Error('Failed to fetch new movies')
     return await response.json()
   } catch (error) {
