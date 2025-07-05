@@ -1,4 +1,4 @@
-@import url(https://fonts.bunny.net/css?family=poppins:400,500,600,700,800);
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -65,7 +65,8 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-inter;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
@@ -177,4 +178,18 @@
 .shiny-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Better font rendering for Vietnamese */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Responsive text sizes */
+@media (max-width: 640px) {
+  .shiny-text {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+  }
 }

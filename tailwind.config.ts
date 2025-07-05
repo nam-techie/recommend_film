@@ -10,7 +10,8 @@ const config: Config = {
   theme: {
   	extend: {
         fontFamily: {
-            'poppins': 'Poppins'
+            'inter': ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            'sans': ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
         },
   		colors: {
   			background: 'hsl(var(--background))',

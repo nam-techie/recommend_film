@@ -2,7 +2,8 @@
 
 import React from 'react'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, DivideIcon as LucideIcon } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { LucideIcon } from 'lucide-react'
 
 interface SectionHeaderProps {
     title: string
@@ -28,20 +29,21 @@ export function SectionHeader({
                             <Icon className="h-4 w-4 text-white" />
                         </div>
                     )}
-                    <h2 className="text-2xl font-bold shiny-text">{title}</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold shiny-text">{title}</h2>
                 </div>
                 {subtitle && (
-                    <p className="text-muted-foreground ml-11">{subtitle}</p>
+                    <p className="text-sm sm:text-base text-muted-foreground ml-0 sm:ml-11">{subtitle}</p>
                 )}
             </div>
             
             {showViewAll && (
                 <Button 
                     variant="ghost" 
-                    className="text-primary hover:text-primary/80"
+                    className="text-primary hover:text-primary/80 text-sm sm:text-base"
                     onClick={onViewAll}
                 >
-                    Xem tất cả
+                    <span className="hidden sm:inline">Xem tất cả</span>
+                    <span className="sm:hidden">Xem thêm</span>
                     <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
             )}
