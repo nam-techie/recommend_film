@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Star, Heart, Play, Info, Calendar, Clock, Globe, Users, Eye, Film } from 'lucide-react'
+import { Star, Heart, Play, Info, Calendar, Clock, Globe, Users, Eye, Film, Award, Tv, Monitor } from 'lucide-react'
 import { Movie, getImageUrl } from '@/lib/api'
 import Link from 'next/link'
 
@@ -33,7 +33,17 @@ export function MovieCard({ movie }: MovieCardProps) {
         }
     }
 
+    const getTypeIcon = (type: string) => {
+        switch (type) {
+            case 'single': return Monitor
+            case 'series': return Tv
+            case 'hoathinh': return Film
+            default: return Film
+        }
+    }
+
     const rating = movie.tmdb?.vote_average || 0
+    const TypeIcon = getTypeIcon(movie.type)
 
     return (
         <>
@@ -58,7 +68,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                         <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300"
+                            className="shiny-button h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300 hover:scale-110"
                             onClick={() => setIsLiked(!isLiked)}
                         >
                             <Heart className={`h-3 w-3 sm:h-4 sm:w-4 transition-all duration-300 ${isLiked ? 'fill-red-500 text-red-500 scale-110' : 'text-white'}`} />
@@ -95,7 +105,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                             <Link href={`/movie/${movie.slug}`}>
                                 <Button 
                                     size="icon" 
-                                    className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-2xl border-4 border-white/20"
+                                    className="shiny-button h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-2xl border-4 border-white/20 transition-all duration-300 hover:scale-110"
                                 >
                                     <Play className="h-5 w-5 sm:h-7 sm:w-7 ml-1 text-white" />
                                 </Button>
@@ -114,7 +124,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                             {movie.year}
                         </span>
                         <span className="flex items-center gap-1">
-                            <Film className="h-3 w-3" />
+                            <TypeIcon className="h-3 w-3" />
                             {getTypeLabel(movie.type)}
                         </span>
                     </div>
@@ -138,14 +148,14 @@ export function MovieCard({ movie }: MovieCardProps) {
                             <Button 
                                 variant="outline" 
                                 size="sm"
-                                className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium text-xs sm:text-sm"
+                                className="shiny-button w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium text-xs sm:text-sm hover:scale-105"
                             >
                                 <Info className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                                 <span className="hidden sm:inline">Chi tiết</span>
                                 <span className="sm:hidden">Xem</span>
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
                             <div className="relative">
                                 {movie.thumb_url && (
                                     <div className="relative overflow-hidden rounded-xl mb-6">
@@ -174,7 +184,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         </Badge>
                                         <Badge variant="outline">
                                             <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                            {movie.time}
+                                            {movie.time || 'Đang cập nhật'}
                                         </Badge>
                                         <Badge variant="outline">
                                             <Globe className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
@@ -213,14 +223,14 @@ export function MovieCard({ movie }: MovieCardProps) {
                                     {/* Movie Info Grid */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t">
                                         <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10">
-                                            <Film className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                                            <TypeIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                                             <h5 className="font-medium mb-1">Loại phim</h5>
                                             <p className="text-sm font-semibold text-blue-600">{getTypeLabel(movie.type)}</p>
                                         </div>
                                         <div className="text-center p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10">
                                             <Clock className="h-6 w-6 text-green-500 mx-auto mb-2" />
                                             <h5 className="font-medium mb-1">Thời lượng</h5>
-                                            <p className="text-sm font-semibold text-green-600">{movie.time}</p>
+                                            <p className="text-sm font-semibold text-green-600">{movie.time || 'Đang cập nhật'}</p>
                                         </div>
                                         <div className="text-center p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-pink-500/10">
                                             <Globe className="h-6 w-6 text-purple-500 mx-auto mb-2" />
@@ -233,6 +243,17 @@ export function MovieCard({ movie }: MovieCardProps) {
                                             <p className="text-sm font-semibold text-orange-600">{movie.quality}</p>
                                         </div>
                                     </div>
+
+                                    {/* Additional Info */}
+                                    {movie.status && (
+                                        <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-500/10 to-blue-500/10">
+                                            <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                                <Award className="h-4 w-4" />
+                                                Trạng thái
+                                            </h4>
+                                            <p className="text-muted-foreground capitalize">{movie.status}</p>
+                                        </div>
+                                    )}
 
                                     {/* Genres and Countries */}
                                     <div className="space-y-4">
@@ -258,21 +279,36 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         </div>
                                     </div>
 
+                                    {/* Cast and Director */}
+                                    {movie.actor && movie.actor.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold mb-2">Diễn viên</h4>
+                                            <p className="text-muted-foreground">{movie.actor.join(', ')}</p>
+                                        </div>
+                                    )}
+
+                                    {movie.director && movie.director.length > 0 && (
+                                        <div>
+                                            <h4 className="font-semibold mb-2">Đạo diễn</h4>
+                                            <p className="text-muted-foreground">{movie.director.join(', ')}</p>
+                                        </div>
+                                    )}
+
                                     {/* Action Buttons */}
                                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
                                         <Link href={`/movie/${movie.slug}`} className="flex-1">
-                                            <Button className="w-full bg-gradient-to-r from-primary to-purple-600 text-sm sm:text-base">
+                                            <Button className="shiny-button w-full bg-gradient-to-r from-primary to-purple-600 text-sm sm:text-base hover:scale-105 transition-all duration-300">
                                                 <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                                                 Xem phim
                                             </Button>
                                         </Link>
                                         <Button 
                                             variant="outline" 
-                                            className="flex-1 text-sm sm:text-base"
+                                            className="shiny-button flex-1 text-sm sm:text-base hover:scale-105 transition-all duration-300"
                                             onClick={() => setIsLiked(!isLiked)}
                                         >
                                             <Heart className={`h-3 w-3 sm:h-4 sm:w-4 mr-2 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                                            {isLiked ? 'Đã thích' : 'Yêu thích'}
+                                            Thêm vào danh sách
                                         </Button>
                                     </div>
                                 </div>
