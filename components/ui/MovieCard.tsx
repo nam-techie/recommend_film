@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Star, Heart, Play, Info, Calendar, Clock, Globe, Users, Eye, Film } from 'lucide-react'
 import { Movie, getImageUrl } from '@/lib/api'
 import Link from 'next/link'
@@ -161,7 +161,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                     <DialogTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
                                         {movie.name}
                                     </DialogTitle>
-                                    <DialogDescription className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm sm:text-base">
+                                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm sm:text-base">
                                         {rating > 0 && (
                                             <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white`}>
                                                 <Star className="h-3 w-3 sm:h-4 sm:w-4 mr-1 fill-current" />
@@ -186,7 +186,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                                 {movie.tmdb.vote_count.toLocaleString()} votes
                                             </Badge>
                                         )}
-                                    </DialogDescription>
+                                    </div>
                                 </DialogHeader>
                                 
                                 <div className="mt-6 space-y-6">

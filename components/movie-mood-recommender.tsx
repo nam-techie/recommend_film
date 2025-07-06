@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Star, Heart, Calendar, Clock, Play, Info, Globe, Users, Award, Sparkles, Filter } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -357,7 +357,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                                 <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
                                     {movie.title}
                                 </DialogTitle>
-                                <DialogDescription className="flex flex-wrap items-center gap-4 text-base">
+                                <div className="flex flex-wrap items-center gap-4 text-base">
                                     <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
                                         <Star className="h-4 w-4 mr-1 fill-current" />
                                         {movie.vote_average.toFixed(1)}/10
@@ -374,7 +374,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                                         <Globe className="h-4 w-4 mr-1" />
                                         {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
                                     </Badge>
-                                </DialogDescription>
+                                </div>
                             </DialogHeader>
                             
                             <div className="mt-6 space-y-6">
