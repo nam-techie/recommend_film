@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Star, Heart, Play, Info, Calendar, Clock, Globe, Users, Eye, Film, Award, Tv, Monitor } from 'lucide-react'
-import { Movie, getImageUrl } from '@/lib/api'
+import { Star, Heart, Play, Info, Calendar, Clock, Globe, Users, Eye, Film, Award, Tv, Monitor, User, Video, MapPin, Languages } from 'lucide-react'
+import { Movie, getImageUrl, fetchMovieDetail, MovieDetail } from '@/lib/api'
 import Link from 'next/link'
 
 interface MovieCardProps {
@@ -16,6 +16,8 @@ interface MovieCardProps {
 export function MovieCard({ movie }: MovieCardProps) {
     const [isLiked, setIsLiked] = useState(false)
     const [imageLoaded, setImageLoaded] = useState(false)
+    const [movieDetail, setMovieDetail] = useState<MovieDetail | null>(null)
+    const [loadingDetail, setLoadingDetail] = useState(false)
 
     const getRatingColor = (rating: number) => {
         if (rating >= 8) return 'from-green-500 to-emerald-500'
@@ -39,6 +41,20 @@ export function MovieCard({ movie }: MovieCardProps) {
             case 'series': return Tv
             case 'hoathinh': return Film
             default: return Film
+        }
+    }
+
+    const loadMovieDetail = async () => {
+        if (movieDetail || loadingDetail) return
+        
+        try {
+            setLoadingDetail(true)
+            const detail = await fetchMovieDetail(movie.slug)
+            setMovieDetail(detail)
+        } catch (error) {
+            console.error('Error loading movie detail:', error)
+        } finally {
+            setLoadingDetail(false)
         }
     }
 
@@ -149,29 +165,34 @@ export function MovieCard({ movie }: MovieCardProps) {
                                 variant="outline" 
                                 size="sm"
                                 className="shiny-button w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium text-xs sm:text-sm hover:scale-105"
+                                onClick={loadMovieDetail}
                             >
                                 <Info className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                                 <span className="hidden sm:inline">Chi tiết</span>
                                 <span className="sm:hidden">Xem</span>
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
+                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
                             <div className="relative">
+                                {/* Backdrop Image */}
                                 {movie.thumb_url && (
                                     <div className="relative overflow-hidden rounded-xl mb-6">
                                         <img
                                             src={getImageUrl(movie.thumb_url)}
                                             alt={`${movie.name} backdrop`}
-                                            className="w-full h-64 object-cover"
+                                            className="w-full h-64 sm:h-80 object-cover"
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                                     </div>
                                 )}
+
                                 <DialogHeader>
-                                    <DialogTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
+                                    <DialogTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-4">
                                         {movie.name}
                                     </DialogTitle>
-                                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm sm:text-base">
+                                    
+                                    {/* Movie Info Badges */}
+                                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-sm sm:text-base mb-6">
                                         {rating > 0 && (
                                             <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white`}>
                                                 <Star className="h-3 w-3 sm:h-4 sm:w-4 mr-1 fill-current" />
@@ -187,8 +208,16 @@ export function MovieCard({ movie }: MovieCardProps) {
                                             {movie.time || 'Đang cập nhật'}
                                         </Badge>
                                         <Badge variant="outline">
-                                            <Globe className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                            {movie.country && movie.country[0]?.name || 'N/A'}
+                                            <TypeIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                                            {getTypeLabel(movie.type)}
+                                        </Badge>
+                                        <Badge variant="outline">
+                                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                                            {movie.quality}
+                                        </Badge>
+                                        <Badge variant="outline">
+                                            <Languages className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                                            {movie.lang}
                                         </Badge>
                                         {movie.tmdb?.vote_count && (
                                             <Badge variant="outline">
@@ -199,7 +228,8 @@ export function MovieCard({ movie }: MovieCardProps) {
                                     </div>
                                 </DialogHeader>
                                 
-                                <div className="mt-6 space-y-6">
+                                <div className="space-y-6">
+                                    {/* Original Name */}
                                     {movie.origin_name !== movie.name && (
                                         <div className="p-4 rounded-lg bg-muted/50">
                                             <h4 className="font-semibold mb-2 flex items-center gap-2">
@@ -210,17 +240,20 @@ export function MovieCard({ movie }: MovieCardProps) {
                                         </div>
                                     )}
                                     
-                                    {movie.content && (
+                                    {/* Content/Description */}
+                                    {(movieDetail?.movie.content || movie.content) && (
                                         <div>
                                             <h4 className="font-semibold mb-3 text-lg flex items-center gap-2">
                                                 <Info className="h-5 w-5" />
                                                 Nội dung
                                             </h4>
-                                            <p className="text-muted-foreground leading-relaxed text-base">{movie.content}</p>
+                                            <p className="text-muted-foreground leading-relaxed text-base">
+                                                {movieDetail?.movie.content || movie.content}
+                                            </p>
                                         </div>
                                     )}
 
-                                    {/* Movie Info Grid */}
+                                    {/* Movie Stats Grid */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t">
                                         <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10">
                                             <TypeIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
@@ -233,7 +266,7 @@ export function MovieCard({ movie }: MovieCardProps) {
                                             <p className="text-sm font-semibold text-green-600">{movie.time || 'Đang cập nhật'}</p>
                                         </div>
                                         <div className="text-center p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-pink-500/10">
-                                            <Globe className="h-6 w-6 text-purple-500 mx-auto mb-2" />
+                                            <Languages className="h-6 w-6 text-purple-500 mx-auto mb-2" />
                                             <h5 className="font-medium mb-1">Ngôn ngữ</h5>
                                             <p className="text-sm font-semibold text-purple-600">{movie.lang}</p>
                                         </div>
@@ -245,20 +278,45 @@ export function MovieCard({ movie }: MovieCardProps) {
                                     </div>
 
                                     {/* Additional Info */}
-                                    {movie.status && (
+                                    {movieDetail?.movie.status && (
                                         <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-500/10 to-blue-500/10">
                                             <h4 className="font-semibold mb-2 flex items-center gap-2">
                                                 <Award className="h-4 w-4" />
                                                 Trạng thái
                                             </h4>
-                                            <p className="text-muted-foreground capitalize">{movie.status}</p>
+                                            <p className="text-muted-foreground capitalize">{movieDetail.movie.status}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Episode Info */}
+                                    {movie.episode_current && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-lg bg-gradient-to-br from-cyan-500/10 to-blue-500/10">
+                                                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                                    <Video className="h-4 w-4" />
+                                                    Tập hiện tại
+                                                </h4>
+                                                <p className="text-muted-foreground">{movie.episode_current}</p>
+                                            </div>
+                                            {movie.episode_total && (
+                                                <div className="p-4 rounded-lg bg-gradient-to-br from-teal-500/10 to-cyan-500/10">
+                                                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                                        <Film className="h-4 w-4" />
+                                                        Tổng số tập
+                                                    </h4>
+                                                    <p className="text-muted-foreground">{movie.episode_total}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
                                     {/* Genres and Countries */}
-                                    <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
-                                            <h4 className="font-semibold mb-2">Thể loại</h4>
+                                            <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                                <Film className="h-4 w-4" />
+                                                Thể loại
+                                            </h4>
                                             <div className="flex flex-wrap gap-2">
                                                 {(movie.category || []).map((genre) => (
                                                     <Badge key={genre.id} variant="outline">
@@ -268,7 +326,10 @@ export function MovieCard({ movie }: MovieCardProps) {
                                             </div>
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold mb-2">Quốc gia</h4>
+                                            <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                                <MapPin className="h-4 w-4" />
+                                                Quốc gia
+                                            </h4>
                                             <div className="flex flex-wrap gap-2">
                                                 {(movie.country || []).map((country) => (
                                                     <Badge key={country.id} variant="outline">
@@ -280,22 +341,56 @@ export function MovieCard({ movie }: MovieCardProps) {
                                     </div>
 
                                     {/* Cast and Director */}
-                                    {movie.actor && movie.actor.length > 0 && (
-                                        <div>
-                                            <h4 className="font-semibold mb-2">Diễn viên</h4>
-                                            <p className="text-muted-foreground">{movie.actor.join(', ')}</p>
+                                    {movieDetail && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            {movieDetail.movie.actor && movieDetail.movie.actor.length > 0 && (
+                                                <div>
+                                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                                        <User className="h-4 w-4" />
+                                                        Diễn viên
+                                                    </h4>
+                                                    <p className="text-muted-foreground text-sm leading-relaxed">
+                                                        {movieDetail.movie.actor.join(', ')}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {movieDetail.movie.director && movieDetail.movie.director.length > 0 && (
+                                                <div>
+                                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                                        <Award className="h-4 w-4" />
+                                                        Đạo diễn
+                                                    </h4>
+                                                    <p className="text-muted-foreground text-sm leading-relaxed">
+                                                        {movieDetail.movie.director.join(', ')}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
-                                    {movie.director && movie.director.length > 0 && (
+                                    {/* Episodes Info */}
+                                    {movieDetail?.episodes && movieDetail.episodes.length > 0 && (
                                         <div>
-                                            <h4 className="font-semibold mb-2">Đạo diễn</h4>
-                                            <p className="text-muted-foreground">{movie.director.join(', ')}</p>
+                                            <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                                <Video className="h-4 w-4" />
+                                                Thông tin tập phim
+                                            </h4>
+                                            <div className="space-y-3">
+                                                {movieDetail.episodes.map((server, index) => (
+                                                    <div key={index} className="p-4 rounded-lg bg-muted/50">
+                                                        <h5 className="font-medium mb-2">{server.server_name}</h5>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {server.server_data.length} tập có sẵn
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
 
                                     {/* Action Buttons */}
-                                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
+                                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t">
                                         <Link href={`/movie/${movie.slug}`} className="flex-1">
                                             <Button className="shiny-button w-full bg-gradient-to-r from-primary to-purple-600 text-sm sm:text-base hover:scale-105 transition-all duration-300">
                                                 <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />

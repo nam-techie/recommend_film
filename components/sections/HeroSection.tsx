@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Play, Info, Star, Calendar, Clock, ChevronLeft, ChevronRight, Pause, Play as PlayIcon, Heart, Share2 } from 'lucide-react'
+import { Play, Info, Star, Calendar, Clock, ChevronLeft, ChevronRight, Pause, Play as PlayIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Movie, fetchNewMovies, getImageUrl, fetchMovieDetail } from '@/lib/api'
 import Link from 'next/link'
@@ -17,7 +17,6 @@ export function HeroSection() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [isPlaying, setIsPlaying] = useState(true)
-    const [isLiked, setIsLiked] = useState(false)
 
     // Load movies from API
     const loadMovies = useCallback(async () => {
@@ -172,7 +171,7 @@ export function HeroSection() {
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
             
-            {/* Navigation Controls */}
+            {/* Navigation Controls - Chỉ hiện khi hover */}
             <div className="absolute inset-y-0 left-2 sm:left-4 flex items-center opacity-0 group-hover:opacity-100 transition-all duration-300">
                 <Button
                     variant="ghost"
@@ -195,9 +194,8 @@ export function HeroSection() {
                 </Button>
             </div>
 
-            {/* Top Controls */}
-            <div className="absolute top-4 sm:top-6 right-4 sm:right-6 flex items-center gap-2 sm:gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                {/* Play/Pause Control */}
+            {/* Play/Pause Control - Góc trên phải, chỉ hiện khi hover */}
+            <div className="absolute top-4 sm:top-6 right-4 sm:right-6 opacity-0 group-hover:opacity-100 transition-all duration-300">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -205,25 +203,6 @@ export function HeroSection() {
                     className="shiny-button h-10 w-10 sm:h-12 sm:w-12 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-110"
                 >
                     {isPlaying ? <Pause className="h-4 w-4 sm:h-5 sm:w-5" /> : <PlayIcon className="h-4 w-4 sm:h-5 sm:w-5" />}
-                </Button>
-
-                {/* Like Button */}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsLiked(!isLiked)}
-                    className="shiny-button h-10 w-10 sm:h-12 sm:w-12 bg-black/20 hover:bg-red-500/80 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-red-500/40 transition-all duration-300 hover:scale-110"
-                >
-                    <Heart className={`h-4 w-4 sm:h-5 sm:w-5 transition-all duration-300 ${isLiked ? 'fill-red-500 text-red-500 scale-110' : 'text-white'}`} />
-                </Button>
-
-                {/* Share Button */}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shiny-button h-10 w-10 sm:h-12 sm:w-12 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-110"
-                >
-                    <Share2 className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
             </div>
             
