@@ -231,7 +231,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-400">Networks:</span>
-                                    <span className="text-white font-medium">PhimAPI</span>
+                                    <span className="text-white font-medium">Nam_phun</span>
                                 </div>
                             </div>
                             <div className="space-y-3">
