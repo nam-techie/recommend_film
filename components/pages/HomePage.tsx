@@ -10,7 +10,7 @@ import { GenreSection } from '@/components/sections/GenreSection'
 
 export function HomePage() {
     return (
-        <div className="space-y-12">
+        <div className="space-y-8 sm:space-y-12 lg:space-y-16">
             <HeroSection />
             <FeaturedMovies />
             <TrendingMovies />

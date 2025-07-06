@@ -35,18 +35,18 @@ export function NewReleases() {
 
     if (loading) {
         return (
-            <section className="space-y-6">
+            <section className="space-y-4 sm:space-y-6">
                 <SectionHeader 
                     title="Mới phát hành" 
                     subtitle="Những bộ phim mới nhất"
                     icon={Calendar}
                 />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
                     {Array.from({ length: 10 }).map((_, i) => (
-                        <div key={i} className="space-y-3">
+                        <div key={i} className="space-y-2 sm:space-y-3">
                             <Skeleton className="w-full aspect-[2/3] rounded-lg" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
+                            <Skeleton className="h-3 sm:h-4 w-3/4" />
+                            <Skeleton className="h-2 sm:h-3 w-1/2" />
                         </div>
                     ))}
                 </div>
@@ -56,28 +56,28 @@ export function NewReleases() {
 
     if (error) {
         return (
-            <section className="space-y-6">
+            <section className="space-y-4 sm:space-y-6">
                 <SectionHeader 
                     title="Mới phát hành" 
                     subtitle="Những bộ phim mới nhất"
                     icon={Calendar}
                 />
-                <div className="text-center py-12">
-                    <p className="text-muted-foreground">{error}</p>
+                <div className="text-center py-8 sm:py-12">
+                    <p className="text-muted-foreground text-sm sm:text-base">{error}</p>
                 </div>
             </section>
         )
     }
 
     return (
-        <section className="space-y-6">
+        <section className="space-y-4 sm:space-y-6">
             <SectionHeader 
                 title="Mới phát hành" 
                 subtitle="Những bộ phim mới nhất"
                 icon={Calendar}
             />
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
                 {movies.map((movie) => (
                     <MovieCard key={movie._id} movie={movie} />
                 ))}

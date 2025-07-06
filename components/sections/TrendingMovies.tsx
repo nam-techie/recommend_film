@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { MovieCard } from '@/components/ui/MovieCard'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { TrendingUp } from 'lucide-react'
-import { fetchMoviesByType, Movie } from '@/lib/api'
+import { fetchTrendingMovies, Movie } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function TrendingMovies() {
@@ -16,14 +16,9 @@ export function TrendingMovies() {
         const loadTrendingMovies = async () => {
             try {
                 setLoading(true)
-                const response = await fetchMoviesByType('phim-le', {
-                    page: 1,
-                    sort_field: 'view',
-                    sort_type: 'desc',
-                    limit: 10
-                })
-                if (response.data?.items) {
-                    setMovies(response.data.items)
+                const response = await fetchTrendingMovies(1)
+                if (response.items) {
+                    setMovies(response.items.slice(0, 10))
                 } else {
                     setMovies([])
                 }
@@ -40,18 +35,18 @@ export function TrendingMovies() {
 
     if (loading) {
         return (
-            <section className="space-y-6">
+            <section className="space-y-4 sm:space-y-6">
                 <SectionHeader 
                     title="Đang thịnh hành" 
                     subtitle="Phim hot nhất tuần này"
                     icon={TrendingUp}
                 />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
                     {Array.from({ length: 10 }).map((_, i) => (
-                        <div key={i} className="space-y-3">
+                        <div key={i} className="space-y-2 sm:space-y-3">
                             <Skeleton className="w-full aspect-[2/3] rounded-lg" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
+                            <Skeleton className="h-3 sm:h-4 w-3/4" />
+                            <Skeleton className="h-2 sm:h-3 w-1/2" />
                         </div>
                     ))}
                 </div>
@@ -61,28 +56,28 @@ export function TrendingMovies() {
 
     if (error) {
         return (
-            <section className="space-y-6">
+            <section className="space-y-4 sm:space-y-6">
                 <SectionHeader 
                     title="Đang thịnh hành" 
                     subtitle="Phim hot nhất tuần này"
                     icon={TrendingUp}
                 />
-                <div className="text-center py-12">
-                    <p className="text-muted-foreground">{error}</p>
+                <div className="text-center py-8 sm:py-12">
+                    <p className="text-muted-foreground text-sm sm:text-base">{error}</p>
                 </div>
             </section>
         )
     }
 
     return (
-        <section className="space-y-6">
+        <section className="space-y-4 sm:space-y-6">
             <SectionHeader 
                 title="Đang thịnh hành" 
                 subtitle="Phim hot nhất tuần này"
                 icon={TrendingUp}
             />
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
                 {movies.map((movie) => (
                     <MovieCard key={movie._id} movie={movie} />
                 ))}

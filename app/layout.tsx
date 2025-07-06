@@ -5,10 +5,23 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-    title: "CineMind",
-    description: "Cinema + Mind - Choose movies based on your mood",
+    title: "CineMind - Cinema meets Mind",
+    description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn. Nơi Cinema meets Mind.",
+    keywords: "phim, movie, cinema, entertainment, AI recommendation, mood-based",
+    authors: [{ name: "CineMind Team" }],
     icons: {
         icon: '/favicon.ico',
+    },
+    openGraph: {
+        title: "CineMind - Cinema meets Mind",
+        description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn",
+        type: "website",
+        locale: "vi_VN",
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: "CineMind - Cinema meets Mind",
+        description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn",
     },
 };
 
@@ -18,9 +31,9 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="vi" suppressHydrationWarning>
             <body
-                className={`antialiased font-poppins min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
+                className={`antialiased font-inter min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
             >
                 <ThemeProvider
                     attribute="class"
@@ -29,7 +42,7 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <Navbar />
-                    <main className="container mx-auto px-4 py-8 flex-1">
+                    <main className="container mx-auto px-4 py-6 sm:py-8 flex-1">
                         {children}
                     </main>
                     <Footer />

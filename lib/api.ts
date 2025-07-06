@@ -110,8 +110,8 @@ export interface Country {
   slug: string
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://phimapi.com'
-const CDN_IMAGE_URL = process.env.NEXT_PUBLIC_CDN_IMAGE_URL || 'https://phimimg.com'
+const API_BASE_URL = 'https://phimapi.com'
+const CDN_IMAGE_URL = 'https://phimimg.com'
 
 // Helper function to build image URL
 export function getImageUrl(path: string): string {
@@ -138,7 +138,9 @@ function buildApiUrl(endpoint: string, params?: Record<string, any>): string {
 // API Functions
 export async function fetchNewMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }))
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { page }), {
+      next: { revalidate: 300 } // Cache for 5 minutes
+    })
     if (!response.ok) throw new Error('Failed to fetch new movies')
     return await response.json()
   } catch (error) {
@@ -149,7 +151,9 @@ export async function fetchNewMovies(page: number = 1): Promise<ApiResponse<any>
 
 export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
   try {
-    const response = await fetch(buildApiUrl(`/v1/api/phim/${slug}`))
+    const response = await fetch(buildApiUrl(`/phim/${slug}`), {
+      next: { revalidate: 600 } // Cache for 10 minutes
+    })
     if (!response.ok) throw new Error('Failed to fetch movie detail')
     return await response.json()
   } catch (error) {
@@ -244,6 +248,59 @@ export async function fetchMoviesByType(
     return await response.json()
   } catch (error) {
     console.error('Error fetching movies by type:', error)
+    throw error
+  }
+}
+
+// Fetch trending movies (most viewed)
+export async function fetchTrendingMovies(page: number = 1): Promise<ApiResponse<any>> {
+  try {
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { 
+      page,
+      sort_field: 'view',
+      sort_type: 'desc'
+    }), {
+      next: { revalidate: 300 }
+    })
+    if (!response.ok) throw new Error('Failed to fetch trending movies')
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching trending movies:', error)
+    throw error
+  }
+}
+
+// Fetch featured movies (high rated)
+export async function fetchFeaturedMovies(page: number = 1): Promise<ApiResponse<any>> {
+  try {
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { 
+      page,
+      sort_field: 'tmdb.vote_average',
+      sort_type: 'desc'
+    }), {
+      next: { revalidate: 300 }
+    })
+    if (!response.ok) throw new Error('Failed to fetch featured movies')
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching featured movies:', error)
+    throw error
+  }
+}
+
+// Fetch movies by type (phim-le, phim-bo, hoat-hinh)
+export async function fetchMoviesByTypeV3(
+  type: 'phim-le' | 'phim-bo' | 'hoat-hinh',
+  page: number = 1
+): Promise<ApiResponse<any>> {
+  try {
+    const response = await fetch(buildApiUrl(`/danh-sach/${type}`, { page }), {
+      next: { revalidate: 300 }
+    })
+    if (!response.ok) throw new Error(`Failed to fetch ${type}`)
+    return await response.json()
+  } catch (error) {
+    console.error(`Error fetching ${type}:`, error)
     throw error
   }
 }
