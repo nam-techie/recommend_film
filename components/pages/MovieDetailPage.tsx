@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { fetchMovieDetail, MovieDetail, getImageUrl } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { 
     Play, 
@@ -15,11 +15,11 @@ import {
     Users, 
     Eye, 
     Film, 
-    Heart,
-    Share2,
-    Download,
     ChevronLeft,
-    ChevronRight
+    Info,
+    CheckCircle,
+    ArrowLeft,
+    Home
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -34,7 +34,6 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const [error, setError] = useState<string | null>(null)
     const [selectedServer, setSelectedServer] = useState(0)
     const [selectedEpisode, setSelectedEpisode] = useState(0)
-    const [isLiked, setIsLiked] = useState(false)
     const [showPlayer, setShowPlayer] = useState(false)
     const router = useRouter()
 
@@ -81,15 +80,15 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
 
     if (loading) {
         return (
-            <div className="space-y-8">
+            <div className="space-y-8 max-w-7xl mx-auto px-4">
                 <Skeleton className="w-full h-96 rounded-xl" />
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    <div className="space-y-4">
+                        <Skeleton className="w-full aspect-[2/3] rounded-lg" />
+                    </div>
+                    <div className="lg:col-span-3 space-y-6">
                         <Skeleton className="h-8 w-3/4" />
                         <Skeleton className="h-32 w-full" />
-                    </div>
-                    <div className="space-y-4">
-                        <Skeleton className="h-64 w-full" />
                     </div>
                 </div>
             </div>
@@ -98,7 +97,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
 
     if (error || !movieDetail) {
         return (
-            <div className="text-center py-20">
+            <div className="text-center py-20 max-w-7xl mx-auto px-4">
                 <div className="text-6xl mb-4">😔</div>
                 <h3 className="text-2xl font-bold mb-4">Không tìm thấy phim</h3>
                 <p className="text-muted-foreground mb-6">{error}</p>
@@ -115,91 +114,158 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const currentEpisode = episodes[selectedServer]?.server_data[selectedEpisode]
 
     return (
-        <div className="space-y-8">
-            {/* Hero Section */}
-            <div className="relative h-96 overflow-hidden rounded-2xl">
-                <img
-                    src={getImageUrl(movie.thumb_url)}
+        <div className="max-w-7xl mx-auto px-4 space-y-8">
+            {/* Back Navigation */}
+            <div className="flex items-center gap-4 pt-4">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.back()}
+                    className="border-white/30 text-white hover:bg-white/10 backdrop-blur-sm"
+                >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Quay lại
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="border-white/30 text-white hover:bg-white/10 backdrop-blur-sm"
+                >
+                    <Link href="/">
+                        <Home className="h-4 w-4 mr-2" />
+                        Trang chủ
+                    </Link>
+                </Button>
+                <div className="h-4 w-px bg-white/20" />
+                <div className="text-sm text-gray-400">
+                    <Link href="/" className="hover:text-white transition-colors">Trang chủ</Link>
+                    <span className="mx-2">/</span>
+                    <span className="text-white">{movie?.name}</span>
+                </div>
+            </div>
+
+            {/* Movie Header */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                {/* Poster */}
+                <div className="lg:col-span-1">
+                    <div className="sticky top-6">
+                        <img
+                            src={getImageUrl(movie.poster_url)}
                     alt={movie.name}
-                    className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                
-                <div className="absolute inset-0 flex items-center">
-                    <div className="container mx-auto px-4">
-                        <div className="max-w-3xl space-y-6">
-                            <div className="flex items-center space-x-4 text-white/80">
+                            className="w-full aspect-[2/3] object-cover rounded-xl shadow-2xl"
+                        />
+                    </div>
+                </div>
+
+                {/* Movie Info */}
+                <div className="lg:col-span-3 space-y-6">
+                    {/* Title and Basic Info */}
+                    <div className="space-y-4">
+                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
+                            {movie.name}
+                        </h1>
+                        {movie.origin_name && movie.origin_name !== movie.name && (
+                            <p className="text-xl text-yellow-400 font-medium">
+                                {movie.origin_name}
+                            </p>
+                        )}
+
+                        {/* Badges */}
+                        <div className="flex flex-wrap items-center gap-3">
                                 {rating > 0 && (
-                                    <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white border-0`}>
-                                        <Star className="h-4 w-4 mr-1 fill-current" />
-                                        {rating.toFixed(1)}
-                                    </Badge>
-                                )}
-                                <span className="flex items-center">
-                                    <Calendar className="h-4 w-4 mr-1" />
-                                    {movie.year}
-                                </span>
-                                <span className="flex items-center">
-                                    <Clock className="h-4 w-4 mr-1" />
-                                    {movie.time}
-                                </span>
-                                <Badge variant="outline" className="text-white border-white/30">
-                                    {getTypeLabel(movie.type)}
+                                <Badge className="bg-yellow-500 text-black font-bold px-3 py-1">
+                                    IMDb {rating.toFixed(1)}
                                 </Badge>
-                            </div>
-
-                            <h1 className="text-4xl md:text-6xl font-bold text-white leading-tight">
-                                {movie.name}
-                            </h1>
-
-                            {movie.origin_name !== movie.name && (
-                                <p className="text-xl text-white/80">{movie.origin_name}</p>
                             )}
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30">
+                                T{movie.year >= 2020 ? '18' : '16'}
+                            </Badge>
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30">
+                                {movie.year}
+                            </Badge>
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30">
+                                {getTypeLabel(movie.type)}
+                            </Badge>
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30">
+                                {movie.episode_current}
+                            </Badge>
+                        </div>
 
+                        {/* Genres */}
                             <div className="flex flex-wrap gap-2">
                                 {movie.category.map((genre) => (
-                                    <Badge key={genre.id} variant="outline" className="text-white border-white/30">
+                                <Badge key={genre.id} variant="outline" className="text-white border-white/40 bg-black/20">
                                         {genre.name}
                                     </Badge>
                                 ))}
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <Button 
-                                    size="lg" 
-                                    className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white"
-                                    onClick={() => episodes.length > 0 && handleWatchEpisode(0, 0)}
-                                >
-                                    <Play className="h-5 w-5 mr-2" />
-                                    Xem ngay
-                                </Button>
-                                <Button 
-                                    size="lg" 
-                                    variant="outline" 
-                                    className="border-white/30 text-white hover:bg-white/10"
-                                    onClick={() => setIsLiked(!isLiked)}
-                                >
-                                    <Heart className={`h-5 w-5 mr-2 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                                    {isLiked ? 'Đã thích' : 'Yêu thích'}
-                                </Button>
-                                <Button 
-                                    size="lg" 
-                                    variant="outline" 
-                                    className="border-white/30 text-white hover:bg-white/10"
-                                >
-                                    <Share2 className="h-5 w-5 mr-2" />
-                                    Chia sẻ
-                                </Button>
+                        {/* Status */}
+                        <div className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-500" />
+                            <span className="text-green-400 font-medium">Đã hoàn thành: {movie.episode_current}</span>
+                        </div>
+                    </div>
+
+                    {/* Movie Details */}
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-xl font-bold mb-3 text-white">Giới thiệu:</h3>
+                            <p className="text-gray-300 leading-relaxed">
+                                {movie.content || 'Chưa có mô tả chi tiết cho phim này.'}
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Thời lượng:</span>
+                                    <span className="text-white font-medium">{movie.time}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Quốc gia:</span>
+                                    <span className="text-white font-medium">
+                                        {movie.country.map(c => c.name).join(', ')}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Networks:</span>
+                                    <span className="text-white font-medium">PhimAPI</span>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Sản xuất:</span>
+                                    <span className="text-white font-medium">Đang cập nhật</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Đạo diễn:</span>
+                                    <span className="text-white font-medium">
+                                        {movie.director?.join(', ') || 'Đang cập nhật'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-gray-400">Chất lượng:</span>
+                                    <span className="text-white font-medium">{movie.quality}</span>
+                                </div>
                             </div>
                         </div>
+
+                        {/* Cast */}
+                        {movie.actor && movie.actor.length > 0 && (
+                            <div>
+                                <h4 className="text-lg font-semibold mb-2 text-white">Diễn viên:</h4>
+                                <p className="text-gray-300">{movie.actor.join(', ')}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Video Player */}
             {showPlayer && currentEpisode && (
-                <Card className="overflow-hidden">
+                <Card className="overflow-hidden bg-black/50 backdrop-blur border-white/10">
                     <CardContent className="p-0">
                         <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
                             <iframe
@@ -210,134 +276,50 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             />
                         </div>
-                        <div className="p-4 bg-gradient-to-r from-primary/10 to-purple-600/10">
-                            <h3 className="text-lg font-bold mb-2">
+                        <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20">
+                            <h3 className="text-lg font-bold mb-2 text-white">
                                 Đang xem: {currentEpisode.name}
                             </h3>
-                            <p className="text-sm text-muted-foreground">
-                                Server: {episodes[selectedServer]?.server_name}
+                            <p className="text-sm text-gray-300">
+                                Server: Server Phuong Nam ({episodes[selectedServer]?.server_name.includes('Vietsub') ? 'Vietsub' : 'Lồng Tiếng'})
                             </p>
                         </div>
                     </CardContent>
                 </Card>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Content */}
-                <div className="lg:col-span-2 space-y-8">
-                    {/* Movie Info */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-2xl">Thông tin phim</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            {movie.content && (
-                                <div>
-                                    <h4 className="font-semibold mb-3">Nội dung</h4>
-                                    <p className="text-muted-foreground leading-relaxed">{movie.content}</p>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                    <Film className="h-6 w-6 mx-auto mb-2 text-primary" />
-                                    <h5 className="font-medium mb-1">Loại phim</h5>
-                                    <p className="text-sm text-muted-foreground">{getTypeLabel(movie.type)}</p>
-                                </div>
-                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                    <Clock className="h-6 w-6 mx-auto mb-2 text-primary" />
-                                    <h5 className="font-medium mb-1">Thời lượng</h5>
-                                    <p className="text-sm text-muted-foreground">{movie.time}</p>
-                                </div>
-                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                    <Globe className="h-6 w-6 mx-auto mb-2 text-primary" />
-                                    <h5 className="font-medium mb-1">Ngôn ngữ</h5>
-                                    <p className="text-sm text-muted-foreground">{movie.lang}</p>
-                                </div>
-                                <div className="text-center p-4 rounded-lg bg-muted/50">
-                                    <Eye className="h-6 w-6 mx-auto mb-2 text-primary" />
-                                    <h5 className="font-medium mb-1">Chất lượng</h5>
-                                    <p className="text-sm text-muted-foreground">{movie.quality}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <h4 className="font-semibold mb-3">Thể loại</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        {movie.category.map((genre) => (
-                                            <Badge key={genre.id} variant="outline">
-                                                {genre.name}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold mb-3">Quốc gia</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        {movie.country.map((country) => (
-                                            <Badge key={country.id} variant="outline">
-                                                {country.name}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {movie.actor && movie.actor.length > 0 && (
-                                <div>
-                                    <h4 className="font-semibold mb-3">Diễn viên</h4>
-                                    <p className="text-muted-foreground">{movie.actor.join(', ')}</p>
-                                </div>
-                            )}
-
-                            {movie.director && movie.director.length > 0 && (
-                                <div>
-                                    <h4 className="font-semibold mb-3">Đạo diễn</h4>
-                                    <p className="text-muted-foreground">{movie.director.join(', ')}</p>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Episodes */}
-                    {episodes.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-2xl">Danh sách tập phim</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
+            {/* Episodes Section */}
+            {episodes.length > 0 && (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-white">Danh sách tập phim</h2>
+                    
                                 {/* Server Selection */}
-                                {episodes.length > 1 && (
-                                    <div>
-                                        <h4 className="font-semibold mb-3">Chọn server</h4>
-                                        <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-3">
                                             {episodes.map((server, index) => (
                                                 <Button
                                                     key={index}
                                                     variant={selectedServer === index ? "default" : "outline"}
                                                     size="sm"
                                                     onClick={() => setSelectedServer(index)}
+                                className={selectedServer === index ? "bg-yellow-500 text-black" : "border-white/30 text-white hover:bg-white/10"}
                                                 >
-                                                    {server.server_name}
+                                Server Phuong Nam {server.server_name.includes('Vietsub') ? '(Vietsub)' : '(Lồng Tiếng)'}
                                                 </Button>
                                             ))}
                                         </div>
-                                    </div>
-                                )}
 
-                                {/* Episode List */}
-                                <div>
-                                    <h4 className="font-semibold mb-3">
-                                        {episodes[selectedServer]?.server_name || 'Tập phim'}
-                                    </h4>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {/* Episode Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                                         {episodes[selectedServer]?.server_data.map((episode, index) => (
                                             <Button
                                                 key={episode.slug}
                                                 variant={selectedEpisode === index && showPlayer ? "default" : "outline"}
                                                 size="sm"
-                                                className="h-12"
+                                className={`h-12 ${
+                                    selectedEpisode === index && showPlayer 
+                                        ? "bg-yellow-500 text-black" 
+                                        : "border-white/30 text-white hover:bg-white/10"
+                                }`}
                                                 onClick={() => handleWatchEpisode(selectedServer, index)}
                                             >
                                                 {episode.name}
@@ -345,63 +327,44 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                         ))}
                                     </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
+            )}
 
-                {/* Sidebar */}
-                <div className="space-y-6">
-                    {/* Movie Poster */}
-                    <Card className="overflow-hidden">
-                        <CardContent className="p-0">
-                            <img
-                                src={getImageUrl(movie.poster_url)}
-                                alt={movie.name}
-                                className="w-full aspect-[2/3] object-cover"
-                            />
-                        </CardContent>
-                    </Card>
-
-                    {/* Movie Stats */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Thống kê</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {rating > 0 && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground">Đánh giá</span>
-                                    <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white`}>
-                                        <Star className="h-3 w-3 mr-1 fill-current" />
-                                        {rating.toFixed(1)}/10
-                                    </Badge>
+            {/* Additional Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Card className="bg-black/50 backdrop-blur border-white/10">
+                    <CardContent className="p-6">
+                        <h3 className="text-lg font-bold mb-4 text-white flex items-center">
+                            <Star className="h-5 w-5 mr-2 text-yellow-500" />
+                            Thống kê
+                        </h3>
+                        <div className="space-y-3">
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Đánh giá:</span>
+                                <span className="text-yellow-400 font-bold">{rating.toFixed(1)}/10</span>
                                 </div>
-                            )}
-                            {movie.tmdb?.vote_count && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground">Lượt vote</span>
-                                    <span className="font-medium">{movie.tmdb.vote_count.toLocaleString()}</span>
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Lượt vote:</span>
+                                <span className="text-white">{movie.tmdb?.vote_count || 0}</span>
                                 </div>
-                            )}
-                            <div className="flex items-center justify-between">
-                                <span className="text-muted-foreground">Năm phát hành</span>
-                                <span className="font-medium">{movie.year}</span>
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Năm phát hành:</span>
+                                <span className="text-white">{movie.year}</span>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-muted-foreground">Trạng thái</span>
-                                <Badge variant="outline">{movie.episode_current}</Badge>
+                            <div className="flex justify-between">
+                                <span className="text-gray-400">Trạng thái:</span>
+                                <span className="text-green-400">{movie.episode_current}</span>
+                            </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Trailer */}
                     {movie.trailer_url && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Trailer</CardTitle>
-                            </CardHeader>
-                            <CardContent>
+                    <Card className="bg-black/50 backdrop-blur border-white/10">
+                        <CardContent className="p-6">
+                            <h3 className="text-lg font-bold mb-4 text-white flex items-center">
+                                <Film className="h-5 w-5 mr-2 text-red-500" />
+                                Trailer
+                            </h3>
                                 <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
                                     <iframe
                                         src={movie.trailer_url.replace('watch?v=', 'embed/')}
@@ -413,7 +376,6 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                             </CardContent>
                         </Card>
                     )}
-                </div>
             </div>
         </div>
     )

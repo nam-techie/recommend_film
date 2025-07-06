@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Play, Info, Star, Calendar, Clock, ChevronLeft, ChevronRight, Pause, Play as PlayIcon } from 'lucide-react'
+import { Play, Info, Star, Calendar, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Movie, fetchNewMovies, getImageUrl, fetchMovieDetail } from '@/lib/api'
 import Link from 'next/link'
@@ -16,7 +16,6 @@ export function HeroSection() {
     const [currentIndex, setCurrentIndex] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [isPlaying, setIsPlaying] = useState(true)
 
     // Load movies from API
     const loadMovies = useCallback(async () => {
@@ -56,10 +55,11 @@ export function HeroSection() {
                 })
             )
             
-            // Lọc ra phim có content và loại bỏ null/undefined, ép về đúng HeroMovie
+            // Lọc ra phim có content và loại bỏ null/undefined
             const featuredMovies: HeroMovie[] = moviesWithContent
                 .filter((m) => !!m && typeof m.content === 'string' && !!m.poster_url && !!m.thumb_url && !!m.name)
                 .map((m) => ({ ...(m as HeroMovie), content: String(m!.content) }))
+            
             setMovies(featuredMovies)
             
         } catch (err) {
@@ -72,14 +72,14 @@ export function HeroSection() {
 
     // Auto-slide functionality
     useEffect(() => {
-        if (!isPlaying || movies.length === 0) return
+        if (movies.length === 0) return
         
         const interval = setInterval(() => {
             setCurrentIndex((prev) => (prev + 1) % movies.length)
-        }, 6000)
+        }, 8000)
         
         return () => clearInterval(interval)
-    }, [isPlaying, movies.length])
+    }, [movies.length])
 
     // Load movies on mount
     useEffect(() => {
@@ -87,18 +87,6 @@ export function HeroSection() {
     }, [loadMovies])
 
     const currentMovie = movies[currentIndex]
-
-    const nextSlide = () => {
-        setCurrentIndex((prev) => (prev + 1) % movies.length)
-    }
-
-    const prevSlide = () => {
-        setCurrentIndex((prev) => (prev - 1 + movies.length) % movies.length)
-    }
-
-    const togglePlayPause = () => {
-        setIsPlaying(!isPlaying)
-    }
 
     const getMovieBackdrop = (movie: HeroMovie) => {
         return getImageUrl(movie.thumb_url || movie.poster_url)
@@ -168,84 +156,46 @@ export function HeroSection() {
             </div>
             
             {/* Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-            
-            {/* Navigation Controls - Chỉ hiện khi hover */}
-            <div className="absolute inset-y-0 left-2 sm:left-4 flex items-center opacity-0 group-hover:opacity-100 transition-all duration-300">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={prevSlide}
-                    className="shiny-button h-10 w-10 sm:h-14 sm:w-14 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-110"
-                >
-                    <ChevronLeft className="h-5 w-5 sm:h-7 sm:w-7" />
-                </Button>
-            </div>
-            
-            <div className="absolute inset-y-0 right-2 sm:right-4 flex items-center opacity-0 group-hover:opacity-100 transition-all duration-300">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={nextSlide}
-                    className="shiny-button h-10 w-10 sm:h-14 sm:w-14 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-110"
-                >
-                    <ChevronRight className="h-5 w-5 sm:h-7 sm:w-7" />
-                </Button>
-            </div>
-
-            {/* Play/Pause Control - Góc trên phải, chỉ hiện khi hover */}
-            <div className="absolute top-4 sm:top-6 right-4 sm:right-6 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={togglePlayPause}
-                    className="shiny-button h-10 w-10 sm:h-12 sm:w-12 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-110"
-                >
-                    {isPlaying ? <Pause className="h-4 w-4 sm:h-5 sm:w-5" /> : <PlayIcon className="h-4 w-4 sm:h-5 sm:w-5" />}
-                </Button>
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
             
             {/* Content */}
             <div className="relative h-full flex items-center">
                 <div className="container mx-auto px-4 sm:px-6">
-                    <div className="max-w-xl lg:max-w-2xl space-y-3 sm:space-y-4 lg:space-y-6">
-                        {/* Movie Info */}
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4 text-white/80">
-                            <Badge className={`bg-gradient-to-r ${getRatingColor(currentMovie.displayRating || 0)} text-white border-0 text-xs sm:text-sm shadow-lg`}>
-                                <Star className="h-2 w-2 sm:h-3 sm:w-3 mr-1 fill-current" />
+                    <div className="max-w-2xl lg:max-w-3xl space-y-4 lg:space-y-6">
+                        {/* Movie Rating & Info Row */}
+                        <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+                            <Badge className={`bg-gradient-to-r ${getRatingColor(currentMovie.displayRating || 0)} text-white border-0 font-bold px-3 py-1`}>
+                                <Star className="h-3 w-3 mr-1 fill-current" />
                                 {currentMovie.displayRating?.toFixed(1)}
                             </Badge>
-                            <span className="flex items-center text-xs sm:text-sm bg-black/20 px-2 py-1 rounded-full backdrop-blur-sm">
-                                <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30 backdrop-blur-sm px-3 py-1">
                                 {currentMovie.year}
-                            </span>
-                            <span className="flex items-center text-xs sm:text-sm bg-black/20 px-2 py-1 rounded-full backdrop-blur-sm">
-                                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                {currentMovie.time || 'Đang cập nhật'}
-                            </span>
-                            <Badge variant="outline" className="text-white border-white/30 text-xs sm:text-sm bg-black/20 backdrop-blur-sm">
-                                {getTypeLabel(currentMovie.type)}
                             </Badge>
-                            <Badge variant="outline" className="text-white border-white/30 text-xs sm:text-sm bg-black/20 backdrop-blur-sm">
-                                {currentMovie.quality}
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30 backdrop-blur-sm px-3 py-1">
+                                {currentMovie.time || 'Đang cập nhật'}
+                            </Badge>
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/30 backdrop-blur-sm px-3 py-1">
+                                {getTypeLabel(currentMovie.type)}
                             </Badge>
                         </div>
 
-                        {/* Title */}
-                        <div className="space-y-1 sm:space-y-2">
-                            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-white leading-tight transition-all duration-500 shiny-text">
+                        {/* Movie Title */}
+                        <div className="space-y-2">
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight line-clamp-2">
                                 {currentMovie.name}
                             </h1>
                             {currentMovie.origin_name && currentMovie.origin_name !== currentMovie.name && (
-                                <p className="text-sm sm:text-lg lg:text-xl text-white/60">{currentMovie.origin_name}</p>
+                                <p className="text-lg sm:text-xl lg:text-2xl text-white/70 font-light line-clamp-1">
+                                    {currentMovie.origin_name}
+                                </p>
                             )}
                         </div>
 
                         {/* Genres */}
-                        <div className="flex flex-wrap gap-1 sm:gap-2">
+                        <div className="flex flex-wrap gap-2">
                             {getMovieGenres(currentMovie).map((genre) => (
-                                <Badge key={genre} variant="outline" className="text-white border-white/30 text-xs sm:text-sm bg-black/20 backdrop-blur-sm">
+                                <Badge key={genre} variant="outline" className="text-white border-white/40 bg-black/30 backdrop-blur-sm">
                                     {genre}
                                 </Badge>
                             ))}
@@ -253,46 +203,49 @@ export function HeroSection() {
 
                         {/* Description */}
                         {currentMovie.content && (
-                            <p className="text-sm sm:text-base lg:text-lg text-white/90 leading-relaxed line-clamp-2 sm:line-clamp-3 bg-black/20 p-3 sm:p-4 rounded-lg backdrop-blur-sm">
+                            <p className="text-sm sm:text-base lg:text-lg text-white/90 leading-relaxed line-clamp-3 max-w-2xl">
                                 {currentMovie.content}
                             </p>
                         )}
 
                         {/* Action Buttons */}
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4">
+                        <div className="flex items-center gap-4">
                             <Link href={`/movie/${currentMovie.slug}`}>
                                 <Button 
-                                    size="sm"
-                                    className="shiny-button w-full sm:w-auto bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white border-0 shadow-lg text-xs sm:text-sm lg:text-base h-10 sm:h-12 lg:h-14 px-6 sm:px-8 font-semibold transition-all duration-300 hover:scale-105"
+                                    size="lg"
+                                    className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black font-bold px-8 py-3 text-lg rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105"
                                 >
-                                    <Play className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 mr-2" />
+                                    <Play className="h-6 w-6 mr-2 fill-current" />
                                     Xem ngay
                                 </Button>
                             </Link>
-                            <Button 
-                                size="sm"
-                                variant="outline" 
-                                className="shiny-button w-full sm:w-auto border-white/30 text-white hover:bg-white/10 text-xs sm:text-sm lg:text-base h-10 sm:h-12 lg:h-14 px-6 sm:px-8 font-semibold backdrop-blur-sm transition-all duration-300 hover:scale-105"
-                            >
-                                <Info className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 mr-2" />
-                                Chi tiết
-                            </Button>
+                            
+                            <Link href={`/movie/${currentMovie.slug}`}>
+                                <Button 
+                                    size="lg"
+                                    variant="outline"
+                                    className="text-white border-white/50 hover:bg-white/20 rounded-full px-6 py-3 transition-all duration-300 hover:scale-105"
+                                >
+                                    <Info className="h-6 w-6 mr-2" />
+                                    Chi tiết
+                                </Button>
+                            </Link>
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* Slide Indicators */}
-            <div className="absolute bottom-4 sm:bottom-8 left-1/2 transform -translate-x-1/2">
-                <div className="flex space-x-2 sm:space-x-3 bg-black/20 p-2 sm:p-3 rounded-full backdrop-blur-sm">
+            <div className="absolute bottom-6 left-6">
+                <div className="flex space-x-2">
                     {movies.map((_, index) => (
                         <button
                             key={index}
                             onClick={() => setCurrentIndex(index)}
                             className={`transition-all duration-300 rounded-full ${
                                 index === currentIndex 
-                                    ? 'bg-white w-6 sm:w-10 h-2 sm:h-3' 
-                                    : 'bg-white/40 hover:bg-white/60 w-2 sm:w-3 h-2 sm:h-3'
+                                    ? 'bg-white w-8 h-2' 
+                                    : 'bg-white/40 hover:bg-white/60 w-2 h-2'
                             }`}
                         />
                     ))}
@@ -300,19 +253,23 @@ export function HeroSection() {
             </div>
 
             {/* Related Movies Thumbnails */}
-            <div className="absolute bottom-6 sm:bottom-8 right-6 sm:right-8 hidden lg:flex space-x-2 bg-black/20 p-2 rounded-lg backdrop-blur-sm">
+            <div className="absolute bottom-6 right-6 hidden lg:flex space-x-2">
                 {movies.slice(1, 7).map((movie, index) => (
-                    <button
+                    <Link
                         key={movie._id}
-                        onClick={() => setCurrentIndex(index + 1)}
-                        className="w-12 h-16 sm:w-16 sm:h-20 rounded overflow-hidden opacity-60 hover:opacity-100 transition-all duration-300 border-2 border-transparent hover:border-white hover:scale-105"
+                        href={`/movie/${movie.slug}`}
+                        className="group relative w-16 h-20 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-all duration-300 hover:scale-105 shadow-lg"
                     >
                         <img
                             src={getImageUrl(movie.poster_url)}
                             alt={movie.name}
                             className="w-full h-full object-cover"
                         />
-                    </button>
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <Play className="w-6 h-6 text-white" />
+                        </div>
+                    </Link>
                 ))}
             </div>
         </div>
