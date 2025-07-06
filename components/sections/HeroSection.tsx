@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Play, Info, Star, Calendar, Clock, ChevronLeft, ChevronRight, Pause, Play as PlayIcon, Heart } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Movie, fetchNewMovies, getImageUrl } from '@/lib/api'
+import { Movie, fetchNewMovies, getImageUrl, fetchMovieDetail } from '@/lib/api'
 import Link from 'next/link'
 
 interface HeroMovie extends Movie {
@@ -37,20 +37,29 @@ export function HeroSection() {
                 ...(page3.items || [])
             ]
             
-            // Filter movies with good data and add display rating
-            const featuredMovies = allMovies
-                .filter(movie => 
-                    movie.poster_url && 
-                    movie.thumb_url && 
-                    movie.name &&
-                    movie.content
-                )
-                .slice(0, 10)
-                .map(movie => ({
-                    ...movie,
-                    displayRating: movie.tmdb?.vote_average || (Math.random() * 3 + 6)
-                }))
+            // Lấy tối đa 12 phim đầu tiên để tối ưu request
+            const topMovies = allMovies.slice(0, 12)
             
+            // Gọi API chi tiết để lấy content cho từng phim
+            const moviesWithContent = await Promise.all(
+                topMovies.map(async (movie) => {
+                    try {
+                        const detail = await fetchMovieDetail(movie.slug)
+                        return {
+                            ...movie,
+                            content: detail.movie.content,
+                            displayRating: detail.movie.tmdb?.vote_average || (Math.random() * 3 + 6)
+                        }
+                    } catch {
+                        return null
+                    }
+                })
+            )
+            
+            // Lọc ra phim có content và loại bỏ null/undefined, ép về đúng HeroMovie
+            const featuredMovies: HeroMovie[] = moviesWithContent
+                .filter((m) => !!m && typeof m.content === 'string' && !!m.poster_url && !!m.thumb_url && !!m.name)
+                .map((m) => ({ ...(m as HeroMovie), content: String(m!.content) }))
             setMovies(featuredMovies)
             
         } catch (err) {

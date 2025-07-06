@@ -138,7 +138,7 @@ function buildApiUrl(endpoint: string, params?: Record<string, any>): string {
 // API Functions
 export async function fetchNewMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { page }), {
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
       next: { revalidate: 300 } // Cache for 5 minutes
     })
     if (!response.ok) throw new Error('Failed to fetch new movies')
@@ -164,7 +164,7 @@ export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
 
 export async function searchMovies(params: SearchParams): Promise<ApiResponse<any>> {
   try {
-    const endpoint = params.keyword ? '/v1/api/tim-kiem' : '/v1/api/danh-sach/phim-moi-cap-nhat'
+    const endpoint = params.keyword ? '/v1/api/tim-kiem' : '/api/danh-sach/phim-moi-cap-nhat'
     const response = await fetch(buildApiUrl(endpoint, params))
     if (!response.ok) throw new Error('Failed to search movies')
     return await response.json()
@@ -218,113 +218,25 @@ export async function fetchMoviesByYear(
 
 export async function fetchGenres(): Promise<Genre[]> {
   try {
-    // Try the main endpoint first
-    let response = await fetch(buildApiUrl('/v1/api/the-loai'))
-    
-    // If that fails, try alternative endpoints or return fallback data
-    if (!response.ok) {
-      console.warn('Primary genres endpoint failed, trying alternative...')
-      
-      // Try alternative endpoint
-      try {
-        response = await fetch(buildApiUrl('/the-loai'))
-      } catch (altError) {
-        console.warn('Alternative genres endpoint also failed, using fallback data')
-        
-        // Return fallback genre data
-        return [
-          { _id: '1', name: 'Hành Động', slug: 'hanh-dong' },
-          { _id: '2', name: 'Hài', slug: 'hai' },
-          { _id: '3', name: 'Chính Kịch', slug: 'chinh-kich' },
-          { _id: '4', name: 'Kinh Dị', slug: 'kinh-di' },
-          { _id: '5', name: 'Tình Cảm', slug: 'tinh-cam' },
-          { _id: '6', name: 'Khoa Học Viễn Tưởng', slug: 'khoa-hoc-vien-tuong' },
-          { _id: '7', name: 'Phiêu Lưu', slug: 'phieu-luu' },
-          { _id: '8', name: 'Hoạt Hình', slug: 'hoat-hinh' },
-          { _id: '9', name: 'Tài Liệu', slug: 'tai-lieu' },
-          { _id: '10', name: 'Gia Đình', slug: 'gia-dinh' },
-          { _id: '11', name: 'Bí Ẩn', slug: 'bi-an' },
-          { _id: '12', name: 'Âm Nhạc', slug: 'am-nhac' }
-        ]
-      }
-    }
-    
+    const response = await fetch(buildApiUrl('/the-loai'))
+    if (!response.ok) throw new Error('Failed to fetch genres')
     const data = await response.json()
     return Array.isArray(data) ? data : data.data || []
   } catch (error) {
     console.error('Error fetching genres:', error)
-    
-    // Return fallback genre data on any error
-    return [
-      { _id: '1', name: 'Hành Động', slug: 'hanh-dong' },
-      { _id: '2', name: 'Hài', slug: 'hai' },
-      { _id: '3', name: 'Chính Kịch', slug: 'chinh-kich' },
-      { _id: '4', name: 'Kinh Dị', slug: 'kinh-di' },
-      { _id: '5', name: 'Tình Cảm', slug: 'tinh-cam' },
-      { _id: '6', name: 'Khoa Học Viễn Tưởng', slug: 'khoa-hoc-vien-tuong' },
-      { _id: '7', name: 'Phiêu Lưu', slug: 'phieu-luu' },
-      { _id: '8', name: 'Hoạt Hình', slug: 'hoat-hinh' },
-      { _id: '9', name: 'Tài Liệu', slug: 'tai-lieu' },
-      { _id: '10', name: 'Gia Đình', slug: 'gia-dinh' },
-      { _id: '11', name: 'Bí Ẩn', slug: 'bi-an' },
-      { _id: '12', name: 'Âm Nhạc', slug: 'am-nhac' }
-    ]
+    throw error
   }
 }
 
 export async function fetchCountries(): Promise<Country[]> {
   try {
-    // Try the main endpoint first
-    let response = await fetch(buildApiUrl('/v1/api/quoc-gia'))
-    
-    // If that fails, try alternative endpoints or return fallback data
-    if (!response.ok) {
-      console.warn('Primary countries endpoint failed, trying alternative...')
-      
-      // Try alternative endpoint
-      try {
-        response = await fetch(buildApiUrl('/quoc-gia'))
-      } catch (altError) {
-        console.warn('Alternative countries endpoint also failed, using fallback data')
-        
-        // Return fallback country data
-        return [
-          { _id: '1', name: 'Việt Nam', slug: 'viet-nam' },
-          { _id: '2', name: 'Hàn Quốc', slug: 'han-quoc' },
-          { _id: '3', name: 'Trung Quốc', slug: 'trung-quoc' },
-          { _id: '4', name: 'Nhật Bản', slug: 'nhat-ban' },
-          { _id: '5', name: 'Thái Lan', slug: 'thai-lan' },
-          { _id: '6', name: 'Âu Mỹ', slug: 'au-my' },
-          { _id: '7', name: 'Ấn Độ', slug: 'an-do' },
-          { _id: '8', name: 'Anh', slug: 'anh' },
-          { _id: '9', name: 'Pháp', slug: 'phap' },
-          { _id: '10', name: 'Canada', slug: 'canada' },
-          { _id: '11', name: 'Đức', slug: 'duc' },
-          { _id: '12', name: 'Tây Ban Nha', slug: 'tay-ban-nha' }
-        ]
-      }
-    }
-    
+    const response = await fetch(buildApiUrl('/quoc-gia'))
+    if (!response.ok) throw new Error('Failed to fetch countries')
     const data = await response.json()
     return Array.isArray(data) ? data : data.data || []
   } catch (error) {
     console.error('Error fetching countries:', error)
-    
-    // Return fallback country data on any error
-    return [
-      { _id: '1', name: 'Việt Nam', slug: 'viet-nam' },
-      { _id: '2', name: 'Hàn Quốc', slug: 'han-quoc' },
-      { _id: '3', name: 'Trung Quốc', slug: 'trung-quoc' },
-      { _id: '4', name: 'Nhật Bản', slug: 'nhat-ban' },
-      { _id: '5', name: 'Thái Lan', slug: 'thai-lan' },
-      { _id: '6', name: 'Âu Mỹ', slug: 'au-my' },
-      { _id: '7', name: 'Ấn Độ', slug: 'an-do' },
-      { _id: '8', name: 'Anh', slug: 'anh' },
-      { _id: '9', name: 'Pháp', slug: 'phap' },
-      { _id: '10', name: 'Canada', slug: 'canada' },
-      { _id: '11', name: 'Đức', slug: 'duc' },
-      { _id: '12', name: 'Tây Ban Nha', slug: 'tay-ban-nha' }
-    ]
+    throw error
   }
 }
 
@@ -333,7 +245,7 @@ export async function fetchMoviesByType(
   params: SearchParams = {}
 ): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/${typeList}`, params))
+    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/type/${typeList}`, params))
     if (!response.ok) throw new Error('Failed to fetch movies by type')
     return await response.json()
   } catch (error) {
@@ -345,11 +257,7 @@ export async function fetchMoviesByType(
 // Fetch trending movies (most viewed)
 export async function fetchTrendingMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { 
-      page,
-      sort_field: 'view',
-      sort_type: 'desc'
-    }), {
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error('Failed to fetch trending movies')
@@ -363,11 +271,7 @@ export async function fetchTrendingMovies(page: number = 1): Promise<ApiResponse
 // Fetch featured movies (high rated)
 export async function fetchFeaturedMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat-v3', { 
-      page,
-      sort_field: 'tmdb.vote_average',
-      sort_type: 'desc'
-    }), {
+    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error('Failed to fetch featured movies')
@@ -384,7 +288,7 @@ export async function fetchMoviesByTypeV3(
   page: number = 1
 ): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl(`/danh-sach/${type}`, { page }), {
+    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/${type}`, { page }), {
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error(`Failed to fetch ${type}`)

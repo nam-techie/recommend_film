@@ -5,6 +5,133 @@ Tài liệu này ghi chú các API endpoints public của `phimapi.com` được
 
 > Lưu ý: Các ví dụ bên dưới lấy domain gốc `https://phimapi.com`. Khi gọi từ FE/BE hãy đặt baseURL vào biến môi trường.
 
+
+PHIMAPI.COM – API – DÀNH CHO NHÀ PHÁT TRIỂN WEBSITE XEM PHIM
+
+──────────────────────────────────────
+Danh sách phim
+──────────────────────────────────────
+
+Phim mới cập nhật
+GET https://phimapi.com/api/danh-sach/phim-moi-cap-nhat?page={page}
+Ví dụ: https://phimapi.com/api/danh-sach/phim-moi-cap-nhat?page=1
+
+Vũ trụ V2:
+GET https://phimapi.com/v2/api/danh-sach/phim-moi-cap-nhat-v2?page=1
+
+* Dữ liệu được bổ sung các chỉ mục và kết quả khác nhau, phục vụ cho từng nhu cầu khác nhau. Bạn có thể truy xuất thử và áp dụng cho nhiều tính năng.
+
+──────────────────────────────────────
+Phim & Tập Phim
+──────────────────────────────────────
+
+Thông tin Phim & Danh sách tập phim
+GET https://phimapi.com/phim/{slug}
+Ví dụ: https://phimapi.com/phim/ngoi-truong-xac-song
+
+──────────────────────────────────────
+Danh sách tổng hợp
+──────────────────────────────────────
+
+Tổng hợp danh sách phim có thể sử dụng
+GET https://phimapi.com/v1/api/danh-sach/type/{type}?page={page}&sort_field={sort_field}&sort_type={sort_type}&sort_lang={sort_lang}&category={category}&country={country}&year={year}&limit={limit}
+Ví dụ: 
+https://phimapi.com/v1/api/danh-sach/type/phim-le?page=1&sort_field=id&sort_type=asc&sort_lang=long-tieng&category=hanh-dong&country=trung-quoc&year=2024&limit=10
+
+Thông số kỹ thuật:
+- type: thể loại phim => phim-le, phim-bo, thuyet-minh, phim-thuyet-minh, phim-long-tieng
+- page: Số trang cần truy xuất, sử dụng {totalPages} để biết tổng trang khả dụng.
+- sort_field: sắp xếp theo chỉ mục thời gian cập nhật, id…
+- sort_type: asc | desc
+- sort_lang: vietsub, thuyet-minh, long-tieng
+- category: thể loại phim cần lọc
+- country: quốc gia phim cần lọc
+- year: năm phát hành phim
+- limit: Giới hạn kết quả (tối đa 64)
+
+──────────────────────────────────────
+Tìm kiếm phim
+──────────────────────────────────────
+
+GET https://phimapi.com/v1/api/tim-kiem?keyword={keyword}&page={page}&sort_field={sort_field}&sort_type={sort_type}&sort_lang={sort_lang}&category={category}&country={country}&year={year}&limit={limit}
+Ví dụ:
+https://phimapi.com/v1/api/tim-kiem?keyword=Thuoc&page=1&sort_field=id&sort_type=asc&sort_lang=long-tieng&category=hanh-dong&country=trung-quoc&year=2024&limit=10
+
+Thông số kỹ thuật: 
+- keyword = Từ khóa bạn cần tìm kiếm.
+- page = Số trang cần truy xuất, sử dụng [totalPages] để biết tổng trang khả dụng.
+- sort_field = modified.time > tính theo thời gian cập nhật, _id > lấy theo ID của phim, year > lấy theo số năm phát hành của phim.
+- sort_type = desc hoặc asc.
+- sort_lang = vietsub > phim có Vietsub, thuyet-minh > phim có Thuyết Minh, long-tieng > phim có Lồng Tiếng.
+- category = Thể loại phim cần lấy, sử dụng API phimapi.com/the-loai để lấy chi tiết slug.
+- country = Quốc gia phim cần lấy, sử dụng API phimapi.com/quoc-gia để lấy chi tiết slug.
+- year = Năm phát hành của phim (1970 - hiện tại).
+- limit = Giới hạn kết quả (tối đa 64).
+
+──────────────────────────────────────
+Thể loại – Thể loại chi tiết
+──────────────────────────────────────
+
+Thể loại phim
+GET https://phimapi.com/the-loai
+
+Chi tiết của thể loại
+GET https://phimapi.com/v1/api/the-loai/{type_list}?page={page}&sort_field={sort_field}&sort_type={sort_type}&sort_lang={sort_lang}&country={country}&year={year}&limit={limit}
+Ví dụ:
+https://phimapi.com/v1/api/the-loai/hanh-dong?page=1&sort_field=id&sort_type=asc&sort_lang=long-tieng&country=trung-quoc&year=2024&limit=10
+
+Thông số kỹ thuật:
+- type_list = Thể loại phim cần lấy, sử dụng API phimapi.com/the-loai để lấy chi tiết slug.
+- page = Số trang cần truy xuất, sử dụng [totalPages] để biết tổng trang khả dụng.
+- sort_field = modified.time > tính theo thời gian cập nhật, _id > lấy theo ID của phim, year > lấy theo số năm phát hành của phim.
+- sort_type = desc hoặc asc.
+- sort_lang = vietsub > phim có Vietsub, thuyet-minh > phim có Thuyết Minh, long-tieng > phim có Lồng Tiếng.
+- country = Quốc gia phim cần lấy, sử dụng API phimapi.com/quoc-gia để lấy chi tiết slug.
+- year = Năm phát hành của phim (1970 - hiện tại).
+- limit = Giới hạn kết quả (tối đa 64).
+
+──────────────────────────────────────
+Quốc gia – Quốc gia chi tiết
+──────────────────────────────────────
+
+Quốc gia phim
+GET https://phimapi.com/quoc-gia
+
+Chi tiết của quốc gia
+GET https://phimapi.com/v1/api/quoc-gia/{type_list}?page={page}&sort_field={sort_field}&sort_type={sort_type}&sort_lang={sort_lang}&category={category}&country={country}&year={year}&limit={limit}
+Ví dụ:
+https://phimapi.com/v1/api/quoc-gia/trung-quoc?page=1&sort_field=id&sort_type=asc&sort_lang=long-tieng&category=hanh-dong&year=2024&limit=10
+
+Thông số kỹ thuật:
+- type_list = Quốc gia phim cần lấy, sử dụng API phimapi.com/quoc-gia để lấy chi tiết slug.
+- page = Số trang cần truy xuất, sử dụng [totalPages] để biết tổng trang khả dụng.
+- sort_field = modified.time > tính theo thời gian cập nhật, _id > lấy theo ID của phim, year > lấy theo số năm phát hành của phim.
+- sort_type = desc hoặc asc.
+- sort_lang = vietsub > phim có Vietsub, thuyet-minh > phim có Thuyết Minh, long-tieng > phim có Lồng Tiếng.
+- category = Thể loại phim cần lấy, sử dụng API phimapi.com/the-loai để lấy chi tiết slug.
+- year = Năm phát hành của phim (1970 - hiện tại).
+- limit = Giới hạn kết quả (tối đa 64).
+
+──────────────────────────────────────
+Năm
+──────────────────────────────────────
+
+GET https://phimapi.com/v1/api/nam/{type_list}?page={page}&sort_field={sort_field}&sort_type={sort_type}&sort_lang={sort_lang}&category={category}&country={country}&year={year}&limit={limit}
+Ví dụ:
+https://phimapi.com/v1/api/nam/2024?page=1&sort_field=id&sort_type=asc&sort_lang=long-tieng&category=hanh-dong&country=trung-quoc&limit=10
+
+Thông số kỹ thuật:
+- type_list = Năm phát hành của phim (1970 - hiện tại).
+- page = Số trang cần truy xuất, sử dụng [totalPages] để biết tổng trang khả dụng.
+- sort_field = modified.time > tính theo thời gian cập nhật, _id > lấy theo ID của phim, year > lấy theo số năm phát hành của phim.
+- sort_type = desc hoặc asc.
+- sort_lang = vietsub > phim có Vietsub, thuyet-minh > phim có Thuyết Minh, long-tieng > phim có Lồng Tiếng.
+- category = Thể loại phim cần lấy, sử dụng API phimapi.com/the-loai để lấy chi tiết slug.
+- country = Quốc gia phim cần lấy, sử dụng API phimapi.com/quoc-gia để lấy chi tiết slug.
+- limit = Giới hạn kết quả (tối đa 64).
+──────────────────────────────────────
+
+
 ---
 
 ## 1. Phim mới cập nhật
