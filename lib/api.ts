@@ -233,7 +233,7 @@ export async function fetchMoviesByCategory(
 export async function fetchMoviesByCountry(
   countrySlug: string, 
   params: Omit<SearchParams, 'country'> = {}
-): Promise<ApiResponse<any>> {
+): Promise<CategoryApiResponse> {
   try {
     const response = await fetch(buildApiUrl(`/v1/api/quoc-gia/${countrySlug}`, params))
     if (!response.ok) throw new Error('Failed to fetch movies by country')
@@ -275,7 +275,8 @@ export async function fetchCountries(): Promise<Country[]> {
     const response = await fetch(buildApiUrl('/quoc-gia'))
     if (!response.ok) throw new Error('Failed to fetch countries')
     const data = await response.json()
-    return Array.isArray(data) ? data : data.data || []
+    // API trả về trực tiếp array
+    return Array.isArray(data) ? data : []
   } catch (error) {
     console.error('Error fetching countries:', error)
     throw error

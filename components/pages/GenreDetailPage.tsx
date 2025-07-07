@@ -166,6 +166,7 @@ export function GenreDetailPage({ genreSlug, initialPage = 1 }: GenreDetailPageP
           title={`Phim ${genreName}`}
           subtitle={`Khám phá ${movies.length} bộ phim thuộc thể loại ${genreName.toLowerCase()}`}
           icon={Film}
+          showViewAll={false}
         />
       </div>
 

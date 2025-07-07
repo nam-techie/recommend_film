@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Film, Moon, Sun, Home, Search, Star, Sparkles, TrendingUp, Calendar, Menu, X } from 'lucide-react'
+import { Film, Moon, Sun, Home, Search, Star, Sparkles, TrendingUp, Calendar, Menu, X, Globe, Tv, Grid3X3 } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import Link from 'next/link'
@@ -15,9 +15,9 @@ const Navbar = () => {
     const navItems = [
         { href: '/', label: 'Trang chủ', icon: Home },
         { href: '/search', label: 'Tìm kiếm', icon: Search },
-        { href: '/trending', label: 'Thịnh hành', icon: TrendingUp },
-        { href: '/new-releases', label: 'Mới nhất', icon: Calendar },
-        { href: '/top-rated', label: 'Đánh giá cao', icon: Star },
+        { href: '/countries', label: 'Quốc gia', icon: Globe },
+        { href: '/tv-series', label: 'Phim bộ', icon: Tv },
+        { href: '/genres', label: 'Thể loại', icon: Grid3X3 },
         { href: '/ai-recommender', label: 'AI Recommender', icon: Sparkles },
     ]
 
