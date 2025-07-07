@@ -23,6 +23,7 @@ export const metadata: Metadata = {
         title: "CineMind - Cinema meets Mind",
         description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn",
     },
+    viewport: "width=device-width, initial-scale=1, maximum-scale=1",
 };
 
 export default function RootLayout({
@@ -42,7 +43,7 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <Navbar />
-                    <main className="container mx-auto px-4 py-6 sm:py-8 flex-1">
+                    <main className="container mx-auto px-4 py-6 sm:py-8 flex-1 overflow-visible">
                         {children}
                     </main>
                     <Footer />

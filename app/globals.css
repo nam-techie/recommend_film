@@ -256,23 +256,48 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* ROPHIM STYLE HOVER EFFECTS - TO HẲNNN */
+/* PERFECT ROPHIM STYLE HOVER EFFECTS */
 .movie-card-hover {
   transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   transform-origin: center;
+  will-change: transform;
 }
 
+/* RESPONSIVE SCALE - PERFECT FOR ALL DEVICES */
 .movie-card-hover:hover {
-  transform: scale(1.35);
+  /* Mobile: Scale nhỏ hơn */
+  transform: scale(1.3);
   z-index: 100;
-  box-shadow: 0 25px 80px -15px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 30px 100px -20px rgba(0, 0, 0, 0.9);
+}
+
+@media (min-width: 768px) {
+  .movie-card-hover:hover {
+    /* Tablet: Scale vừa */
+    transform: scale(1.4);
+  }
+}
+
+@media (min-width: 1024px) {
+  .movie-card-hover:hover {
+    /* Desktop: Scale lớn nhất */
+    transform: scale(1.5);
+  }
+}
+
+@media (min-width: 1280px) {
+  .movie-card-hover:hover {
+    /* Large Desktop: Scale tối đa */
+    transform: scale(1.6);
+  }
 }
 
 /* Ensure proper stacking context for MASSIVE hover effects */
 .movie-grid {
   position: relative;
   display: grid;
-  gap: 1rem;
+  gap: 1.5rem;
+  overflow: visible;
 }
 
 .movie-grid > * {
@@ -312,11 +337,6 @@ body {
     min-height: 44px;
     min-width: 44px;
   }
-  
-  /* Reduce hover scale on mobile */
-  .movie-card-hover:hover {
-    transform: scale(1.1);
-  }
 }
 
 /* Smooth transitions for all interactive elements */
@@ -336,24 +356,12 @@ button, a, [role="button"] {
   }
 }
 
-/* MASSIVE HOVER EFFECT STYLES */
-.massive-hover {
-  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  transform-origin: center;
-  will-change: transform;
-}
-
-.massive-hover:hover {
-  transform: scale(1.35) !important;
-  z-index: 999 !important;
-  box-shadow: 0 25px 80px -15px rgba(0, 0, 0, 0.8) !important;
-}
-
-/* Ensure grid items don't interfere with hover */
+/* PERFECT GRID CONTAINER FOR HOVER EFFECTS */
 .movie-grid-container {
   display: grid;
   gap: 1.5rem;
   position: relative;
+  overflow: visible;
 }
 
 .movie-grid-container > * {
@@ -362,7 +370,7 @@ button, a, [role="button"] {
 }
 
 .movie-grid-container > *:hover {
-  z-index: 999 !important;
+  z-index: 100 !important;
 }
 
 /* Prevent overflow issues */
@@ -372,4 +380,46 @@ button, a, [role="button"] {
 
 .movie-section .container {
   overflow: visible !important;
+}
+
+/* RESPONSIVE GRID IMPROVEMENTS */
+@media (max-width: 640px) {
+  .movie-grid-container {
+    gap: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .movie-grid-container {
+    gap: 2rem;
+  }
+}
+
+/* MOBILE RESPONSIVE IMPROVEMENTS */
+@media (max-width: 768px) {
+  /* Smaller text on mobile */
+  .movie-card-hover h3 {
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+  }
+  
+  .movie-card-hover p {
+    font-size: 0.875rem !important;
+  }
+  
+  .movie-card-hover .text-xs {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Smaller buttons on mobile */
+  .movie-card-hover button {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Smaller badges on mobile */
+  .movie-card-hover .badge {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.75rem !important;
+  }
 }
