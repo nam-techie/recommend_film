@@ -256,14 +256,16 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Movie card hover effects */
+/* Movie card hover effects - RoPhim Style */
 .movie-card-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
 }
 
 .movie-card-hover:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transform: scale(1.1);
+  z-index: 50;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
 /* Loading shimmer effect */
@@ -293,5 +295,31 @@ body {
   button, a {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+/* Ensure proper stacking context for hover effects */
+.movie-grid {
+  position: relative;
+}
+
+.movie-grid > * {
+  position: relative;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, [role="button"] {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced drop shadows for text on dark backgrounds */
+.drop-shadow-lg {
+  filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1));
+}
+
+/* Better backdrop blur support */
+@supports (backdrop-filter: blur(10px)) {
+  .backdrop-blur-md {
+    backdrop-filter: blur(12px);
   }
 }
