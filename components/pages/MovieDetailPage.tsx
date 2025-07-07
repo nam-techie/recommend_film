@@ -19,7 +19,8 @@ import {
     Info,
     CheckCircle,
     ArrowLeft,
-    Home
+    Home,
+    Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -80,38 +81,145 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
 
     if (loading) {
         return (
-            <div className="space-y-8 max-w-7xl mx-auto px-4">
-                <Skeleton className="w-full h-96 rounded-xl" />
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                    <div className="space-y-4">
-                        <Skeleton className="w-full aspect-[2/3] rounded-lg" />
-                    </div>
-                    <div className="lg:col-span-3 space-y-6">
-                        <Skeleton className="h-8 w-3/4" />
-                        <Skeleton className="h-32 w-full" />
+            <div className="max-w-7xl mx-auto px-4 py-20">
+                <div className="text-center">
+                    <div className="animate-spin inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full mb-6"></div>
+                    <h2 className="text-2xl font-bold text-white mb-4">Đang tìm kiếm phim...</h2>
+                    <p className="text-gray-400">Vui lòng chờ trong giây lát</p>
+                </div>
+                <div className="mt-8 space-y-8">
+                    <Skeleton className="w-full h-96 rounded-xl" />
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                        <div className="space-y-4">
+                            <Skeleton className="w-full aspect-[2/3] rounded-lg" />
+                        </div>
+                        <div className="lg:col-span-3 space-y-6">
+                            <Skeleton className="h-8 w-3/4" />
+                            <Skeleton className="h-32 w-full" />
+                        </div>
                     </div>
                 </div>
             </div>
         )
     }
 
-    if (error || !movieDetail) {
+    // Check for API errors: status false, "Movie not found", or empty movie data
+    const isMovieNotFound = error || 
+                          !movieDetail || 
+                          movieDetail.status === false || 
+                          movieDetail.msg === "Movie not found" ||
+                          !movieDetail.movie
+
+    if (isMovieNotFound) {
+        // Tạo search queries cho external platforms
+        const movieTitle = slug.split('-').join(' ')
+        const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(movieTitle + ' phim')}`
+        const netflixSearchUrl = `https://www.netflix.com/search?q=${encodeURIComponent(movieTitle)}`
+        
         return (
             <div className="text-center py-20 max-w-7xl mx-auto px-4">
-                <div className="text-6xl mb-4">😔</div>
-                <h3 className="text-2xl font-bold mb-4">Không tìm thấy phim</h3>
-                <p className="text-muted-foreground mb-6">{error}</p>
-                <Button onClick={() => router.back()}>
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Quay lại
-                </Button>
+                <div className="max-w-3xl mx-auto">
+                    <div className="text-8xl mb-6">🎬</div>
+                    <h3 className="text-3xl font-bold mb-4 text-white">Phim chưa có trong kho</h3>
+                    <p className="text-xl text-gray-300 mb-6 leading-relaxed">
+                        Rất tiếc, phim <span className="text-yellow-400 font-semibold">"{movieTitle}"</span> hiện chưa có tài nguyên trong hệ thống của chúng tôi.
+                    </p>
+                    
+                    {/* Suggestions */}
+                    <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 rounded-xl p-6 mb-8 border border-yellow-500/20">
+                        <h4 className="text-lg font-semibold text-yellow-400 mb-4">💡 Gợi ý cho bạn:</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                            <div className="space-y-2">
+                                <h5 className="text-white font-medium">🔍 Trong hệ thống:</h5>
+                                <ul className="text-gray-300 space-y-1 text-sm">
+                                    <li>• Thử tìm kiếm phim khác</li>
+                                    <li>• Khám phá phim hot trong tuần</li>
+                                    <li>• Sử dụng AI Recommender</li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2">
+                                <h5 className="text-white font-medium">🌐 Tìm kiếm bên ngoài:</h5>
+                                <ul className="text-gray-300 space-y-1 text-sm">
+                                    <li>• Google Search</li>
+                                    <li>• Netflix</li>
+                                    <li>• Các platform khác</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                        {/* Internal Actions */}
+                        <Button 
+                            onClick={() => router.back()}
+                            variant="outline"
+                            className="border-white/30 text-white hover:bg-white/10"
+                        >
+                            <ChevronLeft className="h-4 w-4 mr-2" />
+                            Quay lại
+                        </Button>
+                        
+                        <Button 
+                            asChild
+                            className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                        >
+                            <Link href="/search">
+                                Tìm kiếm trong kho
+                            </Link>
+                        </Button>
+                        
+                        <Button 
+                            asChild
+                            variant="outline"
+                            className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
+                        >
+                            <Link href="/ai-recommender">
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                AI Recommender
+                            </Link>
+                        </Button>
+                    </div>
+
+                    {/* External Search Links */}
+                    <div className="border-t border-gray-700 pt-6">
+                        <h4 className="text-lg font-semibold text-white mb-4">🔍 Tìm kiếm bên ngoài:</h4>
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <Button 
+                                asChild
+                                variant="outline"
+                                className="border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                            >
+                                <a href={googleSearchUrl} target="_blank" rel="noopener noreferrer">
+                                    <Globe className="h-4 w-4 mr-2" />
+                                    Tìm trên Google
+                                </a>
+                            </Button>
+                            
+                            <Button 
+                                asChild
+                                variant="outline"
+                                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                            >
+                                <a href={netflixSearchUrl} target="_blank" rel="noopener noreferrer">
+                                    <Film className="h-4 w-4 mr-2" />
+                                    Xem trên Netflix
+                                </a>
+                            </Button>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-8 text-sm text-gray-400">
+                        <p>📱 Kho phim được cập nhật thường xuyên. Hãy quay lại sau nhé! 🚀</p>
+                    </div>
+                </div>
             </div>
         )
     }
 
     const { movie, episodes } = movieDetail
     const rating = movie.tmdb?.vote_average || 0
-    const currentEpisode = episodes[selectedServer]?.server_data[selectedEpisode]
+    const currentEpisode = episodes && episodes[selectedServer]?.server_data[selectedEpisode]
 
     return (
         <div className="max-w-7xl mx-auto px-4 space-y-8">
@@ -193,6 +301,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                         </div>
 
                         {/* Genres */}
+                        {movie.category && movie.category.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {movie.category.map((genre) => (
                                 <Badge key={genre.id} variant="outline" className="text-white border-white/40 bg-black/20">
@@ -200,6 +309,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                     </Badge>
                                 ))}
                             </div>
+                        )}
 
                         {/* Status */}
                         <div className="flex items-center gap-2">
@@ -226,7 +336,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-400">Quốc gia:</span>
                                     <span className="text-white font-medium">
-                                        {movie.country.map(c => c.name).join(', ')}
+                                        {movie.country && movie.country.length > 0 ? movie.country.map(c => c.name).join(', ') : 'Đang cập nhật'}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between">
@@ -242,7 +352,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                 <div className="flex items-center justify-between">
                                     <span className="text-gray-400">Đạo diễn:</span>
                                     <span className="text-white font-medium">
-                                        {movie.director?.join(', ') || 'Đang cập nhật'}
+                                        {movie.director && movie.director.length > 0 ? movie.director.join(', ') : 'Đang cập nhật'}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between">
@@ -289,7 +399,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             )}
 
             {/* Episodes Section */}
-            {episodes.length > 0 && (
+            {episodes && episodes.length > 0 && (
                 <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-white">Danh sách tập phim</h2>
                     

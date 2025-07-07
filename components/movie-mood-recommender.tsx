@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Star, Heart, Calendar, Clock, Play, Info, Globe, Users, Award, Sparkles, Filter } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from "@/components/ui/pagination"
+import Link from 'next/link'
 
 // Types
 interface Movie {
@@ -136,6 +137,17 @@ const LANGUAGE_MAP: { [key: string]: string } = {
     'vi': 'Vietnamese',
 }
 
+// Helper Functions
+const createSlugFromTitle = (title: string): string => {
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens with single
+        .trim()
+        .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+}
+
 // API Functions
 const TMDB_API_KEY = process.env.NEXT_PUBLIC_MOVIE_API_KEY!
 
@@ -217,6 +229,9 @@ const MovieCard = ({ movie }: MovieCardProps) => {
     const [trailerKey, setTrailerKey] = useState<string | null>(null)
     const [showTrailerModal, setShowTrailerModal] = useState(false)
     const [loadingTrailer, setLoadingTrailer] = useState(false)
+
+    // Tạo slug từ title để link đến trang chi tiết
+    const movieSlug = createSlugFromTitle(movie.title)
 
     const handlePlayTrailer = async () => {
         if (trailerKey) {
@@ -331,100 +346,15 @@ const MovieCard = ({ movie }: MovieCardProps) => {
             </CardHeader>
 
             <CardFooter className="pt-0 pb-4">
-                <Dialog>
-                    <DialogTrigger asChild>
-                        <Button 
-                            variant="outline" 
-                            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
-                        >
-                            <Info className="h-4 w-4 mr-2" />
-                            View Details
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-background via-background to-muted/30">
-                        <div className="relative">
-                            {movie.backdrop_path && (
-                                <div className="relative overflow-hidden rounded-xl mb-6">
-                                    <img
-                                        src={`https://image.tmdb.org/t/p/w1280${movie.backdrop_path}`}
-                                        alt={`${movie.title} backdrop`}
-                                        className="w-full h-64 object-cover"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                                </div>
-                            )}
-                            <DialogHeader>
-                                <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
-                                    {movie.title}
-                                </DialogTitle>
-                                <div className="flex flex-wrap items-center gap-4 text-base">
-                                    <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
-                                        <Star className="h-4 w-4 mr-1 fill-current" />
-                                        {movie.vote_average.toFixed(1)}/10
-                                    </Badge>
-                                    <Badge variant="secondary">
-                                        <Calendar className="h-4 w-4 mr-1" />
-                                        {new Date(movie.release_date).getFullYear()}
-                                    </Badge>
-                                    <Badge variant="outline">
-                                        <Award className="h-4 w-4 mr-1" />
-                                        {movie.vote_count.toLocaleString()} votes
-                                    </Badge>
-                                    <Badge variant="outline">
-                                        <Globe className="h-4 w-4 mr-1" />
-                                        {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
-                                    </Badge>
-                                </div>
-                            </DialogHeader>
-                            
-                            <div className="mt-6 space-y-6">
-                                {movie.original_title !== movie.title && (
-                                    <div className="p-4 rounded-lg bg-muted/50">
-                                        <h4 className="font-semibold mb-2 flex items-center gap-2">
-                                            <Globe className="h-4 w-4" />
-                                            Original Title
-                                        </h4>
-                                        <p className="text-muted-foreground">{movie.original_title}</p>
-                                    </div>
-                                )}
-                                
-                                <div>
-                                    <h4 className="font-semibold mb-3 text-lg flex items-center gap-2">
-                                        <Info className="h-5 w-5" />
-                                        Overview
-                                    </h4>
-                                    <p className="text-muted-foreground leading-relaxed text-base">{movie.overview}</p>
-                                </div>
-
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t">
-                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-yellow-500/10 to-orange-500/10">
-                                        <Star className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
-                                        <h5 className="font-medium mb-1">Rating</h5>
-                                        <p className="text-2xl font-bold text-yellow-600">{movie.vote_average.toFixed(1)}</p>
-                                        <p className="text-xs text-muted-foreground">out of 10</p>
-                                    </div>
-                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10">
-                                        <Globe className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                                        <h5 className="font-medium mb-1">Language</h5>
-                                        <p className="text-sm font-semibold text-blue-600">
-                                            {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
-                                        </p>
-                                    </div>
-                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10">
-                                        <Users className="h-6 w-6 text-green-500 mx-auto mb-2" />
-                                        <h5 className="font-medium mb-1">Popularity</h5>
-                                        <p className="text-xl font-bold text-green-600">{formatPopularity(movie.popularity)}</p>
-                                    </div>
-                                    <div className="text-center p-4 rounded-lg bg-gradient-to-br from-purple-500/10 to-pink-500/10">
-                                        <Award className="h-6 w-6 text-purple-500 mx-auto mb-2" />
-                                        <h5 className="font-medium mb-1">Votes</h5>
-                                        <p className="text-lg font-bold text-purple-600">{movie.vote_count.toLocaleString()}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                <Link href={`/movie/${movieSlug}`} className="w-full">
+                    <Button 
+                        variant="outline" 
+                        className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
+                    >
+                        <Info className="h-4 w-4 mr-2" />
+                        Xem Chi Tiết
+                    </Button>
+                </Link>
             </CardFooter>
         </Card>
 

@@ -17,7 +17,7 @@ const Navbar = () => {
         { href: '/search', label: 'Tìm kiếm', icon: Search },
         { href: '/countries', label: 'Quốc gia', icon: Globe },
         { href: '/tv-series', label: 'Phim bộ', icon: Tv },
-        { href: '/genres', label: 'Thể loại', icon: Grid3X3 },
+        { href: '/genres', label: 'Xem chung', icon: Grid3X3 },
         { href: '/ai-recommender', label: 'AI Recommender', icon: Sparkles },
     ]
 
