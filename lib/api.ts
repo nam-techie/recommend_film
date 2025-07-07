@@ -85,6 +85,48 @@ export interface ApiResponse<T> {
   }
 }
 
+// API Response cho thể loại, quốc gia, năm
+export interface CategoryApiResponse {
+  status: boolean
+  msg: string
+  data: {
+    seoOnPage: {
+      og_type: string
+      titleHead: string
+      descriptionHead: string
+      og_image: string[]
+      og_url: string
+    }
+    breadCrumb: Array<{
+      name: string
+      slug?: string
+      isCurrent: boolean
+      position: number
+    }>
+    titlePage: string
+    items: Movie[]
+    params: {
+      type_slug: string
+      slug?: string
+      filterCategory: string[]
+      filterCountry: string[]
+      filterYear: string[]
+      filterType: string[]
+      sortField: string
+      sortType: string
+      pagination: {
+        totalItems: number
+        totalItemsPerPage: number
+        currentPage: number
+        totalPages: number
+      }
+    }
+    type_list: string
+    APP_DOMAIN_FRONTEND: string
+    APP_DOMAIN_CDN_IMAGE: string
+  }
+}
+
 export interface SearchParams {
   keyword?: string
   page?: number
@@ -177,7 +219,7 @@ export async function searchMovies(params: SearchParams): Promise<ApiResponse<an
 export async function fetchMoviesByCategory(
   categorySlug: string, 
   params: Omit<SearchParams, 'category'> = {}
-): Promise<ApiResponse<any>> {
+): Promise<CategoryApiResponse> {
   try {
     const response = await fetch(buildApiUrl(`/v1/api/the-loai/${categorySlug}`, params))
     if (!response.ok) throw new Error('Failed to fetch movies by category')

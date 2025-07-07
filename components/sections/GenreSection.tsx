@@ -14,28 +14,25 @@ export function GenreSection() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Predefined genre colors and emojis
-    const genreStyles: { [key: string]: { color: string; emoji: string } } = {
-        'hanh-dong': { color: "from-red-500 to-orange-500", emoji: "💥" },
-        'hai': { color: "from-yellow-500 to-orange-500", emoji: "😂" },
-        'chinh-kich': { color: "from-blue-500 to-purple-500", emoji: "🎭" },
-        'kinh-di': { color: "from-purple-500 to-pink-500", emoji: "👻" },
-        'tinh-cam': { color: "from-pink-500 to-red-500", emoji: "💕" },
-        'khoa-hoc-vien-tuong': { color: "from-cyan-500 to-blue-500", emoji: "🚀" },
-        'phieu-luu': { color: "from-green-500 to-teal-500", emoji: "🗺️" },
-        'hoat-hinh': { color: "from-indigo-500 to-purple-500", emoji: "🎨" },
-        'tai-lieu': { color: "from-gray-500 to-slate-500", emoji: "📚" },
-        'gia-dinh': { color: "from-emerald-500 to-green-500", emoji: "👨‍👩‍👧‍👦" },
-        'bi-an': { color: "from-slate-500 to-gray-500", emoji: "🔍" },
-        'am-nhac': { color: "from-violet-500 to-purple-500", emoji: "🎵" }
-    }
+    // Gradient colors for genre cards - modern style without emojis
+    const gradientColors = [
+        "from-blue-500 to-purple-600",
+        "from-purple-500 to-pink-600", 
+        "from-green-500 to-teal-600",
+        "from-orange-500 to-red-600",
+        "from-indigo-500 to-blue-600",
+        "from-pink-500 to-rose-600",
+        "from-gray-500 to-slate-600",
+        "from-cyan-500 to-blue-500",
+        "from-emerald-500 to-green-600",
+        "from-violet-500 to-purple-600",
+        "from-amber-500 to-orange-600",
+        "from-teal-500 to-cyan-600"
+    ]
 
-    // Default style for unknown genres
-    const getGenreStyle = (slug: string) => {
-        return genreStyles[slug] || { 
-            color: "from-gray-500 to-slate-500", 
-            emoji: "🎬" 
-        }
+    // Get gradient color for genre by index
+    const getGradientColor = (index: number) => {
+        return gradientColors[index % gradientColors.length]
     }
 
     useEffect(() => {
@@ -43,8 +40,8 @@ export function GenreSection() {
             try {
                 setLoading(true)
                 const genresData = await fetchGenres()
-                // Take first 12 genres for display
-                setGenres(genresData.slice(0, 12))
+                // Display all genres from API
+                setGenres(genresData)
             } catch (err) {
                 setError('Không thể tải danh sách thể loại')
                 console.error('Error loading genres:', err)
@@ -65,9 +62,9 @@ export function GenreSection() {
                     icon={Film}
                 />
                 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                        <Skeleton key={i} className="h-20 sm:h-24 rounded-lg" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-4">
+                    {Array.from({ length: 24 }).map((_, i) => (
+                        <Skeleton key={i} className="h-16 sm:h-20 rounded-lg" />
                     ))}
                 </div>
             </section>
@@ -97,20 +94,22 @@ export function GenreSection() {
                 icon={Film}
             />
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                {genres.map((genre) => {
-                    const style = getGenreStyle(genre.slug)
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-4">
+                {genres.map((genre, index) => {
+                    const gradientColor = getGradientColor(index)
                     return (
                         <Link key={genre._id} href={`/genre/${genre.slug}`}>
-                            <Card className="group cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-lg border-0 overflow-hidden h-20 sm:h-24">
+                            <Card className="group cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-lg border-0 overflow-hidden h-16 sm:h-20">
                                 <CardContent className="p-0 h-full">
-                                    <div className={`bg-gradient-to-br ${style.color} h-full flex flex-col items-center justify-center text-white relative overflow-hidden`}>
-                                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-                                        <div className="relative z-10 text-center">
-                                            <div className="text-lg sm:text-2xl mb-1">{style.emoji}</div>
-                                            <h3 className="font-semibold text-xs sm:text-sm leading-tight px-2">
+                                    <div className={`bg-gradient-to-br ${gradientColor} h-full flex items-center justify-center text-white relative overflow-hidden rounded-lg`}>
+                                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors rounded-lg" />
+                                        <div className="relative z-10 text-center px-3">
+                                            <h3 className="font-semibold text-xs sm:text-sm leading-tight">
                                                 {genre.name}
                                             </h3>
+                                            <div className="text-xs opacity-80 mt-1 hidden sm:block">
+                                                Xem chi tiết →
+                                            </div>
                                         </div>
                                     </div>
                                 </CardContent>
