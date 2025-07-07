@@ -30,36 +30,12 @@ export function GenreSection() {
         "from-teal-600 via-cyan-500 to-blue-600"
     ]
 
-    // Genre icons mapping
-    const genreIcons: { [key: string]: string } = {
-        'hanh-dong': '💥',
-        'phieu-luu': '🗺️',
-        'hoat-hinh': '🎨',
-        'hai': '😂',
-        'hinh-su': '🔍',
-        'tai-lieu': '📚',
-        'chinh-kich': '🎭',
-        'gia-dinh': '👨‍👩‍👧‍👦',
-        'gia-tuong': '✨',
-        'kinh-di': '👻',
-        'nhac': '🎵',
-        'bi-an': '🔮',
-        'lang-man': '💕',
-        'khoa-hoc-vien-tuong': '🚀',
-        'gay-can': '🔥',
-        'chien-tranh': '⚔️',
-        'mien-tay': '🤠'
-    }
-
+ 
     // Get gradient color for genre by index
     const getGradientColor = (index: number) => {
         return gradientColors[index % gradientColors.length]
     }
 
-    // Get icon for genre
-    const getGenreIcon = (slug: string) => {
-        return genreIcons[slug] || '🎬'
-    }
 
     useEffect(() => {
         const loadGenres = async () => {
@@ -123,7 +99,6 @@ export function GenreSection() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
                 {genres.map((genre, index) => {
                     const gradientColor = getGradientColor(index)
-                    const icon = getGenreIcon(genre.slug)
                     
                     return (
                         <Link key={genre._id} href={`/genre/${genre.slug}`}>
@@ -142,9 +117,6 @@ export function GenreSection() {
                                         
                                         {/* Content */}
                                         <div className="relative z-10 text-center px-3 space-y-2">
-                                            <div className="text-3xl mb-2 transform group-hover:scale-110 transition-transform duration-300">
-                                                {icon}
-                                            </div>
                                             <h3 className="font-bold text-sm sm:text-base leading-tight line-clamp-2">
                                                 {genre.name}
                                             </h3>

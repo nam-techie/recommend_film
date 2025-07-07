@@ -3,6 +3,7 @@
 import React from 'react'
 import { Button } from '@/components/ui/button'
 import { ChevronRight } from 'lucide-react'
+import Link from 'next/link'
 
 interface SectionHeaderProps {
     title: string
@@ -10,6 +11,7 @@ interface SectionHeaderProps {
     icon?: React.ComponentType<{ className?: string }>
     showViewAll?: boolean
     onViewAll?: () => void
+    href?: string
 }
 
 export function SectionHeader({ 
@@ -17,7 +19,8 @@ export function SectionHeader({
     subtitle, 
     icon: Icon, 
     showViewAll = true, 
-    onViewAll 
+    onViewAll,
+    href
 }: SectionHeaderProps) {
     return (
         <div className="flex items-center justify-between">
@@ -36,15 +39,28 @@ export function SectionHeader({
             </div>
             
             {showViewAll && (
-                <Button 
-                    variant="ghost" 
-                    className="text-primary hover:text-primary/80 text-sm sm:text-base"
-                    onClick={onViewAll}
-                >
-                    <span className="hidden sm:inline">Xem tất cả</span>
-                    <span className="sm:hidden">Xem thêm</span>
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
+                href ? (
+                    <Link href={href}>
+                        <Button 
+                            variant="ghost" 
+                            className="text-primary hover:text-primary/80 text-sm sm:text-base"
+                        >
+                            <span className="hidden sm:inline">Xem tất cả</span>
+                            <span className="sm:hidden">Xem thêm</span>
+                            <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                    </Link>
+                ) : (
+                    <Button 
+                        variant="ghost" 
+                        className="text-primary hover:text-primary/80 text-sm sm:text-base"
+                        onClick={onViewAll}
+                    >
+                        <span className="hidden sm:inline">Xem tất cả</span>
+                        <span className="sm:hidden">Xem thêm</span>
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                )
             )}
         </div>
     )

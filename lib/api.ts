@@ -340,3 +340,236 @@ export async function fetchMoviesByTypeV3(
     throw error
   }
 }
+
+// Tổng hợp API - Fetch movies with filters  
+export async function fetchMoviesByFilter(params: {
+  type_list: 'phim-bo' | 'phim-le' | 'tv-shows' | 'hoat-hinh' | 'phim-vietsub' | 'phim-thuyet-minh' | 'phim-long-tieng'
+  page?: number
+  sort_field?: 'modified.time' | '_id' | 'year'
+  sort_type?: 'asc' | 'desc'
+  sort_lang?: 'vietsub' | 'thuyet-minh' | 'long-tieng'
+  category?: string
+  country?: string
+  year?: string
+  limit?: number
+}): Promise<CategoryApiResponse> {
+  try {
+    const { type_list, ...filterParams } = params
+    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/${type_list}`, filterParams), {
+      next: { revalidate: 300 }
+    })
+    if (!response.ok) throw new Error(`Failed to fetch movies by filter`)
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching movies by filter:', error)
+    throw error
+  }
+}
+
+// Specific functions for different movie categories
+export async function fetchKoreanMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-bo',
+    country: 'han-quoc',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchChineseMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-bo',
+    country: 'trung-quoc',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchJapaneseMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-bo',
+    country: 'nhat-ban',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchVietnameseMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-bo',
+    country: 'viet-nam',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchUSUKMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-le',
+    country: 'au-my',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchActionMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-le',
+    category: 'hanh-dong',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+export async function fetchTheaterMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'phim-le',
+    sort_field: 'year',
+    sort_type: 'desc',
+    year: '2024',
+    page,
+    limit
+  })
+}
+
+export async function fetchAnimeMovies(page: number = 1, limit: number = 12): Promise<CategoryApiResponse> {
+  return fetchMoviesByFilter({
+    type_list: 'hoat-hinh',
+    sort_field: 'modified.time',
+    sort_type: 'desc',
+    page,
+    limit
+  })
+}
+
+// Category helper for movie collections
+export interface Category {
+  slug: string
+  name: string
+  description: string
+  type: 'country' | 'genre' | 'special'
+  apiParams: {
+    type_list: 'phim-bo' | 'phim-le' | 'tv-shows' | 'hoat-hinh' | 'phim-vietsub' | 'phim-thuyet-minh' | 'phim-long-tieng'
+    country?: string
+    category?: string
+    year?: string
+    sort_field?: 'modified.time' | '_id' | 'year'
+    sort_type?: 'asc' | 'desc'
+  }
+}
+
+// Predefined categories mapping
+export const CATEGORIES: Record<string, Category> = {
+  'han-quoc': {
+    slug: 'han-quoc',
+    name: 'Phim Hàn Quốc',
+    description: 'Những bộ phim Hàn Quốc hot nhất, K-Drama đặc sắc với cốt truyện hấp dẫn',
+    type: 'country',
+    apiParams: {
+      type_list: 'phim-bo',
+      country: 'han-quoc',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  },
+  'trung-quoc': {
+    slug: 'trung-quoc',
+    name: 'Phim Trung Quốc',
+    description: 'Phim cổ trang Trung Quốc đặc sắc, võ thuật huyền thoại và tình cảm lãng mạn',
+    type: 'country',
+    apiParams: {
+      type_list: 'phim-bo',
+      country: 'trung-quoc',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  },
+  'au-my': {
+    slug: 'au-my',
+    name: 'Phim US-UK',
+    description: 'Blockbuster Hollywood và phim Anh Quốc chất lượng cao, kịch tính và hành động',
+    type: 'country',
+    apiParams: {
+      type_list: 'phim-le',
+      country: 'au-my',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  },
+  'viet-nam': {
+    slug: 'viet-nam',
+    name: 'Yêu Kiều Mỹ',
+    description: 'Phim Việt Nam chất lượng cao, câu chuyện gần gũi và ý nghĩa',
+    type: 'country',
+    apiParams: {
+      type_list: 'phim-bo',
+      country: 'viet-nam',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  },
+  'hanh-dong': {
+    slug: 'hanh-dong',
+    name: 'Đường về nhà là vào tim ta...',
+    description: 'Phim hành động gay cấn, kịch tính với những pha action mãn nhãn',
+    type: 'genre',
+    apiParams: {
+      type_list: 'phim-le',
+      category: 'hanh-dong',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  },
+  'hoat-hinh': {
+    slug: 'hoat-hinh',
+    name: 'Kho Tàng Anime Mới Nhất',
+    description: 'Thế giới hoạt hình Nhật Bản đầy màu sắc, anime hay nhất mọi thời đại',
+    type: 'genre',
+    apiParams: {
+      type_list: 'hoat-hinh',
+      sort_field: 'modified.time',
+      sort_type: 'desc'
+    }
+  }
+}
+
+// Fetch movies by category slug
+export async function fetchMoviesByCategorySlug(
+  categorySlug: string,
+  page: number = 1,
+  limit: number = 24
+): Promise<CategoryApiResponse> {
+  const category = CATEGORIES[categorySlug]
+  
+  if (!category) {
+    throw new Error(`Category ${categorySlug} not found`)
+  }
+
+  return fetchMoviesByFilter({
+    ...category.apiParams,
+    page,
+    limit
+  })
+}
+
+// Get category info by slug
+export function getCategoryInfo(slug: string): Category | null {
+  return CATEGORIES[slug] || null
+}
+
+// Get all available categories
+export function getAllCategories(): Category[] {
+  return Object.values(CATEGORIES)
+}
