@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { CreateWatchPartyDialog } from '@/components/ui/CreateWatchPartyDialog'
 import { 
     Play, 
     Star, 
@@ -88,14 +89,14 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                     <p className="text-gray-400">Vui lòng chờ trong giây lát</p>
                 </div>
                 <div className="mt-8 space-y-8">
-                    <Skeleton className="w-full h-96 rounded-xl" />
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                        <div className="space-y-4">
-                            <Skeleton className="w-full aspect-[2/3] rounded-lg" />
-                        </div>
-                        <div className="lg:col-span-3 space-y-6">
-                            <Skeleton className="h-8 w-3/4" />
-                            <Skeleton className="h-32 w-full" />
+                <Skeleton className="w-full h-96 rounded-xl" />
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    <div className="space-y-4">
+                        <Skeleton className="w-full aspect-[2/3] rounded-lg" />
+                    </div>
+                    <div className="lg:col-span-3 space-y-6">
+                        <Skeleton className="h-8 w-3/4" />
+                        <Skeleton className="h-32 w-full" />
                         </div>
                     </div>
                 </div>
@@ -156,9 +157,9 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                             variant="outline"
                             className="border-white/30 text-white hover:bg-white/10"
                         >
-                            <ChevronLeft className="h-4 w-4 mr-2" />
-                            Quay lại
-                        </Button>
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Quay lại
+                </Button>
                         
                         <Button 
                             asChild
@@ -315,6 +316,40 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                         <div className="flex items-center gap-2">
                             <CheckCircle className="h-5 w-5 text-green-500" />
                             <span className="text-green-400 font-medium">Đã hoàn thành: {movie.episode_current}</span>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap gap-3 pt-4">
+                            {episodes && episodes.length > 0 && (
+                                <Button 
+                                    onClick={() => handleWatchEpisode(0, 0)}
+                                    className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                                >
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Xem ngay
+                                </Button>
+                            )}
+                            
+                            <CreateWatchPartyDialog
+                                movieSlug={movie.slug}
+                                movieTitle={movie.name}
+                                moviePoster={getImageUrl(movie.poster_url)}
+                                movieVideoUrl={episodes && episodes.length > 0 && episodes[0]?.server_data.length > 0 ? episodes[0].server_data[0].link_embed : undefined}
+                            >
+                                <Button variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10">
+                                    <Users className="h-4 w-4 mr-2" />
+                                    Xem chung
+                                </Button>
+                            </CreateWatchPartyDialog>
+                            
+                            {movie.trailer_url && (
+                                <Button variant="outline" asChild>
+                                    <a href={movie.trailer_url} target="_blank" rel="noopener noreferrer">
+                                        <Film className="h-4 w-4 mr-2" />
+                                        Trailer
+                                    </a>
+                                </Button>
+                            )}
                         </div>
                     </div>
 

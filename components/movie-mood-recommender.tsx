@@ -347,13 +347,13 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
             <CardFooter className="pt-0 pb-4">
                 <Link href={`/movie/${movieSlug}`} className="w-full">
-                    <Button 
-                        variant="outline" 
-                        className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
-                    >
-                        <Info className="h-4 w-4 mr-2" />
+                        <Button 
+                            variant="outline" 
+                            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
+                        >
+                            <Info className="h-4 w-4 mr-2" />
                         Xem Chi Tiết
-                    </Button>
+                        </Button>
                 </Link>
             </CardFooter>
         </Card>

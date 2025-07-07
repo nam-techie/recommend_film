@@ -1,101 +1,392 @@
 'use client'
 
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
-import { Grid3X3, Construction, ArrowLeft, Clock, Sparkles } from 'lucide-react'
+import { Grid3X3, Users, MessageCircle, Play, Crown, Clock, Globe, Heart, Star } from 'lucide-react'
 import Link from 'next/link'
+import { database } from '@/lib/firebase'
+import { ref, onValue, off } from 'firebase/database'
+import { cleanupExpiredRooms } from '@/lib/watch-party-utils'
+
+interface WatchRoom {
+  id: string
+  movie: {
+    slug: string
+    title: string
+    poster?: string
+    videoUrl?: string
+  }
+  playback: {
+    currentTime: number
+    isPlaying: boolean
+    lastUpdated: number
+    updatedBy: string
+  }
+  users: Record<string, any>
+  messages: Record<string, any>
+  createdAt: number
+  hostId: string
+}
 
 export default function GenresUpgradePage() {
+  const [activeRooms, setActiveRooms] = useState<WatchRoom[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Load active rooms from Firebase
+  useEffect(() => {
+    // Run cleanup first to remove expired rooms
+    cleanupExpiredRooms()
+    
+    if (!database) {
+      console.log('Firebase not initialized, using demo rooms')
+      setActiveRooms(demoRooms)
+      setIsLoading(false)
+      return
+    }
+
+    const roomsRef = ref(database, 'rooms')
+    const unsubscribe = onValue(roomsRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const rooms = Object.values(data) as WatchRoom[]
+        // Filter out expired rooms (older than 4 hours)
+        const ROOM_DURATION = 4 * 60 * 60 * 1000 // 4 hours
+        const activeRooms = rooms.filter(room => 
+          Date.now() - room.createdAt < ROOM_DURATION
+        )
+        setActiveRooms(activeRooms)
+      } else {
+        setActiveRooms([])
+      }
+      setIsLoading(false)
+    })
+
+    return () => off(roomsRef, 'value', unsubscribe)
+  }, [])
+
+  // Demo rooms for when Firebase is not available
+  const demoRooms: WatchRoom[] = [
+    {
+      id: 'room_demo_1',
+      movie: {
+        slug: 'avatar-the-way-of-water',
+        title: 'Avatar: The Way of Water',
+        poster: 'https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg',
+        videoUrl: 'https://vidsrc.xyz/embed/movie/avatar-the-way-of-water'
+      },
+      playback: { currentTime: 1800, isPlaying: true, lastUpdated: Date.now(), updatedBy: 'host1' },
+      users: { 
+        'host1': { name: 'Minh Khang', isHost: true },
+        'user2': { name: 'Thanh Hoa' },
+        'user3': { name: 'Khách 127' }
+      },
+      messages: { 'msg1': { text: 'Phim hay quá!' } },
+      createdAt: Date.now() - 30 * 60 * 1000,
+      hostId: 'host1'
+    },
+    {
+      id: 'room_demo_2', 
+      movie: {
+        slug: 'squid-game-season-2',
+        title: 'Squid Game Season 2',
+        poster: 'https://image.tmdb.org/t/p/w500/7yTpbOYf0zM0E0D4tpruaGhM8fH.jpg',
+        videoUrl: 'https://vidsrc.xyz/embed/tv/squid-game/2'
+      },
+      playback: { currentTime: 0, isPlaying: false, lastUpdated: Date.now(), updatedBy: 'host2' },
+      users: {
+        'host2': { name: 'Phương Nam', isHost: true },
+        'user4': { name: 'Anna Nguyen' }
+      },
+      messages: { 'msg2': { text: 'Chuẩn bị xem nhé!' } },
+      createdAt: Date.now() - 5 * 60 * 1000,
+      hostId: 'host2'
+    }
+  ]
+
+  const filteredRooms = activeRooms.filter(room =>
+    room.movie.title.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getTimeAgo = (timestamp: number) => {
+    const minutes = Math.floor((Date.now() - timestamp) / (1000 * 60))
+    if (minutes < 1) return 'Vừa tạo'
+    if (minutes < 60) return `${minutes} phút trước`
+    const hours = Math.floor(minutes / 60)
+    return `${hours} giờ trước`
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header */}
       <SectionHeader 
         title="Xem Chung" 
-        subtitle="Tính năng đang được nâng cấp"
-        // icon không truyền từ server, render trực tiếp bên trong SectionHeader client
+        subtitle="Tạo phòng hoặc tham gia phòng có sẵn"
         icon={Grid3X3}
         showViewAll={false}
       />
       
-      <div className="mt-12 flex justify-center">
-        <Card className="max-w-2xl w-full border-0 bg-gradient-to-br from-muted/50 to-muted/30 backdrop-blur-sm">
-          <CardContent className="p-8 sm:p-12 text-center space-y-8">
-            {/* Icon Animation */}
-            <div className="relative">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <Construction className="h-20 w-20 text-yellow-500 animate-bounce" />
-                  <div className="absolute -top-2 -right-2">
-                    <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+      {/* Create Room Section */}
+      <div className="mt-12 mb-16">
+        <Card className="border-0 bg-gradient-to-br from-primary/5 via-purple-500/5 to-yellow-500/5 shadow-2xl">
+          <CardContent className="p-8 lg:p-12">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+              {/* Left: Content */}
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium">
+                    <Crown className="h-4 w-4" />
+                    Tạo phòng mới
+                  </div>
+                  <h2 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary via-purple-600 to-yellow-500 bg-clip-text text-transparent">
+                    Xem phim cùng bạn bè
+                  </h2>
+                  <p className="text-lg text-muted-foreground leading-relaxed">
+                    Tạo phòng riêng tư để xem phim cùng bạn bè. Chat real-time, đồng bộ video tự động và chia sẻ những khoảnh khắc thú vị!
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">✨ Tính năng nổi bật:</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span>Đồng bộ video real-time</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span>Chat trực tiếp trong phim</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      <span>Phòng riêng tư & bảo mật</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      <span>Chia sẻ link dễ dàng</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Title */}
-            <div className="space-y-4">
-              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-purple-600 to-yellow-500 bg-clip-text text-transparent">
-                Đang Nâng Cấp
-              </h1>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Chúng tôi đang nâng cấp tính năng <span className="font-semibold text-foreground">Xem Chung</span> để mang đến cho bạn trải nghiệm tuyệt vời hơn với nhiều tính năng mới thú vị.
-              </p>
-            </div>
-
-            {/* Features Preview */}
-            <div className="bg-background/50 rounded-xl p-6 space-y-4">
-              <h3 className="text-lg font-semibold flex items-center justify-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Những gì sắp có
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <span>Gợi ý phim thông minh</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                  <span>Lọc theo tâm trạng</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  <span>Khám phá theo thể loại</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>Nhiều tính năng khác</span>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg">
+                    <Link href="/">
+                      <Play className="h-4 w-4 mr-2" />
+                      Chọn phim để tạo phòng
+                    </Link>
+                  </Button>
+                  <Button variant="outline" asChild>
+                    <Link href="/ai-recommender">
+                      <Star className="h-4 w-4 mr-2" />
+                      AI gợi ý phim
+                    </Link>
+                  </Button>
                 </div>
               </div>
-            </div>
 
-            {/* Timeline */}
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-background/30 rounded-lg p-4">
-              <Clock className="h-4 w-4" />
-              <span>Dự kiến hoàn thành trong <span className="font-semibold text-primary">vài ngày tới</span></span>
+              {/* Right: Visual */}
+              <div className="relative">
+                <div className="relative mx-auto w-full max-w-sm">
+                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-3xl blur-3xl opacity-20"></div>
+                  <Card className="relative border-0 shadow-2xl">
+                    <CardContent className="p-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gradient-to-r from-primary to-purple-600 rounded-full flex items-center justify-center">
+                            <Users className="h-5 w-5 text-white" />
+                          </div>
+                          <div>
+                            <p className="font-semibold">Phòng của bạn</p>
+                            <p className="text-xs text-muted-foreground">3 người đang xem</p>
+                          </div>
+                        </div>
+                        <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 rounded-lg flex items-center justify-center">
+                          <Play className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span>Live • Đang phát</span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="h-2 bg-muted rounded w-full"></div>
+                            <div className="h-2 bg-muted rounded w-2/3"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Link href="/" className="flex-1">
-                <Button className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white shadow-lg">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Về Trang Chủ
-                </Button>
-              </Link>
-              <Link href="/ai-recommender" className="flex-1">
-                <Button variant="outline" className="w-full border-primary/20 hover:bg-primary/5">
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Thử AI Recommender
-                </Button>
-              </Link>
-            </div>
-
-            {/* Footer Note */}
-            <p className="text-xs text-muted-foreground/80 pt-4 border-t border-border/50">
-              Cảm ơn bạn đã kiên nhẫn! Chúng tôi sẽ thông báo ngay khi tính năng sẵn sàng. 🚀
-            </p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Active Rooms Section */}
+      <div className="space-y-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Phòng đang hoạt động</h2>
+            <p className="text-muted-foreground">Tham gia phòng có sẵn hoặc tạo phòng mới</p>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <Input
+              placeholder="Tìm kiếm phim..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full lg:w-64"
+            />
+            <Badge variant="secondary" className="whitespace-nowrap">
+              {filteredRooms.length} phòng
+            </Badge>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    <div className="h-48 bg-muted rounded-lg"></div>
+                    <div className="space-y-2">
+                      <div className="h-4 bg-muted rounded w-3/4"></div>
+                      <div className="h-3 bg-muted rounded w-1/2"></div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredRooms.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredRooms.map((room) => (
+              <Card key={room.id} className="group hover:shadow-lg transition-all duration-300 border-0 bg-card/50">
+                <CardContent className="p-0">
+                  <Link href={`/watch-party/${room.id}`}>
+                    <div className="relative">
+                      <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 rounded-t-lg flex items-center justify-center overflow-hidden">
+                        {room.movie.poster ? (
+                          <img 
+                            src={room.movie.poster} 
+                            alt={room.movie.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = '<div class="text-4xl">🎬</div>';
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="text-4xl">🎬</div>
+                        )}
+                      </div>
+                      
+                      {/* Status badges */}
+                      <div className="absolute top-3 left-3 flex gap-2">
+                        {room.playback.isPlaying ? (
+                          <Badge className="bg-green-500 text-white">
+                            <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-1"></div>
+                            Live
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Tạm dừng</Badge>
+                        )}
+                      </div>
+                      
+                      <div className="absolute top-3 right-3">
+                        <Badge variant="secondary" className="bg-black/50 text-white">
+                          <Users className="h-3 w-3 mr-1" />
+                          {Object.keys(room.users || {}).length}
+                        </Badge>
+                      </div>
+
+                      {/* Progress bar */}
+                      {room.playback.currentTime > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+                          <div 
+                            className="h-full bg-primary"
+                            style={{ width: `${Math.min((room.playback.currentTime / 7200) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <h3 className="font-semibold line-clamp-1 group-hover:text-primary transition-colors">
+                          {room.movie.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          Host: {room.users?.[room.hostId]?.name || 'Unknown'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{getTimeAgo(room.createdAt)}</span>
+                        </div>
+                        
+                        {room.playback.currentTime > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Play className="h-3 w-3" />
+                            <span>{formatTime(room.playback.currentTime)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <MessageCircle className="h-3 w-3" />
+                          <span>{Object.keys(room.messages || {}).length} tin nhắn</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="h-3 w-3" />
+                          <span>{Object.keys(room.users || {}).length} đang xem</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="p-12 text-center">
+            <div className="space-y-4">
+              <div className="text-6xl">🎭</div>
+              <h3 className="text-xl font-semibold">Chưa có phòng nào</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                {searchTerm ? 
+                  `Không tìm thấy phòng nào với từ khóa "${searchTerm}"` : 
+                  'Hãy là người đầu tiên tạo phòng xem chung!'
+                }
+              </p>
+              <Button asChild>
+                <Link href="/">
+                  <Play className="h-4 w-4 mr-2" />
+                  Tạo phòng đầu tiên
+                </Link>
+              </Button>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )
