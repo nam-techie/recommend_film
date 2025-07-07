@@ -18,7 +18,7 @@ export function MovieGrid({
     className = ''
 }: MovieGridProps) {
     // Calculate gap and grid columns based on card width
-    const gapClass = cardWidth === 'sm' ? 'gap-4' : 'gap-6'
+    const gapClass = cardWidth === 'sm' ? 'gap-6' : 'gap-8'
     const gridCols = {
         sm: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8',
         md: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
@@ -26,16 +26,14 @@ export function MovieGrid({
     }
 
     return (
-        <div className={`grid ${gridCols[cardWidth]} ${gapClass} ${className}`}>
+        <div className={`movie-grid-container grid ${gridCols[cardWidth]} ${gapClass} ${className} overflow-visible`}>
             {movies.map((movie) => (
                 <MovieCard
                     key={movie._id}
                     movie={movie}
-                    aspectRatio={aspectRatio}
-                    width={cardWidth}
-                    showInfo={showInfo}
+                    variant="hover-expand"
                 />
             ))}
         </div>
     )
-} 
+}

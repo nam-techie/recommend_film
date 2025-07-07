@@ -256,16 +256,32 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Movie card hover effects - RoPhim Style */
+/* ROPHIM STYLE HOVER EFFECTS - TO HẲNNN */
 .movie-card-hover {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   transform-origin: center;
 }
 
 .movie-card-hover:hover {
-  transform: scale(1.1);
-  z-index: 50;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  transform: scale(1.35);
+  z-index: 100;
+  box-shadow: 0 25px 80px -15px rgba(0, 0, 0, 0.8);
+}
+
+/* Ensure proper stacking context for MASSIVE hover effects */
+.movie-grid {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+}
+
+.movie-grid > * {
+  position: relative;
+  z-index: 1;
+}
+
+.movie-grid > *:hover {
+  z-index: 100 !important;
 }
 
 /* Loading shimmer effect */
@@ -296,15 +312,11 @@ body {
     min-height: 44px;
     min-width: 44px;
   }
-}
-
-/* Ensure proper stacking context for hover effects */
-.movie-grid {
-  position: relative;
-}
-
-.movie-grid > * {
-  position: relative;
+  
+  /* Reduce hover scale on mobile */
+  .movie-card-hover:hover {
+    transform: scale(1.1);
+  }
 }
 
 /* Smooth transitions for all interactive elements */
@@ -322,4 +334,42 @@ button, a, [role="button"] {
   .backdrop-blur-md {
     backdrop-filter: blur(12px);
   }
+}
+
+/* MASSIVE HOVER EFFECT STYLES */
+.massive-hover {
+  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform-origin: center;
+  will-change: transform;
+}
+
+.massive-hover:hover {
+  transform: scale(1.35) !important;
+  z-index: 999 !important;
+  box-shadow: 0 25px 80px -15px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Ensure grid items don't interfere with hover */
+.movie-grid-container {
+  display: grid;
+  gap: 1.5rem;
+  position: relative;
+}
+
+.movie-grid-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+.movie-grid-container > *:hover {
+  z-index: 999 !important;
+}
+
+/* Prevent overflow issues */
+.movie-section {
+  overflow: visible !important;
+}
+
+.movie-section .container {
+  overflow: visible !important;
 }

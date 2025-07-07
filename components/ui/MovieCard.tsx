@@ -10,7 +10,9 @@ import {
     Heart,
     Bookmark,
     Info,
-    Play
+    Play,
+    Eye,
+    ThumbsUp
 } from 'lucide-react'
 import { Movie, getImageUrl } from '@/lib/api'
 import Link from 'next/link'
@@ -49,8 +51,8 @@ export function MovieCard({
     if (variant === 'hover-expand') {
         return (
             <div className="group relative cursor-pointer">
-                {/* Main Card Container */}
-                <div className="relative overflow-hidden rounded-lg bg-card border border-border/50 transition-all duration-500 ease-out group-hover:scale-110 group-hover:shadow-2xl group-hover:shadow-primary/30 group-hover:z-50">
+                {/* Main Card Container - SCALE TO HẲNNN */}
+                <div className="relative overflow-hidden rounded-xl bg-card border border-border/50 transition-all duration-700 ease-out group-hover:scale-[1.35] group-hover:shadow-[0_25px_80px_-15px_rgba(0,0,0,0.8)] group-hover:z-[100] group-hover:border-primary/50">
                     {/* Poster Image */}
                     <div className="relative aspect-[2/3] overflow-hidden">
                         {!imageLoaded && (
@@ -66,119 +68,141 @@ export function MovieCard({
                             loading="lazy"
                         />
                         
-                        {/* Dark Overlay on Hover */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 opacity-0 group-hover:opacity-100 transition-all duration-500" />
+                        {/* MASSIVE Dark Overlay on Hover */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/98 via-black/80 to-black/40 opacity-0 group-hover:opacity-100 transition-all duration-700" />
                         
                         {/* Rating Badge - Always Visible */}
                         {rating > 0 && (
-                            <div className="absolute top-3 left-3 z-10">
-                                <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white border-0 font-bold shadow-lg px-2 py-1`}>
-                                    <Star className="h-3 w-3 mr-1 fill-current" />
+                            <div className="absolute top-4 left-4 z-20">
+                                <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white border-0 font-bold shadow-2xl px-3 py-2 text-sm`}>
+                                    <Star className="h-4 w-4 mr-2 fill-current" />
                                     {rating.toFixed(1)}
                                 </Badge>
                             </div>
                         )}
 
+                        {/* Type Badge */}
+                        <div className="absolute top-4 right-4 z-20">
+                            <Badge variant="secondary" className="bg-black/80 text-white border-0 backdrop-blur-md px-3 py-2 text-sm font-semibold">
+                                {getTypeLabel(movie.type)}
+                            </Badge>
+                        </div>
+
                         {/* Action Buttons - Show on Hover */}
-                        <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-200 z-10">
+                        <div className="absolute top-20 right-4 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all duration-500 delay-300 z-20">
                             <Button
                                 size="icon"
                                 variant="secondary"
-                                className="h-8 w-8 rounded-full bg-black/60 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300"
+                                className="h-10 w-10 rounded-full bg-black/80 backdrop-blur-md border-0 hover:bg-red-500/90 transition-all duration-300 shadow-xl"
                                 onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
                                     setIsLiked(!isLiked)
                                 }}
                             >
-                                <Heart className={`h-4 w-4 transition-all duration-300 ${
+                                <Heart className={`h-5 w-5 transition-all duration-300 ${
                                     isLiked ? 'fill-red-500 text-red-500' : 'text-white'
                                 }`} />
                             </Button>
                             <Button
                                 size="icon"
                                 variant="secondary"
-                                className="h-8 w-8 rounded-full bg-black/60 backdrop-blur-md border-0 hover:bg-blue-500/80 transition-all duration-300"
+                                className="h-10 w-10 rounded-full bg-black/80 backdrop-blur-md border-0 hover:bg-blue-500/90 transition-all duration-300 shadow-xl"
                                 onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
                                     setIsBookmarked(!isBookmarked)
                                 }}
                             >
-                                <Bookmark className={`h-4 w-4 transition-all duration-300 ${
+                                <Bookmark className={`h-5 w-5 transition-all duration-300 ${
                                     isBookmarked ? 'fill-blue-500 text-blue-500' : 'text-white'
                                 }`} />
                             </Button>
                         </div>
 
-                        {/* Movie Info Overlay - Show on Hover */}
-                        <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-all duration-500 z-10">
-                            <div className="space-y-3">
-                                {/* Movie Title */}
-                                <div className="space-y-1">
-                                    <h3 className="text-lg font-bold text-white line-clamp-2 leading-tight drop-shadow-lg">
+                        {/* MASSIVE Movie Info Overlay - Show on Hover */}
+                        <div className="absolute inset-0 flex flex-col justify-end p-6 opacity-0 group-hover:opacity-100 transition-all duration-700 delay-200 z-20">
+                            <div className="space-y-4">
+                                {/* Movie Title - BIGGER */}
+                                <div className="space-y-2">
+                                    <h3 className="text-2xl font-bold text-white line-clamp-2 leading-tight drop-shadow-2xl">
                                         {movie.name}
                                     </h3>
                                     {movie.origin_name && movie.origin_name !== movie.name && (
-                                        <p className="text-sm text-white/80 line-clamp-1 font-medium drop-shadow-lg">
+                                        <p className="text-lg text-white/90 line-clamp-1 font-medium drop-shadow-xl">
                                             {movie.origin_name}
                                         </p>
                                     )}
                                 </div>
 
-                                {/* Movie Meta Info */}
-                                <div className="flex items-center justify-between text-sm text-white/90">
+                                {/* Movie Meta Info - ENHANCED */}
+                                <div className="grid grid-cols-2 gap-3 text-sm text-white/95">
                                     <div className="flex items-center gap-2">
-                                        <Calendar className="h-3 w-3" />
-                                        <span className="drop-shadow-lg">{movie.year}</span>
+                                        <Calendar className="h-4 w-4 text-primary" />
+                                        <span className="drop-shadow-lg font-medium">Năm: {movie.year}</span>
                                     </div>
                                     {movie.time && (
                                         <div className="flex items-center gap-2">
-                                            <Clock className="h-3 w-3" />
-                                            <span className="drop-shadow-lg">{movie.time}</span>
+                                            <Clock className="h-4 w-4 text-primary" />
+                                            <span className="drop-shadow-lg font-medium">Thời lượng: {movie.time}</span>
                                         </div>
                                     )}
+                                    <div className="flex items-center gap-2">
+                                        <Eye className="h-4 w-4 text-primary" />
+                                        <span className="drop-shadow-lg font-medium">Chất lượng: {movie.quality}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <ThumbsUp className="h-4 w-4 text-primary" />
+                                        <span className="drop-shadow-lg font-medium">Ngôn ngữ: {movie.lang}</span>
+                                    </div>
                                 </div>
 
-                                {/* Type Badge */}
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="secondary" className="bg-black/60 text-white border-0 backdrop-blur-sm">
-                                        {getTypeLabel(movie.type)}
-                                    </Badge>
-                                    <Badge variant="secondary" className="bg-black/60 text-white border-0 backdrop-blur-sm">
-                                        {movie.quality}
-                                    </Badge>
-                                </div>
-
-                                {/* Genres */}
+                                {/* Genres - ENHANCED */}
                                 {movie.category && movie.category.length > 0 && (
-                                    <div className="flex flex-wrap gap-1">
-                                        {movie.category.slice(0, 3).map((genre) => (
-                                            <Badge key={genre.id} variant="outline" className="text-xs text-white border-white/40 bg-black/30 backdrop-blur-sm">
-                                                {genre.name}
-                                            </Badge>
-                                        ))}
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-white/80 font-medium">Thể loại:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {movie.category.slice(0, 4).map((genre) => (
+                                                <Badge key={genre.id} variant="outline" className="text-xs text-white border-white/50 bg-black/40 backdrop-blur-sm px-2 py-1">
+                                                    {genre.name}
+                                                </Badge>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-2 pt-2">
+                                {/* Countries */}
+                                {movie.country && movie.country.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-white/80 font-medium">Quốc gia:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {movie.country.slice(0, 3).map((country) => (
+                                                <Badge key={country.id} variant="outline" className="text-xs text-white border-white/50 bg-black/40 backdrop-blur-sm px-2 py-1">
+                                                    {country.name}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Action Buttons - BIGGER */}
+                                <div className="flex items-center gap-3 pt-3">
                                     <Link href={`/movie/${movie.slug}`} className="flex-1">
                                         <Button 
-                                            size="sm"
-                                            className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white font-medium shadow-lg"
+                                            size="lg"
+                                            className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white font-bold shadow-2xl text-base py-3"
                                         >
-                                            <Play className="h-4 w-4 mr-2 fill-current" />
+                                            <Play className="h-5 w-5 mr-3 fill-current" />
                                             Xem ngay
                                         </Button>
                                     </Link>
                                     <Link href={`/movie/${movie.slug}`}>
                                         <Button 
-                                            size="sm"
+                                            size="lg"
                                             variant="outline"
-                                            className="text-white border-white/50 hover:bg-white/20 backdrop-blur-sm"
+                                            className="text-white border-white/60 hover:bg-white/20 backdrop-blur-sm px-4 py-3"
                                         >
-                                            <Info className="h-4 w-4" />
+                                            <Info className="h-5 w-5" />
                                         </Button>
                                     </Link>
                                 </div>
