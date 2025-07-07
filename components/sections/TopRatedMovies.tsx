@@ -33,7 +33,7 @@ export function TopRatedMovies() {
                 const topRated = allMovies
                     .filter(movie => movie.tmdb?.vote_average && movie.tmdb.vote_average >= 7)
                     .sort((a, b) => (b.tmdb?.vote_average || 0) - (a.tmdb?.vote_average || 0))
-                    .slice(0, 10)
+                    .slice(0, 12)
                 
                 setMovies(topRated)
             } catch (err) {
@@ -47,18 +47,18 @@ export function TopRatedMovies() {
 
     if (loading) {
         return (
-            <section className="space-y-4 sm:space-y-6">
+            <section className="space-y-6 sm:space-y-8">
                 <SectionHeader 
                     title="Đánh giá cao nhất" 
                     subtitle="Những kiệt tác điện ảnh"
                     icon={Star}
                 />
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
-                    {Array.from({ length: 10 }).map((_, i) => (
-                        <div key={i} className="space-y-2 sm:space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 lg:gap-6">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        <div key={i} className="space-y-3">
                             <Skeleton className="w-full aspect-[2/3] rounded-lg" />
-                            <Skeleton className="h-3 sm:h-4 w-3/4" />
-                            <Skeleton className="h-2 sm:h-3 w-1/2" />
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-3 w-1/2" />
                         </div>
                     ))}
                 </div>
@@ -68,29 +68,33 @@ export function TopRatedMovies() {
 
     if (error) {
         return (
-            <section className="space-y-4 sm:space-y-6">
+            <section className="space-y-6 sm:space-y-8">
                 <SectionHeader 
                     title="Đánh giá cao nhất" 
                     subtitle="Những kiệt tác điện ảnh"
                     icon={Star}
                 />
-                <div className="text-center py-8 sm:py-12">
-                    <p className="text-muted-foreground text-sm sm:text-base">{error}</p>
+                <div className="text-center py-12">
+                    <p className="text-muted-foreground">{error}</p>
                 </div>
             </section>
         )
     }
 
     return (
-        <section className="space-y-4 sm:space-y-6">
+        <section className="space-y-6 sm:space-y-8">
             <SectionHeader 
                 title="Đánh giá cao nhất" 
                 subtitle="Những kiệt tác điện ảnh"
                 icon={Star}
             />
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 lg:gap-6">
                 {movies.map((movie) => (
-                    <MovieCard key={movie._id} movie={movie} />
+                    <MovieCard 
+                        key={movie._id} 
+                        movie={movie} 
+                        variant="hover-expand"
+                    />
                 ))}
             </div>
         </section>
