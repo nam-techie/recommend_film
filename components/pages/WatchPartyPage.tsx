@@ -7,19 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { 
-    Play, 
-    Pause, 
     Users, 
     Send, 
-    Copy, 
-    Settings,
+    Copy,
     Crown,
-    MessageCircle,
-    Volume2,
-    Maximize,
-    SkipBack,
-    SkipForward,
-    Square
+    MessageCircle
 } from 'lucide-react'
 import Link from 'next/link'
 import { useWatchParty } from '@/hooks/useWatchParty'
@@ -78,7 +70,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         isConnected,
         error: roomError,
         sendMessage: sendMessageHook,
-        updatePlayback: updatePlaybackHook,
+
         leaveRoom,
         isHost,
         userCount,
@@ -130,7 +122,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
             console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
             
             // Send system message about user joining and sync instructions
-            if (Object.keys(room.users).length > 1) {
+            if ((room?.users && Object.keys(room.users).length > 1)) {
                 const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
                 const syncMessage = currentVideoTime > 30 ? 
                     `⚡ Cần tua video đến ${Math.floor(currentVideoTime / 60)}:${String(Math.floor(currentVideoTime % 60)).padStart(2, '0')} để xem cùng host!` :
@@ -148,20 +140,6 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         }
     }, [room?.id, currentUser?.id, isHost])
 
-    // Host: Periodically update video time (simulate video progress)
-    useEffect(() => {
-        if (!isHost || !room) return
-
-        const interval = setInterval(() => {
-            if (room.playback?.isPlaying) {
-                const newTime = (room.playback?.currentTime || 0) + 1
-                updatePlaybackHook(newTime, true)
-            }
-        }, 1000) // Update every second
-
-        return () => clearInterval(interval)
-    }, [isHost, room?.playback?.isPlaying, room?.playback?.currentTime])
-
     // Video synchronization when joining room
     useEffect(() => {
         if (room && currentUser && !isHost) {
@@ -170,7 +148,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
             console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
             
             // Send system message about user joining
-            if (Object.keys(room.users).length > 1) {
+            if ((room?.users && Object.keys(room.users).length > 1)) {
                 const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
                 setTimeout(() => {
                     sendMessageHook(joinMessage, currentVideoTime)
@@ -178,20 +156,6 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
             }
         }
     }, [room?.id, currentUser?.id, isHost])
-
-    // Host: Periodically update video time (simulate video progress)
-    useEffect(() => {
-        if (!isHost || !room) return
-
-        const interval = setInterval(() => {
-            if (room.playback?.isPlaying) {
-                const newTime = (room.playback?.currentTime || 0) + 1
-                updatePlaybackHook(newTime, true)
-            }
-        }, 1000) // Update every second
-
-        return () => clearInterval(interval)
-    }, [isHost, room?.playback?.isPlaying, room?.playback?.currentTime])
 
     // Join room
     const handleJoinRoom = () => {
@@ -462,7 +426,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                     <div className="flex items-center gap-2">
                                                         <Users className="h-4 w-4" />
                                                         <span className="text-sm font-medium">
-                                                            {Object.keys(room.users).length} người đang xem
+                                                            {room?.users ? Object.keys(room.users).length : 0} người đang xem
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -484,7 +448,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                             </div>
                                             <div>
                                                 <p className="text-sm text-gray-400">Đang xem</p>
-                                                <p className="text-lg font-bold text-green-400">{Object.keys(room.users).length}</p>
+                                                <p className="text-lg font-bold text-green-400">{room?.users ? Object.keys(room.users).length : 0}</p>
                                             </div>
                                         </div>
                                     </Card>
@@ -676,13 +640,6 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                        room.movie.videoUrl || 
                                                        `https://vidsrc.xyz/embed/movie/${room.movie.slug}`
                                         
-                                        // Add timestamp for sync if user is not host and room has progress
-                                        if (!isHost && room.playback?.currentTime && room.playback.currentTime > 30) {
-                                            const timestamp = Math.floor(room.playback.currentTime)
-                                            // Try adding timestamp parameter (may work for some players)
-                                            return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${timestamp}`
-                                        }
-                                        
                                         return baseUrl
                                     })()
                                 }
@@ -691,136 +648,6 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                 allowFullScreen
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             />
-                            
-                            {/* Sync Instructions for Non-Host Users */}
-                            {!isHost && room.playback?.currentTime && room.playback.currentTime > 30 && (
-                                <div className="absolute top-4 left-4 max-w-sm">
-                                    <div className="bg-blue-500/90 backdrop-blur rounded-lg p-4 border border-blue-400/50 animate-pulse">
-                                        <div className="flex items-start gap-3">
-                                            <div className="w-8 h-8 bg-blue-400 rounded-full flex items-center justify-center flex-shrink-0">
-                                                <span className="text-white text-sm font-bold">⚡</span>
-                                            </div>
-                                            <div className="text-white">
-                                                <h4 className="font-semibold text-sm mb-1">🎬 Cần đồng bộ video!</h4>
-                                                <p className="text-xs mb-2 leading-relaxed">
-                                                    Host đang xem ở <strong>{Math.floor((room.playback.currentTime) / 60)}:{String(Math.floor((room.playback.currentTime) % 60)).padStart(2, '0')}</strong>
-                                                </p>
-                                                <div className="text-xs space-y-1">
-                                                    <p>📍 <strong>Cách sync:</strong></p>
-                                                    <p>1. Tua video đến <strong>{Math.floor((room.playback.currentTime) / 60)}:{String(Math.floor((room.playback.currentTime) % 60)).padStart(2, '0')}</strong></p>
-                                                    <p>2. Hoặc reload trang này</p>
-                                                </div>
-                                                
-                                                <Button 
-                                                    size="sm" 
-                                                    className="mt-2 h-6 text-xs bg-blue-600 hover:bg-blue-700"
-                                                    onClick={() => window.location.reload()}
-                                                >
-                                                    🔄 Reload & Sync
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* Host Controls Overlay */}
-                            {isHost && (
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <div className="bg-black/80 backdrop-blur rounded-lg p-4 border border-yellow-500/30">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex items-center gap-2">
-                                                    <Crown className="h-4 w-4 text-yellow-400" />
-                                                    <span className="text-yellow-400 text-sm font-semibold">Host Controls</span>
-                                                </div>
-                                                
-                                                {/* Playback Controls */}
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => updatePlaybackHook(room.playback?.currentTime || 0, !room.playback?.isPlaying)}
-                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
-                                                    >
-                                                        {room.playback?.isPlaying ? (
-                                                            <Pause className="h-4 w-4" />
-                                                        ) : (
-                                                            <Play className="h-4 w-4" />
-                                                        )}
-                                                    </Button>
-                                                    
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => updatePlaybackHook(0, false)}
-                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
-                                                        title="Dừng phim"
-                                                    >
-                                                        <Square className="h-4 w-4" />
-                                                    </Button>
-                                                    
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => updatePlaybackHook(Math.max(0, (room.playback?.currentTime || 0) - 10), room.playback?.isPlaying || false)}
-                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
-                                                        title="Lùi 10s"
-                                                    >
-                                                        <SkipBack className="h-4 w-4" />
-                                                    </Button>
-                                                    
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => updatePlaybackHook((room.playback?.currentTime || 0) + 10, room.playback?.isPlaying || false)}
-                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
-                                                        title="Tua 10s"
-                                                    >
-                                                        <SkipForward className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                            
-                                            {/* Video Time Display */}
-                                            <div className="text-white text-sm">
-                                                <span className="font-mono">
-                                                    {Math.floor((room.playback?.currentTime || 0) / 60)}:
-                                                    {String(Math.floor((room.playback?.currentTime || 0) % 60)).padStart(2, '0')}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Video Progress Bar */}
-                                        <div className="mt-3">
-                                            <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
-                                                <div 
-                                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full transition-all duration-300"
-                                                    style={{ 
-                                                        width: `${Math.min((room.playback?.currentTime || 0) / (2 * 60 * 60) * 100, 100)}%` 
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="flex justify-between mt-1 text-xs text-gray-400">
-                                                <span>Host Controls</span>
-                                                <span>Ước tính: 2h</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* Non-Host Notice */}
-                            {!isHost && (
-                                <div className="absolute bottom-4 left-4">
-                                    <div className="bg-black/80 backdrop-blur rounded-lg px-3 py-2 border border-gray-600/30">
-                                        <div className="flex items-center gap-2 text-gray-300 text-sm">
-                                            <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                                            <span>Chế độ xem • Host điều khiển phim</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -836,7 +663,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                     <span className="text-xs font-medium text-gray-300">Chat ({messageCount})</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-400">{userCount} người</span>
+                                    <span className="text-xs text-gray-400">{room?.users ? Object.keys(room.users).length : 0} người</span>
                                     <Button 
                                         size="sm" 
                                         variant="ghost"
@@ -852,9 +679,9 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                         {/* Compact Users list */}
                         <div className="px-2 py-1.5 border-b border-gray-800 bg-gray-800/50">
                             <div className="space-y-1">
-                                <div className="text-xs text-gray-400 font-medium">ONLINE ({userCount})</div>
+                                <div className="text-xs text-gray-400 font-medium">ONLINE ({room?.users ? Object.keys(room.users).length : 0})</div>
                                 <div className="flex flex-wrap gap-1">
-                                    {Object.values(room.users)
+                                    {room?.users ? Object.values(room.users)
                                         .sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0))
                                         .map((user) => {
                                             const isCurrentUser = currentUser ? user.id === currentUser.id : false
@@ -874,7 +701,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                     <span className="truncate max-w-14 text-xs">{user.name}</span>
                                                 </div>
                                             )
-                                        })}
+                                        }) : null}
                                 </div>
                             </div>
                         </div>
@@ -898,7 +725,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                 
                                 // Regular user message
                                 const isCurrentUser = msg.userName === currentUser?.name
-                                const userEntry = Object.keys(room.users || {}).find(id => room.users[id].name === msg.userName)
+                                const userEntry = room?.users ? Object.keys(room.users).find(id => room.users[id].name === msg.userName) : undefined
                                 const isHost = userEntry ? room.users[userEntry]?.isHost : false
                                 
                                 return (

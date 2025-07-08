@@ -222,6 +222,12 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const rating = movie.tmdb?.vote_average || 0
     const currentEpisode = episodes && episodes[selectedServer]?.server_data[selectedEpisode]
 
+    // Get the video URL for the currently selected episode
+    const getSelectedEpisodeVideoUrl = () => {
+        if (!episodes || episodes.length === 0) return undefined
+        return episodes[selectedServer]?.server_data[selectedEpisode]?.link_embed
+    }
+
     return (
         <div className="max-w-7xl mx-auto px-4 space-y-8">
             {/* Back Navigation */}
@@ -330,17 +336,24 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                 </Button>
                             )}
                             
-                            <CreateWatchPartyDialog
-                                movieSlug={movie.slug}
-                                movieTitle={movie.name}
-                                moviePoster={getImageUrl(movie.poster_url)}
-                                movieVideoUrl={episodes && episodes.length > 0 && episodes[0]?.server_data.length > 0 ? episodes[0].server_data[0].link_embed : undefined}
-                            >
-                                <Button variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10">
-                                    <Users className="h-4 w-4 mr-2" />
-                                    Xem chung
-                                </Button>
-                            </CreateWatchPartyDialog>
+                            {episodes && episodes.length > 0 && (
+                                <CreateWatchPartyDialog
+                                    movieSlug={movie.slug}
+                                    movieTitle={movie.name}
+                                    moviePoster={getImageUrl(movie.poster_url)}
+                                    movieVideoUrl={getSelectedEpisodeVideoUrl()}
+                                >
+                                    <Button variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10">
+                                        <Users className="h-4 w-4 mr-2" />
+                                        Xem chung
+                                        {currentEpisode && (
+                                            <span className="ml-2 text-xs bg-yellow-500/20 px-1.5 py-0.5 rounded">
+                                                {currentEpisode.name}
+                                            </span>
+                                        )}
+                                    </Button>
+                                </CreateWatchPartyDialog>
+                            )}
                             
                             {movie.trailer_url && (
                                 <Button variant="outline" asChild>
@@ -436,42 +449,75 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             {/* Episodes Section */}
             {episodes && episodes.length > 0 && (
                 <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-white">Danh sách tập phim</h2>
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-white">Danh sách tập phim</h2>
+                        {currentEpisode && (
+                            <div className="text-sm text-gray-400">
+                                <span className="text-yellow-400 font-medium">Đang chọn:</span> {currentEpisode.name}
+                                <span className="ml-2 text-xs text-gray-500">
+                                    (Dùng cho "Xem chung")
+                                </span>
+                            </div>
+                        )}
+                    </div>
                     
-                                {/* Server Selection */}
+                    {/* Server Selection */}
                     <div className="flex flex-wrap gap-3">
-                                            {episodes.map((server, index) => (
-                                                <Button
-                                                    key={index}
-                                                    variant={selectedServer === index ? "default" : "outline"}
-                                                    size="sm"
-                                                    onClick={() => setSelectedServer(index)}
+                        {episodes.map((server, index) => (
+                            <Button
+                                key={index}
+                                variant={selectedServer === index ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setSelectedServer(index)}
                                 className={selectedServer === index ? "bg-yellow-500 text-black" : "border-white/30 text-white hover:bg-white/10"}
-                                                >
+                            >
                                 Server Phuong Nam {server.server_name.includes('Vietsub') ? '(Vietsub)' : '(Lồng Tiếng)'}
-                                                </Button>
-                                            ))}
-                                        </div>
+                            </Button>
+                        ))}
+                    </div>
 
                     {/* Episode Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                                        {episodes[selectedServer]?.server_data.map((episode, index) => (
-                                            <Button
-                                                key={episode.slug}
-                                                variant={selectedEpisode === index && showPlayer ? "default" : "outline"}
-                                                size="sm"
-                                className={`h-12 ${
-                                    selectedEpisode === index && showPlayer 
-                                        ? "bg-yellow-500 text-black" 
+                        {episodes[selectedServer]?.server_data.map((episode, index) => (
+                            <Button
+                                key={episode.slug}
+                                variant={selectedEpisode === index ? "default" : "outline"}
+                                size="sm"
+                                className={`h-12 relative ${
+                                    selectedEpisode === index
+                                        ? "bg-yellow-500 text-black border-yellow-400" 
                                         : "border-white/30 text-white hover:bg-white/10"
                                 }`}
-                                                onClick={() => handleWatchEpisode(selectedServer, index)}
-                                            >
-                                                {episode.name}
-                                            </Button>
-                                        ))}
-                                    </div>
-                                </div>
+                                onClick={() => {
+                                    setSelectedEpisode(index)
+                                    if (showPlayer) {
+                                        handleWatchEpisode(selectedServer, index)
+                                    }
+                                }}
+                            >
+                                {episode.name}
+                                {selectedEpisode === index && (
+                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full border border-black"></div>
+                                )}
+                            </Button>
+                        ))}
+                    </div>
+
+                    {/* Hướng dẫn sử dụng */}
+                    <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                            <Info className="h-5 w-5 text-blue-400 mt-0.5 shrink-0" />
+                            <div className="text-sm text-blue-200">
+                                <p className="font-medium mb-1">💡 Cách sử dụng:</p>
+                                <ul className="space-y-1 text-xs text-blue-300">
+                                    <li>• <strong>Chọn tập trước:</strong> Click vào tập bạn muốn xem chung với bạn bè</li>
+                                    <li>• <strong>Sau đó bấm "Xem chung":</strong> Tạo phòng với tập đã chọn</li>
+                                    <li>• <strong>"Xem ngay":</strong> Xem trực tiếp tập đầu tiên</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Additional Info */}

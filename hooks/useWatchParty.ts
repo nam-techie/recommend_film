@@ -356,8 +356,8 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
     createRoom,
     // Utility helpers
     isHost: room?.hostId === userId,
-    userCount: room ? Object.keys(room.users).length : 0,
-    messageCount: room ? Object.keys(room.messages).length : 0
+    userCount: room?.users ? Object.keys(room.users).length : 0,
+    messageCount: room?.messages ? Object.keys(room.messages).length : 0
   }
 }
 
