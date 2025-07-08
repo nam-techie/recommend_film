@@ -7,6 +7,7 @@ interface User {
   name: string
   isHost?: boolean
   joinedAt: number
+  lastSeen: number
 }
 
 interface Message {
@@ -16,6 +17,12 @@ interface Message {
   text: string
   timestamp: number
   videoTime?: number
+  replyTo?: {
+    messageId: string
+    userId: string
+    userName: string
+    text: string
+  }
 }
 
 interface PlaybackState {
@@ -27,6 +34,7 @@ interface PlaybackState {
 
 interface WatchRoom {
   id: string
+  roomName?: string
   movie: {
     slug: string
     title: string
@@ -52,6 +60,73 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Function to update user activity (heartbeat)
+  const updateUserActivity = () => {
+    if (!userId || !userName) return
+
+    if (mode === 'firebase' && database) {
+      const userRef = ref(database, `rooms/${roomId}/users/${userId}`)
+      set(userRef, {
+        id: userId,
+        name: userName,
+        isHost: room?.hostId === userId,
+        joinedAt: room?.users?.[userId]?.joinedAt || Date.now(),
+        lastSeen: Date.now()
+      }).catch((err) => {
+        console.error('Failed to update user activity:', err)
+      })
+    } else if (mode === 'demo') {
+      try {
+        const roomData = localStorage.getItem(`watch_room_${roomId}`)
+        if (roomData) {
+          const parsedRoom = JSON.parse(roomData)
+          if (parsedRoom.users && parsedRoom.users[userId]) {
+            parsedRoom.users[userId].lastSeen = Date.now()
+            localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update activity in demo mode:', err)
+      }
+    }
+  }
+
+  // Function to cleanup inactive users (older than 5 minutes)
+  const cleanupInactiveUsers = () => {
+    const now = Date.now()
+    const INACTIVE_THRESHOLD = 5 * 60 * 1000 // 5 minutes
+
+    if (mode === 'firebase' && database) {
+      // Firebase cleanup will be handled by real-time listeners
+      // We don't manually remove users here to avoid conflicts
+      return
+    } else if (mode === 'demo') {
+      try {
+        const roomData = localStorage.getItem(`watch_room_${roomId}`)
+        if (roomData) {
+          const parsedRoom = JSON.parse(roomData)
+          if (parsedRoom.users) {
+            const activeUsers: Record<string, any> = {}
+            
+            // Keep only users who were active within 5 minutes
+            Object.entries(parsedRoom.users).forEach(([id, user]: [string, any]) => {
+              if (user.lastSeen && (now - user.lastSeen) <= INACTIVE_THRESHOLD) {
+                activeUsers[id] = user
+              } else {
+                console.log(`🧹 Removing inactive user: ${user.name} (${id})`)
+              }
+            })
+            
+            parsedRoom.users = activeUsers
+            localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to cleanup inactive users:', err)
+      }
+    }
+  }
+
   useEffect(() => {
     console.log(`🔥 useWatchParty: Starting ${mode} mode for room ${roomId}`)
     
@@ -60,6 +135,46 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
       console.log('⏭️ Skipping connection for placeholder room')
       return
     }
+
+    // Cleanup function to run on page unload
+    const cleanup = () => {
+      console.log(`🧹 Emergency cleanup for user ${userId}`)
+      if (mode === 'firebase' && database && userId) {
+        const userRef = ref(database, `rooms/${roomId}/users/${userId}`)
+        set(userRef, null)
+      } else if (mode === 'demo') {
+        try {
+          const roomData = localStorage.getItem(`watch_room_${roomId}`)
+          if (roomData) {
+            const parsedRoom = JSON.parse(roomData)
+            if (parsedRoom.users && parsedRoom.users[userId]) {
+              delete parsedRoom.users[userId]
+              localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+            }
+          }
+        } catch (err) {
+          console.error('Emergency cleanup failed:', err)
+        }
+      }
+    }
+
+    // Add beforeunload listener for cleanup when closing tab/refreshing
+    const handleBeforeUnload = () => {
+      cleanup()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    // Heartbeat to update user activity every 30 seconds
+    const heartbeatInterval = setInterval(() => {
+      if (userId && userName) {
+        updateUserActivity()
+      }
+    }, 30000) // 30 seconds
+
+    // Cleanup inactive users every 2 minutes
+    const cleanupInterval = setInterval(() => {
+      cleanupInactiveUsers()
+    }, 120000) // 2 minutes
     
     if (mode === 'firebase') {
       // Firebase mode - real-time synchronization
@@ -108,7 +223,8 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
               id: userId,
               name: userName,
               isHost: isUserHost, // Set isHost based on hostId
-              joinedAt: Date.now()
+              joinedAt: Date.now(),
+              lastSeen: Date.now() // Initialize lastSeen
             }).then(() => {
               console.log(`✅ User added to Firebase room as ${isUserHost ? 'HOST' : 'GUEST'}`)
             }).catch((err) => {
@@ -122,9 +238,16 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
           // Cleanup: remove user and unsubscribe
           if (userId) {
             const userRef = ref(database, `rooms/${roomId}/users/${userId}`)
-            set(userRef, null)
+            set(userRef, null).then(() => {
+              console.log(`✅ User ${userId} removed during cleanup`)
+            }).catch((err) => {
+              console.error('❌ Failed to remove user during cleanup:', err)
+            })
           }
           off(roomRef, 'value', unsubscribe)
+          clearInterval(heartbeatInterval)
+          clearInterval(cleanupInterval)
+          window.removeEventListener('beforeunload', handleBeforeUnload)
         }
         
       } catch (err) {
@@ -164,7 +287,8 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
             id: userId,
             name: userName,
             isHost: isUserHost, // Set isHost based on hostId
-            joinedAt: Date.now()
+            joinedAt: Date.now(),
+            lastSeen: Date.now()
           }
           
           localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
@@ -174,11 +298,30 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
         console.error('Failed to join demo room:', err)
       }
 
-      return () => clearInterval(interval)
+      return () => {
+        clearInterval(interval)
+        clearInterval(heartbeatInterval)
+        clearInterval(cleanupInterval)
+        window.removeEventListener('beforeunload', handleBeforeUnload)
+        // Remove user from demo room on cleanup
+        try {
+          const roomData = localStorage.getItem(`watch_room_${roomId}`)
+          if (roomData && userId) {
+            const parsedRoom = JSON.parse(roomData)
+            if (parsedRoom.users && parsedRoom.users[userId]) {
+              delete parsedRoom.users[userId]
+              localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+              console.log(`✅ Demo cleanup: User ${userId} removed from room`)
+            }
+          }
+        } catch (err) {
+          console.error('Failed to cleanup user in demo mode:', err)
+        }
+      }
     }
   }, [roomId, userId, userName, mode])
 
-  const sendMessage = (text: string, videoTime?: number) => {
+  const sendMessage = (text: string, videoTime?: number, replyTo?: { messageId: string, userId: string, userName: string, text: string }) => {
     if (!room || !text.trim()) return
 
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
@@ -188,7 +331,8 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
       userName,
       text: text.trim(),
       timestamp: Date.now(),
-      videoTime: videoTime
+      videoTime: videoTime,
+      ...(replyTo && { replyTo })
     }
 
     console.log(`💬 Sending message in ${mode} mode:`, message)
@@ -260,13 +404,19 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
   }
 
   const leaveRoom = () => {
+    console.log(`👋 User ${userId} leaving room ${roomId} in ${mode} mode`)
+    
     if (mode === 'firebase') {
       // Firebase implementation
-      if (database) {
+      if (database && userId) {
         const userRef = ref(database, `rooms/${roomId}/users/${userId}`)
-        set(userRef, null)
+        set(userRef, null).then(() => {
+          console.log(`✅ User ${userId} removed from Firebase room`)
+        }).catch((err) => {
+          console.error('❌ Failed to remove user from Firebase:', err)
+        })
       } else {
-        console.log('Firebase database not initialized')
+        console.log('Firebase database not initialized or no userId')
       }
     } else {
       // Demo mode implementation
@@ -274,8 +424,11 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
         const roomData = localStorage.getItem(`watch_room_${roomId}`)
         if (roomData) {
           const parsedRoom = JSON.parse(roomData)
-          delete parsedRoom.users[userId]
-          localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+          if (parsedRoom.users && parsedRoom.users[userId]) {
+            delete parsedRoom.users[userId]
+            localStorage.setItem(`watch_room_${roomId}`, JSON.stringify(parsedRoom))
+            console.log(`✅ Demo: User ${userId} removed from room`)
+          }
         }
       } catch (err) {
         console.error('Failed to leave room in demo mode:', err)
@@ -283,11 +436,12 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
     }
   }
 
-  const createRoom = (movieSlug: string, movieTitle: string, hostName: string, moviePoster?: string) => {
-    console.log(`🏠 Creating room in ${mode} mode:`, { movieSlug, movieTitle, hostName, moviePoster })
+  const createRoom = (movieSlug: string, movieTitle: string, hostName: string, moviePoster?: string, roomName?: string) => {
+    console.log(`🏠 Creating room in ${mode} mode:`, { movieSlug, movieTitle, hostName, moviePoster, roomName })
     
     const newRoom: WatchRoom = {
       id: roomId,
+      roomName: roomName || movieTitle, // Use custom room name or default to movie title
       movie: {
         slug: movieSlug,
         title: movieTitle,
@@ -305,18 +459,11 @@ export function useWatchParty({ roomId, userId, userName, mode = 'demo' }: UseWa
           id: userId,
           name: hostName,
           isHost: true,
-          joinedAt: Date.now()
+          joinedAt: Date.now(),
+          lastSeen: Date.now() // Initialize lastSeen
         }
       },
-      messages: {
-        'welcome_msg': {
-          id: 'welcome_msg',
-          userId: 'system',
-          userName: 'System',
-          text: `Chào mừng đến với phòng xem "${movieTitle}"! 🎬`,
-          timestamp: Date.now()
-        }
-      },
+      messages: {},
       createdAt: Date.now(),
       hostId: userId
     }
@@ -366,7 +513,7 @@ export function useCreateWatchParty() {
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const createRoom = async (movieSlug: string, movieTitle: string, hostName: string, moviePoster?: string, movieVideoUrl?: string, mode: 'demo' | 'firebase' = 'demo') => {
+  const createRoom = async (movieSlug: string, movieTitle: string, hostName: string, moviePoster?: string, movieVideoUrl?: string, mode: 'demo' | 'firebase' = 'demo', roomName?: string) => {
     setIsCreating(true)
     setError(null)
 
@@ -380,6 +527,7 @@ export function useCreateWatchParty() {
       // Create room object
       const newRoom: WatchRoom = {
         id: roomId,
+        roomName: roomName || movieTitle,
         movie: {
           slug: movieSlug,
           title: movieTitle,
@@ -397,18 +545,11 @@ export function useCreateWatchParty() {
             id: userId,
             name: hostName,
             isHost: true,
-            joinedAt: Date.now()
+            joinedAt: Date.now(),
+            lastSeen: Date.now() // Initialize lastSeen
           }
         },
-        messages: {
-          'welcome_msg': {
-            id: 'welcome_msg',
-            userId: 'system',
-            userName: 'System',
-            text: `Chào mừng đến với phòng xem "${movieTitle}"! 🎬`,
-            timestamp: Date.now()
-          }
-        },
+        messages: {},
         createdAt: Date.now(),
         hostId: userId
       }

@@ -11,16 +11,20 @@ import {
     Send, 
     Copy,
     Crown,
-    MessageCircle
+    MessageCircle,
+    Reply
 } from 'lucide-react'
 import Link from 'next/link'
 import { useWatchParty } from '@/hooks/useWatchParty'
+import { ReplyDialog } from '@/components/ui/ReplyDialog'
+import { SystemNotification } from '@/components/ui/SystemNotification'
 
 interface User {
     id: string
     name: string
     isHost?: boolean
     joinedAt: number
+    lastSeen?: number
 }
 
 interface WatchPartyPageProps {
@@ -36,6 +40,10 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
     const [message, setMessage] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [showChat, setShowChat] = useState(true)
+    const [replyDialogOpen, setReplyDialogOpen] = useState(false)
+    const [replyingToMessage, setReplyingToMessage] = useState(null)
+    const [systemNotifications, setSystemNotifications] = useState<Array<{id: string, message: string, timestamp: number}>>([])
+    const [previousUsers, setPreviousUsers] = useState<User[]>([])
     
     // Refs
     const videoRef = useRef<HTMLIFrameElement>(null)
@@ -109,36 +117,73 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         }
     }, [room])
 
-    // Auto scroll chat to bottom when new messages arrive
+    // Auto scroll ONLY messages area when new messages arrive - Fixed
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [room?.messages])
-
-    // Video synchronization when joining room
-    useEffect(() => {
-        if (room && currentUser && !isHost) {
-            // Non-host users: sync to current video time
-            const currentVideoTime = room.playback?.currentTime || 0
-            console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
-            
-            // Send system message about user joining and sync instructions
-            if ((room?.users && Object.keys(room.users).length > 1)) {
-                const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
-                const syncMessage = currentVideoTime > 30 ? 
-                    `⚡ Cần tua video đến ${Math.floor(currentVideoTime / 60)}:${String(Math.floor(currentVideoTime % 60)).padStart(2, '0')} để xem cùng host!` :
-                    ``
-                
-                setTimeout(() => {
-                    sendMessageHook(joinMessage, currentVideoTime)
-                    if (syncMessage) {
-                        setTimeout(() => {
-                            sendMessageHook(syncMessage, currentVideoTime)
-                        }, 500)
-                    }
-                }, 1000)
+        if (messagesEndRef.current) {
+            // Find the messages container specifically, not the entire chat
+            const messagesContainer = messagesEndRef.current.parentElement
+            if (messagesContainer && messagesContainer.classList.contains('messages-scroll-area')) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight
             }
         }
-    }, [room?.id, currentUser?.id, isHost])
+    }, [room?.messages])
+
+    // Auto scroll to bottom when new system notifications appear
+    useEffect(() => {
+        // Scroll the entire chat area to show new notifications
+        const chatContainer = document.querySelector('.w-96.bg-gray-900')
+        if (chatContainer && systemNotifications.length > 0) {
+            setTimeout(() => {
+                chatContainer.scrollTop = chatContainer.scrollHeight
+            }, 100)
+        }
+    }, [systemNotifications])
+
+    // Track specific users join/leave to show notifications with real names
+    useEffect(() => {
+        if (!room?.users || !currentUser) return
+        
+        const currentUsers = getActiveUsers()
+        const currentUserIds = new Set(currentUsers.map((u: User) => u.id))
+        const previousUserIds = new Set(previousUsers.map((u: User) => u.id))
+        
+        // Find new users (joined)
+        const newUsers = currentUsers.filter((user: User) => !previousUserIds.has(user.id) && user.id !== currentUser.id)
+        
+        // Find left users  
+        const leftUsers = previousUsers.filter((user: User) => !currentUserIds.has(user.id) && user.id !== currentUser.id)
+        
+        // Create notifications for new users
+        newUsers.forEach((user: User) => {
+            const displayName = user.name.startsWith('Khách ') ? 'khách' : user.name
+            const message = `${displayName} vừa tham gia phòng`
+            
+            const notification = {
+                id: `notification_${Date.now()}_${user.id}`,
+                message,
+                timestamp: Date.now()
+            }
+            
+            setSystemNotifications(prev => [...prev.slice(-4), notification]) // Keep only last 5 notifications
+        })
+        
+        // Create notifications for users who left
+        leftUsers.forEach((user: User) => {
+            const displayName = user.name.startsWith('Khách ') ? 'khách' : user.name
+            const message = `${displayName} vừa rời phòng`
+            
+            const notification = {
+                id: `notification_${Date.now()}_${user.id}_left`,
+                message,
+                timestamp: Date.now()
+            }
+            
+            setSystemNotifications(prev => [...prev.slice(-4), notification]) // Keep only last 5 notifications
+        })
+        
+        // Update previous users list
+        setPreviousUsers(currentUsers)
+    }, [room?.users, currentUser?.id])
 
     // Video synchronization when joining room
     useEffect(() => {
@@ -147,12 +192,9 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
             const currentVideoTime = room.playback?.currentTime || 0
             console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
             
-            // Send system message about user joining
-            if ((room?.users && Object.keys(room.users).length > 1)) {
-                const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
-                setTimeout(() => {
-                    sendMessageHook(joinMessage, currentVideoTime)
-                }, 1000)
+            // Only sync video, no chat messages
+            if (currentVideoTime > 30) {
+                console.log(`⚡ User should seek to ${Math.floor(currentVideoTime / 60)}:${String(Math.floor(currentVideoTime % 60)).padStart(2, '0')}`)
             }
         }
     }, [room?.id, currentUser?.id, isHost])
@@ -188,6 +230,19 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         setMessage('')
     }
 
+    // Reply to message functions
+    const handleReplyToMessage = (msg: any) => {
+        setReplyingToMessage(msg)
+        setReplyDialogOpen(true)
+    }
+
+    const handleSendReply = (text: string, replyTo: { messageId: string, userId: string, userName: string, text: string }) => {
+        if (!currentUser) return
+        
+        const videoTime = room?.playback?.currentTime || 0
+        sendMessageHook(text, videoTime, replyTo)
+    }
+
     // Copy room link
     const handleCopyRoomLink = () => {
         const roomLink = `${window.location.origin}/watch-party/${room?.id}`
@@ -195,10 +250,12 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         // Show toast notification
     }
 
-    // Handle leaving room
+    // Handle leaving room - Clean up user properly
     const handleLeaveRoom = () => {
         if (currentUser) {
             leaveRoom()
+            // Clear current user to force rejoin
+            setCurrentUser(null)
         }
     }
 
@@ -225,6 +282,21 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         if (!room) return false
         const ROOM_DURATION = 4 * 60 * 60 * 1000 // 4 hours  
         return Date.now() - room.createdAt > ROOM_DURATION
+    }
+
+    // Get active users (last seen within 1 minute)
+    const getActiveUsers = () => {
+        if (!room?.users) return []
+        const now = Date.now()
+        const ACTIVE_THRESHOLD = 1 * 60 * 1000 // 1 minute
+        
+        return Object.values(room.users).filter((user: any) => {
+            // If user doesn't have lastSeen, consider them inactive
+            if (!user.lastSeen) return false
+            
+            // Check if user was active within the last 2 minutes
+            return (now - user.lastSeen) <= ACTIVE_THRESHOLD
+        })
     }
 
     // If no roomId provided, show homepage/landing
@@ -425,9 +497,9 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                 <div className="flex items-center gap-4 text-white/80">
                                                     <div className="flex items-center gap-2">
                                                         <Users className="h-4 w-4" />
-                                                        <span className="text-sm font-medium">
-                                                            {room?.users ? Object.keys(room.users).length : 0} người đang xem
-                                                        </span>
+                                                                                                <span className="text-sm font-medium">
+                                            {getActiveUsers().length} người đang xem
+                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -448,7 +520,7 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                             </div>
                                             <div>
                                                 <p className="text-sm text-gray-400">Đang xem</p>
-                                                <p className="text-lg font-bold text-green-400">{room?.users ? Object.keys(room.users).length : 0}</p>
+                                                <p className="text-lg font-bold text-green-400">{getActiveUsers().length}</p>
                                             </div>
                                         </div>
                                     </Card>
@@ -573,226 +645,304 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
 
     // Main watch party interface
     return (
-        <div className="min-h-screen bg-black">
-            {/* Header */}
-            <div className="border-b border-gray-800 bg-black/95 backdrop-blur sticky top-0 z-50">
-                <div className="container mx-auto px-6 py-3">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                            <Link href="/">
-                                <Button variant="outline" size="sm" onClick={handleLeaveRoom} className="text-gray-300 border-gray-600 hover:bg-gray-800">
-                                    Thoát phòng
-                                </Button>
-                            </Link>
-                            <div>
-                                <div className="flex items-center gap-3">
-                                    <h1 className="font-bold text-xl text-white">{room.movie.title}</h1>
-                                    {isHost && <Badge className="text-xs bg-yellow-500 text-black font-medium">Host</Badge>}
-                                </div>
-                                <div className="flex items-center gap-2 text-sm text-gray-400">
-                                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                                    <span>
-                                        {isConnected ? 'Firebase Real-time' : 'Đang kết nối...'} • 
-                                        Phòng: {room.id.slice(-8)} • {userCount} người xem
-                                    </span>
-                                </div>
+        <div className="h-screen bg-black flex flex-col overflow-hidden">
+            {/* Header - Compact */}
+            <div className="border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm px-6 py-3 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                        <Link href="/">
+                            <Button variant="outline" size="sm" onClick={handleLeaveRoom} className="text-gray-300 border-gray-600 hover:bg-gray-700">
+                                ← Thoát phòng
+                            </Button>
+                        </Link>
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h1 className="font-semibold text-lg text-white">{room.movie.title}</h1>
+                                {isHost && (
+                                    <Badge className="text-xs bg-red-600 text-white font-medium px-2 py-0.5">
+                                        HOST
+                                    </Badge>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-400">
+                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span>
+                                    {isConnected ? 'Kết nối thành công' : 'Đang kết nối...'} • 
+                                    {getActiveUsers().length} người đang xem
+                                </span>
                             </div>
                         </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleCopyRoomLink}
+                            className="text-gray-300 border-gray-600 hover:bg-gray-700"
+                        >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Chia sẻ
+                        </Button>
                         
-                        <div className="flex items-center space-x-3">
-                            <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={handleCopyRoomLink}
-                                className="text-gray-300 border-gray-600 hover:bg-gray-800"
-                            >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Chia sẻ
-                            </Button>
-                            
-                            <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => setShowChat(!showChat)}
-                                className={`${showChat ? 'bg-primary text-white' : 'text-gray-300 border-gray-600 hover:bg-gray-800'}`}
-                            >
-                                <MessageCircle className="h-4 w-4 mr-2" />
-                                Chat {!showChat && `(${messageCount})`}
-                            </Button>
-                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setShowChat(!showChat)}
+                            className={`${showChat ? 'bg-purple-600 text-white border-purple-600' : 'text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                        >
+                            <MessageCircle className="h-4 w-4 mr-2" />
+                            Chat
+                        </Button>
                     </div>
                 </div>
             </div>
 
             {/* Main content */}
-            <div className="flex h-[calc(100vh-80px)]">
+            <div className="flex flex-1 overflow-hidden">
                 {/* Video player */}
-                <div className={`${showChat ? 'flex-1' : 'w-full'} bg-black relative`}>
-                    {/* Video container */}
-                    <div className="relative w-full h-full flex items-center justify-center">
-                        {/* Video iframe - Use real movie URL */}
-                        <div className="relative w-full h-full max-w-none">
-                            <iframe
-                                ref={videoRef}
-                                src={
-                                    (() => {
-                                        const baseUrl = sessionStorage.getItem('movie_video_url') || 
-                                                       room.movie.videoUrl || 
-                                                       `https://vidsrc.xyz/embed/movie/${room.movie.slug}`
-                                        
-                                        return baseUrl
-                                    })()
-                                }
-                                title={room.movie.title}
-                                className="w-full h-full border-0"
-                                allowFullScreen
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            />
-                        </div>
+                <div className={`${showChat ? 'flex-1' : 'w-full'} bg-black flex items-center justify-center`}>
+                    <div className="relative w-full h-full">
+                        <iframe
+                            ref={videoRef}
+                            src={
+                                (() => {
+                                    const baseUrl = sessionStorage.getItem('movie_video_url') || 
+                                                   room.movie.videoUrl || 
+                                                   `https://vidsrc.xyz/embed/movie/${room.movie.slug}`
+                                    
+                                    return baseUrl
+                                })()
+                            }
+                            title={room.movie.title}
+                            className="w-full h-full border-0"
+                            allowFullScreen
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        />
                     </div>
                 </div>
 
-                {/* Chat sidebar */}
+                {/* Chat sidebar - Fixed layout */}
                 {showChat && (
-                    <div className="w-64 bg-gray-900 border-l border-gray-800 flex flex-col">
-                        {/* Chat header with user count */}
-                        <div className="px-2 py-1.5 border-b border-gray-800 bg-gray-800">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <MessageCircle className="h-3 w-3 text-gray-400" />
-                                    <span className="text-xs font-medium text-gray-300">Chat ({messageCount})</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-400">{room?.users ? Object.keys(room.users).length : 0} người</span>
-                                    <Button 
-                                        size="sm" 
-                                        variant="ghost"
-                                        onClick={() => setShowChat(false)}
-                                        className="text-gray-400 hover:text-white h-4 w-4 p-0"
-                                    >
-                                        ×
-                                    </Button>
-                                </div>
+                    <div className="w-96 bg-gray-900 border-l border-gray-700 flex flex-col h-full animate-slide-in-right">
+                        {/* Chat header */}
+                        <div className="px-4 py-3 border-b border-gray-700 bg-gray-800 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <h3 className="font-medium text-white text-sm">
+                                    Trò chuyện trực tiếp ({getActiveUsers().length})
+                                </h3>
                             </div>
+                            <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => setShowChat(false)}
+                                className="text-gray-400 hover:text-white h-8 w-8 p-0 rounded-full hover:bg-gray-700/50 transition-all duration-300 hover:scale-110 active:scale-95"
+                                title="Ẩn chat"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </Button>
                         </div>
                         
-                        {/* Compact Users list */}
-                        <div className="px-2 py-1.5 border-b border-gray-800 bg-gray-800/50">
-                            <div className="space-y-1">
-                                <div className="text-xs text-gray-400 font-medium">ONLINE ({room?.users ? Object.keys(room.users).length : 0})</div>
-                                <div className="flex flex-wrap gap-1">
-                                    {room?.users ? Object.values(room.users)
-                                        .sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0))
-                                        .map((user) => {
-                                            const isCurrentUser = currentUser ? user.id === currentUser.id : false
-                                            const isHost = user.isHost
-                                            
-                                            return (
-                                                <div 
-                                                    key={user.id} 
-                                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                                                        isHost ? 'bg-yellow-500/20 text-yellow-300' :
-                                                        isCurrentUser ? 'bg-primary/20 text-primary' : 
-                                                        'bg-gray-700/40 text-gray-300'
-                                                    }`}
-                                                    title={isHost ? 'Host' : isCurrentUser ? 'Bạn' : 'Viewer'}
-                                                >
-                                                    {isHost && <Crown className="h-2 w-2" />}
-                                                    <span className="truncate max-w-14 text-xs">{user.name}</span>
+                        {/* Messages area - ONLY this scrolls */}
+                        <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-900 messages-scroll-area">
+                            {/* System welcome message */}
+                            <div className="flex justify-center mb-4">
+                                <div className="bg-blue-600/20 border border-blue-500/30 rounded-lg px-3 py-2 max-w-xs">
+                                    <p className="text-xs text-blue-300 text-center">
+                                        Chào mừng đến với phòng xem "{room.movie.title}"! 🎬
+                                    </p>
+                                </div>
+                            </div>
+
+                            {(() => {
+                                // Combine messages and notifications into one timeline
+                                const messages = room?.messages ? Object.values(room.messages)
+                                    .filter(msg => msg.userName !== 'System')
+                                    .map(msg => ({ type: 'message' as const, data: msg, timestamp: msg.timestamp })) : []
+                                
+                                const notifications = systemNotifications.map(notification => ({ 
+                                    type: 'notification' as const, 
+                                    data: notification, 
+                                    timestamp: notification.timestamp 
+                                }))
+                                
+                                const allItems = [...messages, ...notifications]
+                                
+                                // Sort by timestamp
+                                allItems.sort((a, b) => a.timestamp - b.timestamp)
+                                
+                                return allItems.map((item) => {
+                                    if (item.type === 'notification') {
+                                        return (
+                                            <SystemNotification
+                                                key={item.data.id}
+                                                message={item.data.message}
+                                                timestamp={item.data.timestamp}
+                                            />
+                                        )
+                                    } else {
+                                        const msg = item.data
+                                        const isCurrentUser = msg.userName === currentUser?.name
+                                        const userEntry = room?.users ? Object.keys(room.users).find(id => room.users[id].name === msg.userName) : undefined
+                                        const isHost = userEntry ? room.users[userEntry]?.isHost : false
+                                        
+                                        return (
+                                            <div key={msg.id} className={`group flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-2`}>
+                                                <div className={`max-w-[80%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+                                                    {/* Message header */}
+                                                    <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                                                        <span className={`text-xs font-medium ${
+                                                            isHost ? 'text-red-400' : 
+                                                            isCurrentUser ? 'text-purple-400' : 
+                                                            'text-gray-400'
+                                                        }`}>
+                                                            {isCurrentUser ? 'Bạn' : (isHost ? `👑 ${msg.userName}` : msg.userName)}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
+                                                                hour: '2-digit', 
+                                                                minute: '2-digit' 
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Reply preview if this is a reply */}
+                                                    {msg.replyTo && (
+                                                        <div className={`mb-2 text-xs p-2 rounded-lg border-l-2 border-purple-500 bg-gray-800/50 ${
+                                                            isCurrentUser ? 'ml-4' : 'mr-4'
+                                                        }`}>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <Reply className="h-3 w-3 text-purple-400" />
+                                                                <span className="text-purple-400 font-medium">{msg.replyTo.userName}</span>
+                                                            </div>
+                                                            <p className="text-gray-400 truncate">{msg.replyTo.text}</p>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Message bubble */}
+                                                    <div className="relative">
+                                                        <div className={`rounded-2xl px-3 py-2 text-sm ${
+                                                            isCurrentUser ? 
+                                                                'bg-purple-600 text-white ml-auto' : 
+                                                                'bg-gray-700 text-gray-100'
+                                                        }`}>
+                                                            <p className="text-sm leading-relaxed">{msg.text}</p>
+                                                        </div>
+                                                        
+                                                        {/* Reply button - Only show on hover for others' messages */}
+                                                        {!isCurrentUser && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => handleReplyToMessage(msg)}
+                                                                className="absolute -right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 bg-gray-600 hover:bg-gray-500 text-gray-300"
+                                                            >
+                                                                <Reply className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            )
-                                        }) : null}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-1.5 space-y-1 bg-gray-900">
-                            {Object.values(room.messages).map((msg) => {
-                                // Check if it's a system message
-                                const isSystemMessage = msg.userName === 'System'
-                                
-                                if (isSystemMessage) {
-                                    // System message styling - center
-                                    return (
-                                        <div key={msg.id} className="flex justify-center my-1">
-                                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-full px-2 py-0.5">
-                                                <span className="text-xs text-blue-300">{msg.text}</span>
                                             </div>
-                                        </div>
-                                    )
-                                }
-                                
-                                // Regular user message
-                                const isCurrentUser = msg.userName === currentUser?.name
-                                const userEntry = room?.users ? Object.keys(room.users).find(id => room.users[id].name === msg.userName) : undefined
-                                const isHost = userEntry ? room.users[userEntry]?.isHost : false
-                                
-                                return (
-                                    <div key={msg.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-1`}>
-                                        <div className={`max-w-[85%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-                                            {/* Message header */}
-                                            <div className={`flex items-center gap-1 mb-0.5 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                                                {!isCurrentUser && isHost && <Crown className="h-2 w-2 text-yellow-400" />}
-                                                <span className={`text-xs font-medium ${
-                                                    isHost ? 'text-yellow-400' : 
-                                                    isCurrentUser ? 'text-primary' : 
-                                                    'text-gray-300'
-                                                }`}>
-                                                    {isCurrentUser ? 'Bạn' : msg.userName}
-                                                </span>
-                                                {msg.videoTime && (
-                                                    <span className="text-xs text-gray-500">
-                                                        {Math.floor(msg.videoTime / 60)}:{String(Math.floor(msg.videoTime % 60)).padStart(2, '0')}
-                                                    </span>
-                                                )}
-                                                <span className="text-xs text-gray-500">
-                                                    {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
-                                                        hour: '2-digit', 
-                                                        minute: '2-digit' 
-                                                    })}
-                                                </span>
-                                            </div>
-                                            
-                                            {/* Message bubble */}
-                                            <div className={`rounded-lg px-2 py-1 text-xs leading-snug ${
-                                                isCurrentUser ? 
-                                                    'bg-primary text-white' : 
-                                                    'bg-gray-700 text-gray-100'
-                                            }`}>
-                                                {msg.text}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                                        )
+                                    }
+                                })
+                            })()}
+                            
                             <div ref={messagesEndRef} />
                         </div>
                         
-                        {/* Message input */}
-                        <div className="p-1.5 border-t border-gray-800 bg-gray-900">
-                            <div className="flex gap-1">
+                        {/* Online users - Fixed height, separate from messages */}
+                        <div className="px-4 py-2 border-t border-gray-700 bg-gray-800 flex-shrink-0">
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-medium text-gray-400 uppercase">Đang online</h4>
+                                <div className="flex flex-wrap gap-1">
+                                    {getActiveUsers().length > 0 ? (() => {
+                                        const users = getActiveUsers().sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0))
+                                        const displayUsers = users.slice(0, 3) // Chỉ hiển thị 3 users
+                                        const remainingCount = users.length - 3
+                                        
+                                        return (
+                                            <>
+                                                {displayUsers.map((user) => {
+                                                    const isCurrentUser = currentUser ? user.id === currentUser.id : false
+                                                    const isUserHost = user.isHost
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={user.id} 
+                                                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                                                                isUserHost ? 'bg-red-600/20 text-red-300' :
+                                                                isCurrentUser ? 'bg-purple-600/20 text-purple-300' : 
+                                                                'bg-gray-600/40 text-gray-300'
+                                                            }`}
+                                                        >
+                                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                            <span className="truncate max-w-16 text-xs">
+                                                                {isUserHost ? '👑' : ''} {user.name}
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                })}
+                                                {remainingCount > 0 && (
+                                                    <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-600/40 text-gray-300">
+                                                        +{remainingCount} khách
+                                                    </div>
+                                                )}
+                                            </>
+                                        )
+                                    })() : (
+                                        <div className="text-xs text-gray-500">
+                                            Không có ai online
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Message input - Fixed at bottom */}
+                        <div className="p-3 border-t border-gray-700 bg-gray-800 flex-shrink-0">
+                            <div className="flex gap-2">
                                 <Input
-                                    placeholder="Tin nhắn..."
+                                    placeholder="Nhập tin nhắn..."
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault()
+                                            handleSendMessage()
+                                        }
+                                    }}
                                     maxLength={200}
-                                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-primary"
+                                    className="flex-1 bg-gray-700 border-gray-600 text-white placeholder-gray-400 text-sm h-9"
                                 />
                                 <Button 
-                                    size="sm"
                                     onClick={handleSendMessage}
                                     disabled={!message.trim()}
-                                    className="h-7 w-7 p-0 bg-primary hover:bg-primary/90"
+                                    size="sm"
+                                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-3 h-9"
                                 >
-                                    <Send className="h-3 w-3" />
+                                    <Send className="h-4 w-4" />
                                 </Button>
                             </div>
+                            <p className="text-xs text-gray-500 mt-1 text-center">
+                                Enter để gửi • {message.length}/200
+                            </p>
                         </div>
                     </div>
                 )}
             </div>
+
+            {/* Reply Dialog */}
+            <ReplyDialog 
+                open={replyDialogOpen}
+                onOpenChange={setReplyDialogOpen}
+                originalMessage={replyingToMessage}
+                onSendReply={handleSendReply}
+                currentUserName={currentUser?.name || ''}
+            />
         </div>
     )
 } 

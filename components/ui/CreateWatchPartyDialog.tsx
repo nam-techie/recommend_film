@@ -29,6 +29,7 @@ export function CreateWatchPartyDialog({
 }: CreateWatchPartyDialogProps) {
   const [open, setOpen] = useState(false)
   const [hostName, setHostName] = useState('')
+  const [roomName, setRoomName] = useState('')
   const [isAnonymous, setIsAnonymous] = useState(false)
   const [createdRoom, setCreatedRoom] = useState<any>(null)
   const { createRoom, isCreating, error } = useCreateWatchParty()
@@ -47,7 +48,8 @@ export function CreateWatchPartyDialog({
         finalHostName, 
         moviePoster,
         movieVideoUrl,
-        'firebase'
+        'firebase',
+        roomName.trim() || undefined // Use custom room name or default to movie title
       )
       
       setCreatedRoom(result)
@@ -115,6 +117,21 @@ export function CreateWatchPartyDialog({
                   <h3 className="font-semibold text-white">{movieTitle}</h3>
                   <Badge variant="secondary" className="text-xs">Watch Party</Badge>
                 </div>
+              </div>
+
+              {/* Room Name */}
+              <div className="space-y-2">
+                <Label className="text-sm text-white font-medium">🏠 Tên phòng (tùy chọn)</Label>
+                <Input
+                  placeholder={`${movieTitle} - Phòng của tôi`}
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  maxLength={50}
+                  className="bg-gray-800 border-gray-700 text-white placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-400">
+                  Nếu để trống, tên phòng sẽ là tên phim
+                </p>
               </div>
 
               {/* Host Options */}

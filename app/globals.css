@@ -220,18 +220,15 @@ body {
 
 @keyframes slide-in-right {
   from {
-    opacity: 0;
-    transform: translateX(30px);
+    transform: translateX(100%);
   }
   to {
-    opacity: 1;
     transform: translateX(0);
   }
 }
 
 .animate-slide-in-right {
-  animation: slide-in-right 0.6s ease-out forwards;
-  opacity: 0;
+  animation: slide-in-right 0.3s ease-out forwards;
 }
 
 /* Enhanced shadow utilities */
@@ -422,4 +419,123 @@ button, a, [role="button"] {
     padding: 0.25rem 0.5rem !important;
     font-size: 0.75rem !important;
   }
+}
+
+/* Messages scroll area - specific styling */
+.messages-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(75 85 99) transparent;
+  scroll-behavior: smooth;
+}
+
+.messages-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-scroll-area::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.messages-scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+}
+
+/* Ensure chat container doesn't have its own scroll */
+.chat-container {
+  overflow: hidden;
+}
+
+/* Custom scrollbar for watch party chat */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(75 85 99) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+}
+
+/* Smooth scroll behavior */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Chat message animations */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+.message-animate {
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+/* Beautiful gradient backgrounds */
+.gradient-bg {
+  background: linear-gradient(135deg, rgb(17 24 39) 0%, rgb(0 0 0) 50%, rgb(17 24 39) 100%);
+}
+
+/* Glass effect for chat */
+.glass-effect {
+  backdrop-filter: blur(16px);
+  background: rgba(17, 24, 39, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }

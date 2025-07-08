@@ -14,6 +14,7 @@ import { cleanupExpiredRooms } from '@/lib/watch-party-utils'
 
 interface WatchRoom {
   id: string
+  roomName?: string // Tên phòng tùy chỉnh (mặc định dùng movie title)
   movie: {
     slug: string
     title: string
@@ -73,36 +74,37 @@ export default function GenresUpgradePage() {
   const demoRooms: WatchRoom[] = [
     {
       id: 'room_demo_1',
+      roomName: 'Phòng Avatar của Khang', // Tên phòng tùy chỉnh
       movie: {
-        slug: 'avatar-the-way-of-water',
-        title: 'Avatar: The Way of Water',
-        poster: 'https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg',
-        videoUrl: 'https://vidsrc.xyz/embed/movie/avatar-the-way-of-water'
+        slug: 'co-rong-hau-gai-cua-kobayashi-phan-2',
+        title: 'Cô Rồng Hầu Gái Của Kobayashi (Phần 2)',
+        poster: 'https://s.tmdb.org/t/p/w600_and_h900_bestv2/v0bBozhJ1PiBkYvPD7M4U6yq4A2.jpg',
+        videoUrl: 'https://vidsrc.xyz/embed/tv/kobayashi-san-chi-no-maid-dragon-s/2'
       },
       playback: { currentTime: 1800, isPlaying: true, lastUpdated: Date.now(), updatedBy: 'host1' },
       users: { 
-        'host1': { name: 'Minh Khang', isHost: true },
-        'user2': { name: 'Thanh Hoa' },
-        'user3': { name: 'Khách 127' }
+        'host1': { name: 'Minh Khang', isHost: true, lastSeen: Date.now() - 30000 }, // Active 30s ago
+        'user2': { name: 'Thanh Hoa', lastSeen: Date.now() - 60000 }, // Active 1m ago  
+        'user3': { name: 'Khách 127', lastSeen: Date.now() - 600000 } // Inactive 10m ago
       },
-      messages: { 'msg1': { text: 'Phim hay quá!' } },
+      messages: { 'msg1': { text: 'Anime này hay quá!' } },
       createdAt: Date.now() - 30 * 60 * 1000,
       hostId: 'host1'
     },
     {
-      id: 'room_demo_2', 
+      id: 'room_demo_2',
       movie: {
-        slug: 'squid-game-season-2',
-        title: 'Squid Game Season 2',
-        poster: 'https://image.tmdb.org/t/p/w500/7yTpbOYf0zM0E0D4tpruaGhM8fH.jpg',
-        videoUrl: 'https://vidsrc.xyz/embed/tv/squid-game/2'
+        slug: 'co-rong-hau-gai-cua-kobayashi-phan-1', 
+        title: 'Cô Rồng Hầu Gái Của Kobayashi (Phần 1)',
+        poster: 'https://s.tmdb.org/t/p/w600_and_h900_bestv2/lbdzLXmBV2VSD9nkETdc4j5cWs0.jpg',
+        videoUrl: 'https://vidsrc.xyz/embed/tv/kobayashi-san-chi-no-maid-dragon/1'
       },
       playback: { currentTime: 0, isPlaying: false, lastUpdated: Date.now(), updatedBy: 'host2' },
       users: {
-        'host2': { name: 'Phương Nam', isHost: true },
-        'user4': { name: 'Anna Nguyen' }
+        'host2': { name: 'Phương Nam', isHost: true, lastSeen: Date.now() - 10000 }, // Active 10s ago
+        'user4': { name: 'Anna Nguyen', lastSeen: Date.now() - 45000 } // Active 45s ago
       },
-      messages: { 'msg2': { text: 'Chuẩn bị xem nhé!' } },
+      messages: { 'msg2': { text: 'Chuẩn bị xem season 1 nhé!' } },
       createdAt: Date.now() - 5 * 60 * 1000,
       hostId: 'host2'
     }
@@ -124,6 +126,30 @@ export default function GenresUpgradePage() {
     if (minutes < 60) return `${minutes} phút trước`
     const hours = Math.floor(minutes / 60)
     return `${hours} giờ trước`
+  }
+
+  // Count active users (last seen within 2 minutes)
+  const getActiveUserCount = (room: WatchRoom) => {
+    if (!room.users) return 0
+    const now = Date.now()
+    const ACTIVE_THRESHOLD = 2 * 60 * 1000 // 2 minutes
+    
+    return Object.values(room.users).filter((user: any) => {
+      if (!user.lastSeen) return false
+      return (now - user.lastSeen) <= ACTIVE_THRESHOLD
+    }).length
+  }
+
+  // Get host name safely
+  const getHostName = (room: WatchRoom) => {
+    if (!room.users || !room.hostId) return 'Unknown'
+    const host = room.users[room.hostId]
+    return host?.name || 'Unknown'
+  }
+
+  // Get room display name
+  const getRoomDisplayName = (room: WatchRoom) => {
+    return room.roomName || room.movie.title
   }
 
   return (
@@ -300,19 +326,28 @@ export default function GenresUpgradePage() {
                       {/* Status badges */}
                       <div className="absolute top-3 left-3 flex gap-2">
                         {room.playback.isPlaying ? (
-                          <Badge className="bg-green-500 text-white">
-                            <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-1"></div>
-                            Live
+                          <Badge className="bg-red-500 text-white animate-pulse shadow-lg border-0">
+                            <div className="w-2 h-2 bg-white rounded-full animate-ping mr-1"></div>
+                            LIVE
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">Tạm dừng</Badge>
+                          <Badge variant="secondary" className="bg-gray-500/80 text-white">
+                            <div className="w-2 h-2 bg-yellow-400 rounded-full mr-1"></div>
+                            Tạm dừng
+                          </Badge>
+                        )}
+                        
+                        {getActiveUserCount(room) > 3 && (
+                          <Badge className="bg-orange-500 text-white text-xs">
+                            🔥 HOT
+                          </Badge>
                         )}
                       </div>
                       
                       <div className="absolute top-3 right-3">
                         <Badge variant="secondary" className="bg-black/50 text-white">
                           <Users className="h-3 w-3 mr-1" />
-                          {Object.keys(room.users || {}).length}
+                          {getActiveUserCount(room)}
                         </Badge>
                       </div>
 
@@ -329,12 +364,17 @@ export default function GenresUpgradePage() {
 
                     <div className="p-4 space-y-3">
                       <div>
-                        <h3 className="font-semibold line-clamp-1 group-hover:text-primary transition-colors">
-                          {room.movie.title}
+                        <h3 className="font-semibold line-clamp-2 group-hover:text-primary transition-colors">
+                          {getRoomDisplayName(room)}
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          Host: {room.users?.[room.hostId]?.name || 'Unknown'}
+                          Host: {getHostName(room)}
                         </p>
+                        {room.roomName && (
+                          <p className="text-xs text-muted-foreground/70">
+                            📺 {room.movie.title}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -358,7 +398,7 @@ export default function GenresUpgradePage() {
                         </div>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Users className="h-3 w-3" />
-                          <span>{Object.keys(room.users || {}).length} đang xem</span>
+                          <span>{getActiveUserCount(room)} đang xem</span>
                         </div>
                       </div>
                     </div>
