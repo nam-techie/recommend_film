@@ -18,7 +18,8 @@ import {
     Volume2,
     Maximize,
     SkipBack,
-    SkipForward
+    SkipForward,
+    Square
 } from 'lucide-react'
 import Link from 'next/link'
 import { useWatchParty } from '@/hooks/useWatchParty'
@@ -116,10 +117,81 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
         }
     }, [room])
 
-    // Auto scroll chat (disabled - user can scroll manually)
-    // useEffect(() => {
-    //     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    // }, [room?.messages])
+    // Auto scroll chat to bottom when new messages arrive
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [room?.messages])
+
+    // Video synchronization when joining room
+    useEffect(() => {
+        if (room && currentUser && !isHost) {
+            // Non-host users: sync to current video time
+            const currentVideoTime = room.playback?.currentTime || 0
+            console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
+            
+            // Send system message about user joining and sync instructions
+            if (Object.keys(room.users).length > 1) {
+                const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
+                const syncMessage = currentVideoTime > 30 ? 
+                    `⚡ Cần tua video đến ${Math.floor(currentVideoTime / 60)}:${String(Math.floor(currentVideoTime % 60)).padStart(2, '0')} để xem cùng host!` :
+                    ``
+                
+                setTimeout(() => {
+                    sendMessageHook(joinMessage, currentVideoTime)
+                    if (syncMessage) {
+                        setTimeout(() => {
+                            sendMessageHook(syncMessage, currentVideoTime)
+                        }, 500)
+                    }
+                }, 1000)
+            }
+        }
+    }, [room?.id, currentUser?.id, isHost])
+
+    // Host: Periodically update video time (simulate video progress)
+    useEffect(() => {
+        if (!isHost || !room) return
+
+        const interval = setInterval(() => {
+            if (room.playback?.isPlaying) {
+                const newTime = (room.playback?.currentTime || 0) + 1
+                updatePlaybackHook(newTime, true)
+            }
+        }, 1000) // Update every second
+
+        return () => clearInterval(interval)
+    }, [isHost, room?.playback?.isPlaying, room?.playback?.currentTime])
+
+    // Video synchronization when joining room
+    useEffect(() => {
+        if (room && currentUser && !isHost) {
+            // Non-host users: sync to current video time
+            const currentVideoTime = room.playback?.currentTime || 0
+            console.log(`🎬 Syncing video to ${currentVideoTime}s for non-host user`)
+            
+            // Send system message about user joining
+            if (Object.keys(room.users).length > 1) {
+                const joinMessage = `${currentUser.name} đã tham gia phòng! 👋`
+                setTimeout(() => {
+                    sendMessageHook(joinMessage, currentVideoTime)
+                }, 1000)
+            }
+        }
+    }, [room?.id, currentUser?.id, isHost])
+
+    // Host: Periodically update video time (simulate video progress)
+    useEffect(() => {
+        if (!isHost || !room) return
+
+        const interval = setInterval(() => {
+            if (room.playback?.isPlaying) {
+                const newTime = (room.playback?.currentTime || 0) + 1
+                updatePlaybackHook(newTime, true)
+            }
+        }, 1000) // Update every second
+
+        return () => clearInterval(interval)
+    }, [isHost, room?.playback?.isPlaying, room?.playback?.currentTime])
 
     // Join room
     const handleJoinRoom = () => {
@@ -599,167 +671,226 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                             <iframe
                                 ref={videoRef}
                                 src={
-                                    sessionStorage.getItem('movie_video_url') || 
-                                    room.movie.videoUrl || 
-                                    `https://vidsrc.xyz/embed/movie/${room.movie.slug}`
+                                    (() => {
+                                        const baseUrl = sessionStorage.getItem('movie_video_url') || 
+                                                       room.movie.videoUrl || 
+                                                       `https://vidsrc.xyz/embed/movie/${room.movie.slug}`
+                                        
+                                        // Add timestamp for sync if user is not host and room has progress
+                                        if (!isHost && room.playback?.currentTime && room.playback.currentTime > 30) {
+                                            const timestamp = Math.floor(room.playback.currentTime)
+                                            // Try adding timestamp parameter (may work for some players)
+                                            return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${timestamp}`
+                                        }
+                                        
+                                        return baseUrl
+                                    })()
                                 }
                                 title={room.movie.title}
                                 className="w-full h-full border-0"
                                 allowFullScreen
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             />
-                        </div>
-                        
-                        {/* Video info overlay - top right */}
-                        <div className="absolute top-4 right-4 space-y-2">
-                            {/* Room info */}
-                            <div className="bg-black/80 backdrop-blur rounded-lg px-3 py-2 text-white text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                                    <span>{userCount} người xem</span>
-                                    {getRoomTimeRemaining() && (
-                                        <>
-                                            <span>•</span>
-                                            <span className="text-yellow-400">{getRoomTimeRemaining()}</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
                             
-                            {/* Video timestamp */}
-                            <div className="bg-black/80 backdrop-blur rounded-lg px-3 py-2 text-white text-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-primary">⏱️</span>
-                                    <span>
-                                        {Math.floor((room.playback?.currentTime || 0) / 60)}:
-                                        {String(Math.floor((room.playback?.currentTime || 0) % 60)).padStart(2, '0')}
-                                    </span>
-                                    {room.playback?.isPlaying ? (
-                                        <span className="text-green-400">▶️</span>
-                                    ) : (
-                                        <span className="text-yellow-400">⏸️</span>
-                                    )}
+                            {/* Sync Instructions for Non-Host Users */}
+                            {!isHost && room.playback?.currentTime && room.playback.currentTime > 30 && (
+                                <div className="absolute top-4 left-4 max-w-sm">
+                                    <div className="bg-blue-500/90 backdrop-blur rounded-lg p-4 border border-blue-400/50 animate-pulse">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-8 h-8 bg-blue-400 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <span className="text-white text-sm font-bold">⚡</span>
+                                            </div>
+                                            <div className="text-white">
+                                                <h4 className="font-semibold text-sm mb-1">🎬 Cần đồng bộ video!</h4>
+                                                <p className="text-xs mb-2 leading-relaxed">
+                                                    Host đang xem ở <strong>{Math.floor((room.playback.currentTime) / 60)}:{String(Math.floor((room.playback.currentTime) % 60)).padStart(2, '0')}</strong>
+                                                </p>
+                                                <div className="text-xs space-y-1">
+                                                    <p>📍 <strong>Cách sync:</strong></p>
+                                                    <p>1. Tua video đến <strong>{Math.floor((room.playback.currentTime) / 60)}:{String(Math.floor((room.playback.currentTime) % 60)).padStart(2, '0')}</strong></p>
+                                                    <p>2. Hoặc reload trang này</p>
+                                                </div>
+                                                
+                                                <Button 
+                                                    size="sm" 
+                                                    className="mt-2 h-6 text-xs bg-blue-600 hover:bg-blue-700"
+                                                    onClick={() => window.location.reload()}
+                                                >
+                                                    🔄 Reload & Sync
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
+                            
+                            {/* Host Controls Overlay */}
+                            {isHost && (
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <div className="bg-black/80 backdrop-blur rounded-lg p-4 border border-yellow-500/30">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Crown className="h-4 w-4 text-yellow-400" />
+                                                    <span className="text-yellow-400 text-sm font-semibold">Host Controls</span>
+                                                </div>
+                                                
+                                                {/* Playback Controls */}
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => updatePlaybackHook(room.playback?.currentTime || 0, !room.playback?.isPlaying)}
+                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
+                                                    >
+                                                        {room.playback?.isPlaying ? (
+                                                            <Pause className="h-4 w-4" />
+                                                        ) : (
+                                                            <Play className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
+                                                    
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => updatePlaybackHook(0, false)}
+                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
+                                                        title="Dừng phim"
+                                                    >
+                                                        <Square className="h-4 w-4" />
+                                                    </Button>
+                                                    
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => updatePlaybackHook(Math.max(0, (room.playback?.currentTime || 0) - 10), room.playback?.isPlaying || false)}
+                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
+                                                        title="Lùi 10s"
+                                                    >
+                                                        <SkipBack className="h-4 w-4" />
+                                                    </Button>
+                                                    
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => updatePlaybackHook((room.playback?.currentTime || 0) + 10, room.playback?.isPlaying || false)}
+                                                        className="h-8 w-8 p-0 border-gray-600 hover:bg-gray-700"
+                                                        title="Tua 10s"
+                                                    >
+                                                        <SkipForward className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Video Time Display */}
+                                            <div className="text-white text-sm">
+                                                <span className="font-mono">
+                                                    {Math.floor((room.playback?.currentTime || 0) / 60)}:
+                                                    {String(Math.floor((room.playback?.currentTime || 0) % 60)).padStart(2, '0')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Video Progress Bar */}
+                                        <div className="mt-3">
+                                            <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
+                                                <div 
+                                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full transition-all duration-300"
+                                                    style={{ 
+                                                        width: `${Math.min((room.playback?.currentTime || 0) / (2 * 60 * 60) * 100, 100)}%` 
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="flex justify-between mt-1 text-xs text-gray-400">
+                                                <span>Host Controls</span>
+                                                <span>Ước tính: 2h</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Non-Host Notice */}
+                            {!isHost && (
+                                <div className="absolute bottom-4 left-4">
+                                    <div className="bg-black/80 backdrop-blur rounded-lg px-3 py-2 border border-gray-600/30">
+                                        <div className="flex items-center gap-2 text-gray-300 text-sm">
+                                            <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                            <span>Chế độ xem • Host điều khiển phim</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
 
                 {/* Chat sidebar */}
                 {showChat && (
-                    <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
-                        {/* Chat header */}
-                        <div className="p-4 border-b border-gray-800 bg-gray-900">
+                    <div className="w-64 bg-gray-900 border-l border-gray-800 flex flex-col">
+                        {/* Chat header with user count */}
+                        <div className="px-2 py-1.5 border-b border-gray-800 bg-gray-800">
                             <div className="flex items-center justify-between">
-                                <h3 className="font-semibold text-white flex items-center">
-                                    <MessageCircle className="h-4 w-4 mr-2" />
-                                    Chat ({messageCount})
-                                </h3>
-                                <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => setShowChat(false)}
-                                    className="text-gray-400 hover:text-white h-6 w-6 p-0"
-                                >
-                                    ×
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <MessageCircle className="h-3 w-3 text-gray-400" />
+                                    <span className="text-xs font-medium text-gray-300">Chat ({messageCount})</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-400">{userCount} người</span>
+                                    <Button 
+                                        size="sm" 
+                                        variant="ghost"
+                                        onClick={() => setShowChat(false)}
+                                        className="text-gray-400 hover:text-white h-4 w-4 p-0"
+                                    >
+                                        ×
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                         
-                        {/* Users list */}
-                        <div className="p-3 border-b border-gray-800 bg-gray-800/50">
-                            <div className="space-y-3">
-                                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                                    👥 Người xem ({userCount})
-                                </div>
-                                
-                                {/* Host first, then others */}
-                                {Object.values(room.users)
-                                    .sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0)) // Host first
-                                    .map((user) => {
-                                        const isCurrentUser = currentUser ? user.id === currentUser.id : false
-                                        const isHost = user.isHost
-                                        
-                                        return (
-                                            <div 
-                                                key={user.id} 
-                                                className={`flex items-center space-x-3 p-2 rounded-lg transition-all ${
-                                                    isHost ? 'bg-yellow-500/10 border border-yellow-500/20' :
-                                                    isCurrentUser ? 'bg-primary/10 border border-primary/20' : 
-                                                    'bg-gray-700/20'
-                                                }`}
-                                            >
-                                                {/* User icon/status */}
-                                                {isHost ? (
-                                                    <div className="relative">
-                                                        <Crown className="h-4 w-4 text-yellow-400" />
-                                                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                                                    </div>
-                                                ) : (
-                                                    <div className={`w-3 h-3 rounded-full ${
-                                                        isCurrentUser ? 'bg-primary animate-pulse' : 'bg-green-500'
-                                                    }`}></div>
-                                                )}
-                                                
-                                                {/* Username */}
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-sm font-bold ${
-                                                            isHost ? 'text-yellow-400' : 
-                                                            isCurrentUser ? 'text-primary' : 
-                                                            'text-gray-200'
-                                                        }`}>
-                                                            {user.name}
-                                                        </span>
-                                                        
-                                                        {/* Badges */}
-                                                        <div className="flex gap-1">
-                                                            {isHost && (
-                                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 rounded-full border border-yellow-500/30">
-                                                                    Host
-                                                                </span>
-                                                            )}
-                                                            {isCurrentUser && (
-                                                                <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded-full border border-primary/30">
-                                                                    Bạn
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Status text */}
-                                                    <p className="text-xs text-gray-400 mt-0.5">
-                                                        {isHost ? '👑 Chủ phòng • Có thể điều khiển phim' : 
-                                                         isCurrentUser ? '💫 Đang xem' : '👀 Đang xem'}
-                                                    </p>
+                        {/* Compact Users list */}
+                        <div className="px-2 py-1.5 border-b border-gray-800 bg-gray-800/50">
+                            <div className="space-y-1">
+                                <div className="text-xs text-gray-400 font-medium">ONLINE ({userCount})</div>
+                                <div className="flex flex-wrap gap-1">
+                                    {Object.values(room.users)
+                                        .sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0))
+                                        .map((user) => {
+                                            const isCurrentUser = currentUser ? user.id === currentUser.id : false
+                                            const isHost = user.isHost
+                                            
+                                            return (
+                                                <div 
+                                                    key={user.id} 
+                                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
+                                                        isHost ? 'bg-yellow-500/20 text-yellow-300' :
+                                                        isCurrentUser ? 'bg-primary/20 text-primary' : 
+                                                        'bg-gray-700/40 text-gray-300'
+                                                    }`}
+                                                    title={isHost ? 'Host' : isCurrentUser ? 'Bạn' : 'Viewer'}
+                                                >
+                                                    {isHost && <Crown className="h-2 w-2" />}
+                                                    <span className="truncate max-w-14 text-xs">{user.name}</span>
                                                 </div>
-                                            </div>
-                                        )
-                                    })}
+                                            )
+                                        })}
+                                </div>
                             </div>
                         </div>
                         
                         {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-900">
+                        <div className="flex-1 overflow-y-auto p-1.5 space-y-1 bg-gray-900">
                             {Object.values(room.messages).map((msg) => {
                                 // Check if it's a system message
                                 const isSystemMessage = msg.userName === 'System'
                                 
                                 if (isSystemMessage) {
-                                    // System message styling
+                                    // System message styling - center
                                     return (
-                                        <div key={msg.id} className="mx-4 my-2">
-                                            <div className="text-center">
-                                                <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full text-xs">
-                                                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
-                                                    <span className="text-blue-300 font-medium">{msg.text}</span>
-                                                    <span className="text-blue-400/60">
-                                                        {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
-                                                            hour: '2-digit', 
-                                                            minute: '2-digit' 
-                                                        })}
-                                                    </span>
-                                                </div>
+                                        <div key={msg.id} className="flex justify-center my-1">
+                                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-full px-2 py-0.5">
+                                                <span className="text-xs text-blue-300">{msg.text}</span>
                                             </div>
                                         </div>
                                     )
@@ -771,52 +902,40 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                 const isHost = userEntry ? room.users[userEntry]?.isHost : false
                                 
                                 return (
-                                    <div key={msg.id} className={`p-3 rounded-lg transition-all hover:bg-gray-800/50 ${isCurrentUser ? 'bg-primary/5 border-l-2 border-primary' : 'bg-gray-800/30'}`}>
-                                        {/* Message header */}
-                                        <div className="flex items-center justify-between mb-1">
-                                            <div className="flex items-center gap-2">
-                                                {/* User icon/badge */}
-                                                {isHost ? (
-                                                    <Crown className="h-3 w-3 text-yellow-400" />
-                                                ) : isCurrentUser ? (
-                                                    <div className="w-3 h-3 bg-primary rounded-full"></div>
-                                                ) : (
-                                                    <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                                                )}
-                                                
-                                                {/* Username with styling */}
-                                                <span className={`text-sm font-bold ${
+                                    <div key={msg.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-1`}>
+                                        <div className={`max-w-[85%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+                                            {/* Message header */}
+                                            <div className={`flex items-center gap-1 mb-0.5 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                                                {!isCurrentUser && isHost && <Crown className="h-2 w-2 text-yellow-400" />}
+                                                <span className={`text-xs font-medium ${
                                                     isHost ? 'text-yellow-400' : 
                                                     isCurrentUser ? 'text-primary' : 
-                                                    'text-gray-200'
+                                                    'text-gray-300'
                                                 }`}>
-                                                    {msg.userName}
-                                                    {isCurrentUser && ' (Bạn)'}
+                                                    {isCurrentUser ? 'Bạn' : msg.userName}
                                                 </span>
-                                                
-                                                {/* Video timestamp when message was sent */}
                                                 {msg.videoTime && (
-                                                    <span className="text-xs px-1.5 py-0.5 bg-gray-700/50 text-gray-400 rounded">
+                                                    <span className="text-xs text-gray-500">
                                                         {Math.floor(msg.videoTime / 60)}:{String(Math.floor(msg.videoTime % 60)).padStart(2, '0')}
                                                     </span>
                                                 )}
+                                                <span className="text-xs text-gray-500">
+                                                    {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
+                                                        hour: '2-digit', 
+                                                        minute: '2-digit' 
+                                                    })}
+                                                </span>
                                             </div>
                                             
-                                            {/* Message time */}
-                                            <span className="text-xs text-gray-500">
-                                                {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
-                                                    hour: '2-digit', 
-                                                    minute: '2-digit' 
-                                                })}
-                                            </span>
+                                            {/* Message bubble */}
+                                            <div className={`rounded-lg px-2 py-1 text-xs leading-snug ${
+                                                isCurrentUser ? 
+                                                    'bg-primary text-white' : 
+                                                    'bg-gray-700 text-gray-100'
+                                            }`}>
+                                                {msg.text}
+                                            </div>
                                         </div>
-                                        
-                                        {/* Message content */}
-                                        <p className={`text-sm leading-relaxed ${
-                                            isCurrentUser ? 'text-white' : 'text-gray-100'
-                                        }`}>
-                                            {msg.text}
-                                        </p>
                                     </div>
                                 )
                             })}
@@ -824,23 +943,23 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                         </div>
                         
                         {/* Message input */}
-                        <div className="p-3 border-t border-gray-800 bg-gray-900">
-                            <div className="flex space-x-2">
+                        <div className="p-1.5 border-t border-gray-800 bg-gray-900">
+                            <div className="flex gap-1">
                                 <Input
-                                    placeholder="Nhập tin nhắn..."
+                                    placeholder="Tin nhắn..."
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                                     maxLength={200}
-                                    className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-primary"
+                                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-primary"
                                 />
                                 <Button 
                                     size="sm"
                                     onClick={handleSendMessage}
                                     disabled={!message.trim()}
-                                    className="bg-primary hover:bg-primary/90 px-3"
+                                    className="h-7 w-7 p-0 bg-primary hover:bg-primary/90"
                                 >
-                                    <Send className="h-4 w-4" />
+                                    <Send className="h-3 w-3" />
                                 </Button>
                             </div>
                         </div>
