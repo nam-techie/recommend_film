@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SectionHeader } from '@/components/ui/SectionHeader'
-import { Grid3X3, Users, MessageCircle, Play, Crown, Clock, Globe, Heart, Star } from 'lucide-react'
+import { Grid3X3, Users, MessageCircle, Play, Crown, Clock, Globe, Heart, Star, Filter, SortAsc, SortDesc } from 'lucide-react'
 import Link from 'next/link'
 import { database } from '@/lib/firebase'
 import { ref, onValue, off } from 'firebase/database'
@@ -37,6 +38,8 @@ export default function GenresUpgradePage() {
   const [activeRooms, setActiveRooms] = useState<WatchRoom[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [timeFilter, setTimeFilter] = useState('all') // all, 30m, 1h, 2h
+  const [sortBy, setSortBy] = useState('newest') // newest, oldest, most_users, most_messages
 
   // Load active rooms from Firebase
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function GenresUpgradePage() {
   const demoRooms: WatchRoom[] = [
     {
       id: 'room_demo_1',
-      roomName: 'Phòng Avatar của Khang', // Tên phòng tùy chỉnh
+      roomName: 'Phòng Anime của Khang 🐉', // Tên phòng tùy chỉnh
       movie: {
         slug: 'co-rong-hau-gai-cua-kobayashi-phan-2',
         title: 'Cô Rồng Hầu Gái Của Kobayashi (Phần 2)',
@@ -93,6 +96,7 @@ export default function GenresUpgradePage() {
     },
     {
       id: 'room_demo_2',
+      roomName: 'Xem cùng Nam và bạn bè', // Tên phòng tùy chỉnh
       movie: {
         slug: 'co-rong-hau-gai-cua-kobayashi-phan-1', 
         title: 'Cô Rồng Hầu Gái Của Kobayashi (Phần 1)',
@@ -110,9 +114,48 @@ export default function GenresUpgradePage() {
     }
   ]
 
-  const filteredRooms = activeRooms.filter(room =>
-    room.movie.title.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // Filter and sort rooms
+  const filteredRooms = activeRooms
+    .filter(room => {
+      // Search filter - search both room name and movie title
+      const searchMatch = searchTerm === '' || 
+        getRoomDisplayName(room).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        room.movie.title.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      // Time filter
+      let timeMatch = true
+      if (timeFilter !== 'all') {
+        const now = Date.now()
+        const timeDiff = now - room.createdAt
+        
+        switch (timeFilter) {
+          case '30m':
+            timeMatch = timeDiff <= 30 * 60 * 1000
+            break
+          case '1h':
+            timeMatch = timeDiff <= 60 * 60 * 1000
+            break
+          case '2h':
+            timeMatch = timeDiff <= 2 * 60 * 60 * 1000
+            break
+        }
+      }
+      
+      return searchMatch && timeMatch
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'oldest':
+          return a.createdAt - b.createdAt
+        case 'most_users':
+          return getActiveUserCount(b) - getActiveUserCount(a)
+        case 'most_messages':
+          return Object.keys(b.messages || {}).length - Object.keys(a.messages || {}).length
+        case 'newest':
+        default:
+          return b.createdAt - a.createdAt
+      }
+    })
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -261,22 +304,74 @@ export default function GenresUpgradePage() {
 
       {/* Active Rooms Section */}
       <div className="space-y-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Phòng đang hoạt động</h2>
-            <p className="text-muted-foreground">Tham gia phòng có sẵn hoặc tạo phòng mới</p>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <Input
-              placeholder="Tìm kiếm phim..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full lg:w-64"
-            />
-            <Badge variant="secondary" className="whitespace-nowrap">
+        <div className="space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Phòng đang hoạt động</h2>
+              <p className="text-muted-foreground">Tham gia phòng có sẵn hoặc tạo phòng mới</p>
+            </div>
+            
+            <Badge variant="secondary" className="lg:self-start">
               {filteredRooms.length} phòng
             </Badge>
+          </div>
+
+          {/* Filters and Search */}
+          <div className="flex flex-col sm:flex-row gap-4 p-4 bg-muted/30 rounded-lg border">
+            <div className="flex-1">
+              <Input
+                placeholder="Tìm kiếm tên phòng hoặc phim..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <Select value={timeFilter} onValueChange={setTimeFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Thời gian" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả</SelectItem>
+                  <SelectItem value="30m">30 phút qua</SelectItem>
+                  <SelectItem value="1h">1 giờ qua</SelectItem>
+                  <SelectItem value="2h">2 giờ qua</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Sắp xếp" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Mới nhất
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="oldest">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Cũ nhất
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="most_users">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Nhiều người nhất
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="most_messages">
+                    <div className="flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4" />
+                      Nhiều chat nhất
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 

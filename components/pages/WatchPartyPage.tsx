@@ -497,9 +497,9 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                 <div className="flex items-center gap-4 text-white/80">
                                                     <div className="flex items-center gap-2">
                                                         <Users className="h-4 w-4" />
-                                                                                                <span className="text-sm font-medium">
+                                                        <span className="text-sm font-medium">
                                             {getActiveUsers().length} người đang xem
-                                        </span>
+                                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -785,29 +785,29 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                         )
                                     } else {
                                         const msg = item.data
-                                        const isCurrentUser = msg.userName === currentUser?.name
-                                        const userEntry = room?.users ? Object.keys(room.users).find(id => room.users[id].name === msg.userName) : undefined
-                                        const isHost = userEntry ? room.users[userEntry]?.isHost : false
-                                        
-                                        return (
+                                const isCurrentUser = msg.userName === currentUser?.name
+                                const userEntry = room?.users ? Object.keys(room.users).find(id => room.users[id].name === msg.userName) : undefined
+                                const isHost = userEntry ? room.users[userEntry]?.isHost : false
+                                
+                                return (
                                             <div key={msg.id} className={`group flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-2`}>
-                                                <div className={`max-w-[80%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-                                                    {/* Message header */}
-                                                    <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                                                        <span className={`text-xs font-medium ${
-                                                            isHost ? 'text-red-400' : 
-                                                            isCurrentUser ? 'text-purple-400' : 
-                                                            'text-gray-400'
-                                                        }`}>
-                                                            {isCurrentUser ? 'Bạn' : (isHost ? `👑 ${msg.userName}` : msg.userName)}
-                                                        </span>
-                                                        <span className="text-xs text-gray-500">
-                                                            {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
-                                                                hour: '2-digit', 
-                                                                minute: '2-digit' 
-                                                            })}
-                                                        </span>
-                                                    </div>
+                                        <div className={`max-w-[80%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+                                            {/* Message header */}
+                                            <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                                                <span className={`text-xs font-medium ${
+                                                    isHost ? 'text-red-400' : 
+                                                    isCurrentUser ? 'text-purple-400' : 
+                                                    'text-gray-400'
+                                                }`}>
+                                                    {isCurrentUser ? 'Bạn' : (isHost ? `👑 ${msg.userName}` : msg.userName)}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                    {new Date(msg.timestamp).toLocaleTimeString('vi-VN', { 
+                                                        hour: '2-digit', 
+                                                        minute: '2-digit' 
+                                                    })}
+                                                </span>
+                                            </div>
                                                     
                                                     {/* Reply preview if this is a reply */}
                                                     {msg.replyTo && (
@@ -821,15 +821,15 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                             <p className="text-gray-400 truncate">{msg.replyTo.text}</p>
                                                         </div>
                                                     )}
-                                                    
-                                                    {/* Message bubble */}
+                                            
+                                            {/* Message bubble */}
                                                     <div className="relative">
-                                                        <div className={`rounded-2xl px-3 py-2 text-sm ${
-                                                            isCurrentUser ? 
-                                                                'bg-purple-600 text-white ml-auto' : 
-                                                                'bg-gray-700 text-gray-100'
-                                                        }`}>
-                                                            <p className="text-sm leading-relaxed">{msg.text}</p>
+                                            <div className={`rounded-2xl px-3 py-2 text-sm ${
+                                                isCurrentUser ? 
+                                                    'bg-purple-600 text-white ml-auto' : 
+                                                    'bg-gray-700 text-gray-100'
+                                            }`}>
+                                                <p className="text-sm leading-relaxed">{msg.text}</p>
                                                         </div>
                                                         
                                                         {/* Reply button - Only show on hover for others' messages */}
@@ -842,11 +842,11 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                                                             >
                                                                 <Reply className="h-3 w-3" />
                                                             </Button>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
-                                        )
+                                        </div>
+                                    </div>
+                                )
                                     }
                                 })
                             })()}

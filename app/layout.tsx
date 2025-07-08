@@ -32,15 +32,16 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="vi" suppressHydrationWarning>
+        <html lang="vi" suppressHydrationWarning className="dark">
             <body
                 className={`antialiased font-inter min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
             >
                 <ThemeProvider
                     attribute="class"
-                    defaultTheme="system"
-                    enableSystem
+                    defaultTheme="dark"
+                    enableSystem={false}
                     disableTransitionOnChange
+                    forcedTheme="dark"
                 >
                     <Navbar />
                     <main className="container mx-auto px-4 py-6 sm:py-8 flex-1 overflow-visible">

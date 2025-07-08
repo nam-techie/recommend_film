@@ -1,12 +1,11 @@
 import { Metadata } from 'next'
-import { redirect } from 'next/navigation'
+import GenresUpgradePage from '@/components/pages/GenresUpgradePage'
 
 export const metadata: Metadata = {
-  title: 'Xem Chung - CineMind',
-  description: 'Trang chính của tính năng Xem Chung',
+  title: 'Phòng Xem Chung - CineMind',
+  description: 'Tham gia phòng xem chung hoặc tạo phòng mới',
 }
 
 export default function WatchPartyMainPage() {
-  // Redirect to the genres page where the main watch party interface is
-  redirect('/genres')
+  return <GenresUpgradePage />
 } 
