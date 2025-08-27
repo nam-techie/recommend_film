@@ -1,0 +1,10 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moviewiser
+    env_file: .env          # nạp các NEXT_PUBLIC_* cần thiết
+    ports:
+      - "8080:3000"         # muốn mở 8080 thì sửa thành "8080:3000"
+    restart: unless-stopped
