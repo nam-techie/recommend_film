@@ -20,25 +20,7 @@ import {
 } from "@/components/ui/pagination"
 import Link from 'next/link'
 
-// Types
-interface Movie {
-    id: number
-    title: string
-    release_date: string
-    poster_path: string
-    vote_average: number
-    vote_count: number
-    overview: string
-    genre_ids?: number[]
-    runtime?: number
-    backdrop_path?: string
-    original_language: string
-    original_title: string
-    popularity: number
-    adult: boolean
-    video: boolean
-}
-
+// Types - Using PhimAPI Movie type
 interface Video {
     key: string
     site: string
@@ -48,7 +30,7 @@ interface Video {
 }
 
 interface MovieCardProps {
-    movie: Movie
+    movie: PhimAPIMovie
 }
 
 interface SelectionFormProps {
@@ -70,29 +52,29 @@ interface MoviePaginationProps {
     onPageChange: (page: number) => void
 }
 
-// Constants
+// Constants - Updated to use PhimAPI categories (Vietnamese)
 const MOOD_TO_GENRE = {
-    happy: 35,    // Comedy
-    sad: 18,      // Drama
-    excited: 28,  // Action
-    relaxed: 10749, // Romance
-    scared: 27,   // Horror
-    adventurous: 12, // Adventure
+    happy: 'hai-huoc',      // Comedy
+    sad: 'tam-ly',          // Drama/Psychology  
+    excited: 'hanh-dong',   // Action
+    relaxed: 'tinh-cam',    // Romance
+    scared: 'kinh-di',      // Horror
+    adventurous: 'phieu-luu', // Adventure
 } as const
 
 const GENRES = [
-    { id: '12', name: '🏔️ Adventure' },
-    { id: '28', name: '💥 Action' },
-    { id: '35', name: '😂 Comedy' },
-    { id: '18', name: '🎭 Drama' },
-    { id: '27', name: '👻 Horror' },
-    { id: '10749', name: '💕 Romance' },
-    { id: '878', name: '🚀 Sci-Fi' },
-    { id: '53', name: '🔥 Thriller' },
-    { id: '16', name: '🎨 Animation' },
-    { id: '80', name: '🔍 Crime' },
-    { id: '99', name: '📚 Documentary' },
-    { id: '14', name: '✨ Fantasy' },
+    { id: 'phieu-luu', name: '🏔️ Phiêu Lưu' },
+    { id: 'hanh-dong', name: '💥 Hành Động' },
+    { id: 'hai-huoc', name: '😂 Hài Hước' },
+    { id: 'tam-ly', name: '🎭 Tâm Lý' },
+    { id: 'kinh-di', name: '👻 Kinh Dị' },
+    { id: 'tinh-cam', name: '💕 Tình Cảm' },
+    { id: 'khoa-hoc-vien-tuong', name: '🚀 Khoa Học Viễn Tưởng' },
+    { id: 'hinh-su', name: '🔥 Hình Sự' },
+    { id: 'hoat-hinh', name: '🎨 Hoạt Hình' },
+    { id: 'chien-tranh', name: '⚔️ Chiến Tranh' },
+    { id: 'tai-lieu', name: '📚 Tài Liệu' },
+    { id: 'than-thoai', name: '✨ Thần Thoại' },
 ] as const
 
 const MOODS = [
@@ -148,60 +130,54 @@ const createSlugFromTitle = (title: string): string => {
         .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
 }
 
-// API Functions
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_MOVIE_API_KEY!
+// API Functions - Updated to use PhimAPI
+import { searchMoviesByMood, Movie as PhimAPIMovie, getImageUrl } from '@/lib/api'
 
 const fetchMoviesByGenre = async (
-    genreId: string | number, 
+    genreId: string, 
     page: number, 
-    sortBy: string = 'popularity.desc',
+    sortBy: string = 'modified.time',
     year?: string
-): Promise<{ movies: Movie[], totalPages: number }> => {
+): Promise<{ movies: PhimAPIMovie[], totalPages: number }> => {
     try {
-        let url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&sort_by=${sortBy}&page=${page}&vote_count.gte=50`
+        const sortField = sortBy.includes('popularity') ? 'modified.time' : 
+                         sortBy.includes('vote_average') ? 'year' : 'modified.time'
+        const sortType = sortBy.includes('.asc') ? 'asc' : 'desc'
         
-        if (year && year !== 'all') {
-            url += `&year=${year}`
+        const response = await searchMoviesByMood({
+            category: genreId !== 'all' ? genreId : undefined,
+            year: year && year !== 'all' ? year : undefined,
+            sort_field: sortField as 'modified.time' | '_id' | 'year',
+            sort_type: sortType as 'asc' | 'desc',
+            page,
+            limit: MOVIES_PER_PAGE
+        })
+        
+        if (response.data?.items) {
+            return {
+                movies: response.data.items,
+                totalPages: Math.ceil((response.data.params?.pagination?.totalItems || 0) / MOVIES_PER_PAGE)
+            }
         }
-
-        const response = await fetch(url)
-        if (!response.ok) {
-            throw new Error('Failed to fetch movies')
-        }
-        const data = await response.json()
-        return {
-            movies: data.results.slice(0, MOVIES_PER_PAGE),
-            totalPages: Math.min(data.total_pages, 500)
-        }
+        
+        return { movies: [], totalPages: 0 }
     } catch (error) {
         console.error('Error fetching movies:', error)
         return { movies: [], totalPages: 0 }
     }
 }
 
-const fetchMovieTrailer = async (movieId: number): Promise<string | null> => {
+const fetchMovieTrailer = async (movie: PhimAPIMovie): Promise<string | null> => {
     try {
-        const response = await fetch(
-            `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${TMDB_API_KEY}`
-        )
-        if (!response.ok) {
-            throw new Error('Failed to fetch movie videos')
+        // PhimAPI movies already have trailer_url
+        if (movie.trailer_url) {
+            return movie.trailer_url
         }
-        const data = await response.json()
         
-        // Tìm trailer YouTube chính thức
-        const trailer = data.results.find((video: Video) => 
-            video.site === 'YouTube' && 
-            video.type === 'Trailer' && 
-            video.official === true
-        ) || data.results.find((video: Video) => 
-            video.site === 'YouTube' && 
-            video.type === 'Trailer'
-        )
-        
-        return trailer ? trailer.key : null
+        // Fallback: If no trailer_url, return null
+        return null
     } catch (error) {
-        console.error('Error fetching trailer:', error)
+        console.error('Error fetching movie trailer:', error)
         return null
     }
 }
@@ -230,8 +206,8 @@ const MovieCard = ({ movie }: MovieCardProps) => {
     const [showTrailerModal, setShowTrailerModal] = useState(false)
     const [loadingTrailer, setLoadingTrailer] = useState(false)
 
-    // Tạo slug từ title để link đến trang chi tiết
-    const movieSlug = createSlugFromTitle(movie.title)
+    // Tạo slug từ name để link đến trang chi tiết (PhimAPI uses 'name' not 'title')
+    const movieSlug = movie.slug || createSlugFromTitle(movie.name)
 
     const handlePlayTrailer = async () => {
         if (trailerKey) {
@@ -241,7 +217,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
         setLoadingTrailer(true)
         try {
-            const trailer = await fetchMovieTrailer(movie.id)
+            const trailer = await fetchMovieTrailer(movie)
             if (trailer) {
                 setTrailerKey(trailer)
                 setShowTrailerModal(true)
@@ -265,8 +241,8 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                     <Skeleton className="w-full h-full" />
                 )}
                 <img
-                    src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
-                    alt={`${movie.title} poster`}
+                    src={getImageUrl(movie.poster_url)}
+                    alt={`${movie.name} poster`}
                     className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                     onLoad={() => setImageLoaded(true)}
                 />
@@ -287,18 +263,20 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                 </div>
 
                 {/* Rating Badge */}
-                <div className="absolute top-3 left-3">
-                    <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 shadow-lg">
-                        <Star className="h-3 w-3 text-white mr-1 fill-current" />
-                        {movie.vote_average.toFixed(1)}
-                    </Badge>
-                </div>
+                {movie.tmdb?.vote_average && (
+                    <div className="absolute top-3 left-3">
+                        <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 shadow-lg">
+                            <Star className="h-3 w-3 text-white mr-1 fill-current" />
+                            {movie.tmdb.vote_average.toFixed(1)}
+                        </Badge>
+                    </div>
+                )}
 
                 {/* Language Badge */}
                 <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
                     <Badge variant="secondary" className="bg-black/40 backdrop-blur-md text-white border-0">
                         <Globe className="h-3 w-3 mr-1" />
-                        {LANGUAGE_MAP[movie.original_language] || movie.original_language.toUpperCase()}
+                        {movie.lang || 'Vietsub'}
                     </Badge>
                 </div>
 
@@ -306,7 +284,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                 <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
                     <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white border-0">
                         <Users className="h-3 w-3 mr-1" />
-                        {formatPopularity(movie.popularity)}
+                        {movie.view || 'N/A'}
                     </Badge>
                 </div>
 
@@ -331,16 +309,16 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
             <CardHeader className="pb-3 pt-4">
                 <CardTitle className="text-lg font-bold line-clamp-2 group-hover:text-primary transition-colors duration-300 leading-tight">
-                    {movie.title}
+                    {movie.name}
                 </CardTitle>
                 <CardDescription className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {new Date(movie.release_date).getFullYear()}
+                        {movie.year}
                     </span>
                     <span className="flex items-center gap-1">
                         <Award className="h-3 w-3" />
-                        {movie.vote_count.toLocaleString()} votes
+                        {movie.tmdb?.vote_count?.toLocaleString() || movie.quality} 
                     </span>
                 </CardDescription>
             </CardHeader>
@@ -365,7 +343,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                         {trailerKey && (
                             <iframe
                                 src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1`}
-                                title={`${movie.title} Trailer`}
+                                title={`${movie.name} Trailer`}
                                 className="absolute inset-0 w-full h-full"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                 allowFullScreen
@@ -373,7 +351,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                         )}
                     </div>
                     <div className="p-3 sm:p-4 bg-gradient-to-br from-background via-background to-muted/30">
-                        <h3 className="text-lg sm:text-xl font-bold text-white mb-1 sm:mb-2">{movie.title}</h3>
+                        <h3 className="text-lg sm:text-xl font-bold text-white mb-1 sm:mb-2">{movie.name}</h3>
                         <p className="text-sm sm:text-base text-muted-foreground">Official Trailer</p>
                     </div>
                 </DialogContent>
@@ -639,7 +617,7 @@ export function MovieMoodRecommender() {
     const [genre, setGenre] = useState('all')
     const [sortBy, setSortBy] = useState('popularity.desc')
     const [year, setYear] = useState('all')
-    const [movies, setMovies] = useState<Movie[]>([])
+    const [movies, setMovies] = useState<PhimAPIMovie[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
@@ -763,7 +741,7 @@ export function MovieMoodRecommender() {
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6 lg:gap-8 px-4 sm:px-6 lg:px-8">
                         {movies.map(movie => (
-                            <MovieCard key={movie.id} movie={movie} />
+                            <MovieCard key={movie._id} movie={movie} />
                         ))}
                     </div>
 

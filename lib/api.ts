@@ -216,6 +216,35 @@ export async function searchMovies(params: SearchParams): Promise<ApiResponse<an
   }
 }
 
+// New function for AI Recommender - Search movies by mood/genre using PhimAPI
+export async function searchMoviesByMood(params: {
+  category?: string
+  country?: string
+  year?: string
+  sort_field?: 'modified.time' | '_id' | 'year'
+  sort_type?: 'asc' | 'desc'
+  page?: number
+  limit?: number
+}): Promise<CategoryApiResponse> {
+  try {
+    const searchParams = {
+      type_list: 'phim-le' as const, // Default to movies
+      sort_field: 'modified.time' as const,
+      sort_type: 'desc' as const,
+      page: 1,
+      limit: 24,
+      ...params
+    }
+    
+    const response = await fetch(buildApiUrl('/v1/api/danh-sach/phim-le', searchParams))
+    if (!response.ok) throw new Error('Failed to search movies by mood')
+    return await response.json()
+  } catch (error) {
+    console.error('Error searching movies by mood:', error)
+    throw error
+  }
+}
+
 export async function fetchMoviesByCategory(
   categorySlug: string, 
   params: Omit<SearchParams, 'category'> = {}

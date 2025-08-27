@@ -291,48 +291,52 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* PERFECT ROPHIM STYLE HOVER EFFECTS */
+/* ENHANCED GLASSMORPHISM MOVIE CARD HOVER EFFECTS */
 .movie-card-hover {
-  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: center;
-  will-change: transform;
+  will-change: transform, box-shadow;
 }
 
-/* RESPONSIVE SCALE - PERFECT FOR ALL DEVICES */
+/* RESPONSIVE SCALE - OPTIMIZED FOR SMOOTH PERFORMANCE */
 .movie-card-hover:hover {
-  /* Mobile: Scale nhỏ hơn */
-  transform: scale(1.3);
+  /* Mobile: Subtle scale */
+  transform: scale(1.08);
   z-index: 100;
-  box-shadow: 0 30px 100px -20px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.7);
 }
 
 @media (min-width: 768px) {
   .movie-card-hover:hover {
-    /* Tablet: Scale vừa */
-    transform: scale(1.4);
+    /* Tablet: Moderate scale */
+    transform: scale(1.12);
+    box-shadow: 0 25px 70px -15px rgba(0, 0, 0, 0.75);
   }
 }
 
 @media (min-width: 1024px) {
   .movie-card-hover:hover {
-    /* Desktop: Scale lớn nhất */
-    transform: scale(1.5);
+    /* Desktop: Comfortable scale */
+    transform: scale(1.15);
+    box-shadow: 0 30px 80px -15px rgba(0, 0, 0, 0.8);
   }
 }
 
 @media (min-width: 1280px) {
   .movie-card-hover:hover {
-    /* Large Desktop: Scale tối đa */
-    transform: scale(1.6);
+    /* Large Desktop: Maximum scale */
+    transform: scale(1.18);
+    box-shadow: 0 35px 90px -15px rgba(0, 0, 0, 0.85);
   }
 }
 
-/* Ensure proper stacking context for MASSIVE hover effects */
+/* Enhanced stacking context for smooth hover effects */
 .movie-grid {
   position: relative;
   display: grid;
   gap: 1.5rem;
   overflow: visible;
+  padding: 0.5rem;
 }
 
 .movie-grid > * {
@@ -342,6 +346,19 @@ body {
 
 .movie-grid > *:hover {
   z-index: 100 !important;
+}
+
+/* Glassmorphism utilities */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Loading shimmer effect */
