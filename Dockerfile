@@ -1,22 +1,32 @@
-# -------- Build stage --------
-    FROM node:20-alpine AS builder
+# ---------- Stage 1: build ----------
+    FROM node:20-alpine AS build
     WORKDIR /app
+    
+    # 1) Cài deps với cache tốt
     COPY package*.json ./
-    RUN npm ci
+    RUN npm ci --prefer-offline --no-audit --no-fund
+    
+    # 2) Copy source và build
     COPY . .
-    # Nếu bạn có biến môi trường build-time, chúng nên là NEXT_PUBLIC_* hoặc dùng ARG
+    # Đảm bảo Next tạo standalone
+    # (thêm output: 'standalone' trong next.config.js)
     RUN npm run build
     
-    # -------- Runtime stage --------
+    # ---------- Stage 2: runtime ----------
     FROM node:20-alpine AS runner
     WORKDIR /app
     ENV NODE_ENV=production
-    COPY --from=builder /app/package*.json ./
-    RUN npm ci --omit=dev
-    COPY --from=builder /app/.next ./.next
-    COPY --from=builder /app/public ./public
-    # nếu dùng next.config.js (output: standalone) thì copy theo config đó
+    # Tạo user không phải root
+    RUN addgroup -S nodegrp && adduser -S nodeuser -G nodegrp
     
+    # 3) Chỉ copy những gì cần để chạy
+    COPY --from=build /app/.next/standalone ./
+    COPY --from=build /app/public ./public
+    COPY --from=build /app/.next/static ./.next/static
+    
+    USER nodeuser
     EXPOSE 3000
-    CMD ["npm", "run", "start"]
+    # Healthcheck nhẹ
+    HEALTHCHECK --interval=30s --timeout=3s CMD node -e "require('http').get('http://localhost:3000',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+    CMD ["node", "server.js"]
     
