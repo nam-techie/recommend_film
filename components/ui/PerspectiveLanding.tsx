@@ -15,6 +15,7 @@ export const PerspectiveLanding: React.FC<PerspectiveLandingProps> = ({ onEnter 
     const [loading, setLoading] = useState(true)
     const [activeMovieId, setActiveMovieId] = useState<string | null>(null)
     const [isExiting, setIsExiting] = useState(false)
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
     useEffect(() => {
         const loadMovies = async () => {
@@ -32,7 +33,20 @@ export const PerspectiveLanding: React.FC<PerspectiveLandingProps> = ({ onEnter 
             }
         }
         loadMovies()
+
+        // Reset mouse position to center on mouse leave
+        const handleMouseLeave = () => setMousePos({ x: 0, y: 0 })
+        document.addEventListener('mouseleave', handleMouseLeave)
+        return () => document.removeEventListener('mouseleave', handleMouseLeave)
     }, [])
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (isExiting) return
+        const x = (e.clientX / window.innerWidth) * 2 - 1
+        const y = (e.clientY / window.innerHeight) * 2 - 1
+        // Smooth out the coordinates slightly
+        setMousePos({ x, y })
+    }
 
     const handleEnter = () => {
         setIsExiting(true)
@@ -63,10 +77,18 @@ export const PerspectiveLanding: React.FC<PerspectiveLandingProps> = ({ onEnter 
         )
     }
 
+    // Tính toán góc nghiêng dựa trên chuột (parallax effect)
+    // Góc mặc định là rotateY(-12deg) rotateX(4deg), ta cộng thêm ảnh hưởng của chuột
+    const baseRotateY = -12
+    const baseRotateX = 4
+    const hoverRotateY = baseRotateY + mousePos.x * 15 // Tối đa +/- 15 độ
+    const hoverRotateX = baseRotateX - mousePos.y * 15
+
     return (
         <div 
             className={`fixed inset-0 z-[100] bg-background/95 backdrop-blur-2xl flex items-center justify-center overflow-hidden transition-all duration-800 ease-in-out ${isExiting ? 'opacity-0 scale-150 pointer-events-none' : 'opacity-100 scale-100'}`}
             style={{ perspective: '1500px' }}
+            onMouseMove={handleMouseMove}
         >
             {/* Ambient Background Glow based on active movie */}
             {activeMovie && (
@@ -81,10 +103,11 @@ export const PerspectiveLanding: React.FC<PerspectiveLandingProps> = ({ onEnter 
 
             {/* 3D Glass Panel Container */}
             <div 
-                className="relative z-10 w-full max-w-6xl h-[85vh] sm:h-[80vh] flex flex-col lg:flex-row rounded-3xl overflow-hidden border border-white/10 shadow-[rgba(0,0,0,0.56)_0px_22px_70px_4px] bg-black/40 backdrop-blur-md transition-transform duration-1000 ease-out"
+                className="relative z-10 w-full max-w-6xl h-[85vh] sm:h-[80vh] flex flex-col lg:flex-row rounded-3xl overflow-hidden border border-white/10 shadow-[rgba(0,0,0,0.56)_0px_22px_70px_4px] bg-black/40 backdrop-blur-md transition-transform ease-out"
                 style={{
-                    transform: isExiting ? 'rotateY(0deg) rotateX(0deg) translateZ(500px)' : 'rotateY(-12deg) rotateX(4deg) translateZ(50px)',
-                    transformStyle: 'preserve-3d'
+                    transform: isExiting ? 'rotateY(0deg) rotateX(0deg) translateZ(500px)' : `rotateY(${hoverRotateY}deg) rotateX(${hoverRotateX}deg) translateZ(50px)`,
+                    transformStyle: 'preserve-3d',
+                    transitionDuration: isExiting ? '1000ms' : '150ms' // Fast transition on mouse move, slow on exit
                 }}
             >
                 {/* Left Panel: Information & CTA */}
