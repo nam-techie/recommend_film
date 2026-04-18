@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700;800;900&family=Overpass+Mono:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,15 +11,23 @@
       --card-foreground: 224 71.4% 4.1%;
       --popover: 0 0% 100%;
       --popover-foreground: 224 71.4% 4.1%;
-      --primary: 262.1 83.3% 57.8%;
+      --primary: 294 100% 44%;
       --primary-foreground: 210 20% 98%;
-      --secondary: 220 14.3% 89%;
-      --secondary-foreground: 220.9 39.3% 11%;
+      --secondary: 329 100% 45%;
+      --secondary-foreground: 210 20% 98%;
+      --success: 142 76% 36%;
+      --success-foreground: 210 20% 98%;
+      --warning: 32 95% 44%;
+      --warning-foreground: 210 20% 98%;
+      --danger: 0 72% 51%;
+      --danger-foreground: 210 20% 98%;
+      --surface: 0 0% 100%;
+      --text: 215 28% 11%;
       --muted: 220 14.3% 93%;
       --muted-foreground: 220 8.9% 42%;
       --accent: 220 14.3% 87%;
       --accent-foreground: 220.9 39.3% 11%;
-      --destructive: 0 84.2% 60.2%;
+      --destructive: 0 72% 51%;
       --destructive-foreground: 210 20% 98%;
       --border: 220 13% 87%;
       --input: 220 13% 89%;
@@ -39,15 +47,23 @@
       --card-foreground: 210 20% 98%;
       --popover: 224 71.4% 4.1%;
       --popover-foreground: 210 20% 98%;
-      --primary: 263.4 70% 50.4%;
+      --primary: 294 100% 44%;
       --primary-foreground: 210 20% 98%;
-      --secondary: 215 27.9% 16.9%;
+      --secondary: 329 100% 45%;
       --secondary-foreground: 210 20% 98%;
+      --success: 142 76% 36%;
+      --success-foreground: 210 20% 98%;
+      --warning: 32 95% 44%;
+      --warning-foreground: 210 20% 98%;
+      --danger: 0 72% 51%;
+      --danger-foreground: 210 20% 98%;
+      --surface: 215 28% 11%;
+      --text: 210 20% 98%;
       --muted: 215 27.9% 16.9%;
       --muted-foreground: 217.9 10.6% 64.9%;
       --accent: 215 27.9% 16.9%;
       --accent-foreground: 210 20% 98%;
-      --destructive: 0 62.8% 30.6%;
+      --destructive: 0 72% 51%;
       --destructive-foreground: 210 20% 98%;
       --border: 215 27.9% 16.9%;
       --input: 215 27.9% 16.9%;
@@ -65,7 +81,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-inter;
+    @apply bg-background text-foreground font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

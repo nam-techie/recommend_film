@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
+import { Jost, Overpass_Mono } from "next/font/google";
 import "./globals.css";
+
+const jost = Jost({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-jost",
+  display: "swap",
+});
+
+const overpassMono = Overpass_Mono({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-overpass-mono",
+  display: "swap",
+});
 import { ThemeProvider } from '@/components/theme-provider'
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -34,7 +47,7 @@ export default function RootLayout({
     return (
         <html lang="vi" suppressHydrationWarning className="dark">
             <body
-                className={`antialiased font-inter min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
+                className={`antialiased ${jost.variable} ${overpassMono.variable} font-sans min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
             >
                 <ThemeProvider
                     attribute="class"

@@ -26,10 +26,10 @@ export function MovieCard({
     const [imageLoaded, setImageLoaded] = useState(false)
 
     const getRatingColor = (rating: number) => {
-        if (rating >= 8) return 'from-green-500 to-emerald-500'
-        if (rating >= 7) return 'from-yellow-500 to-orange-500'
-        if (rating >= 6) return 'from-orange-500 to-red-500'
-        return 'from-red-500 to-pink-500'
+        if (rating >= 8) return 'from-success flex to-emerald-400'
+        if (rating >= 7) return 'from-warning to-yellow-400'
+        if (rating >= 6) return 'from-orange-500 to-red-400'
+        return 'from-danger to-pink-500'
     }
 
     const getTypeLabel = (type: string) => {
@@ -45,114 +45,107 @@ export function MovieCard({
 
     if (variant === 'hover-expand') {
         return (
-            <div className="group relative cursor-pointer">
+            <div className="group relative cursor-pointer hover:z-50 focus-within:z-50 transition-all duration-300">
                 {/* Main Card Container - SMOOTH SCALING */}
-                <div className="relative overflow-hidden rounded-xl bg-card/80 backdrop-blur-sm border border-border/30 transition-all duration-400 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.15] group-hover:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] group-hover:z-[100] group-hover:border-primary/40 group-hover:bg-card/90">
-                    {/* Poster Image với aspect ratio cố định */}
-                    <div className="relative aspect-[2/3] overflow-hidden">
+                <div className="relative overflow-hidden rounded-xl bg-card border border-border/40 transition-all duration-400 ease-out group-hover:scale-110 sm:group-hover:scale-[1.15] group-hover:shadow-2xl group-hover:border-primary/50 group-hover:bg-card">
+                    {/* Poster Image with fixed relative aspect ratio */}
+                    <div className="relative aspect-[2/3] overflow-hidden bg-muted/40">
                         {!imageLoaded && (
                             <div className="absolute inset-0 bg-gradient-to-br from-muted via-muted/50 to-muted animate-pulse rounded-xl" />
                         )}
                         <img
                             src={getImageUrl(movie.poster_url)}
                             alt={movie.name}
-                            className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
+                            className={`w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105 ${
                                 imageLoaded ? 'opacity-100' : 'opacity-0'
                             }`}
                             onLoad={() => setImageLoaded(true)}
                             loading="lazy"
                         />
                         
-                        {/* Glassmorphism Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-400 backdrop-blur-[1px]" />
-                        
-                        {/* Rating Badge - Smooth Animation */}
+                        {/* Rating Badge */}
                         {rating > 0 && (
-                            <div className="absolute top-3 left-3 z-20 transform transition-all duration-300 group-hover:scale-105">
-                                <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white border-0 font-bold shadow-lg text-xs px-2.5 py-1.5 backdrop-blur-sm`}>
-                                    <Star className="h-3 w-3 mr-1.5 fill-current" />
+                            <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-30 transition-transform duration-300">
+                                <Badge className={`bg-gradient-to-r ${getRatingColor(rating)} text-white border-0 font-bold shadow-md text-[10px] sm:text-xs px-2 py-0.5 sm:py-1`}>
+                                    <Star className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 fill-current" />
                                     {rating.toFixed(1)}
                                 </Badge>
                             </div>
                         )}
 
-                        {/* Type Badge - Glassmorphism */}
-                        <div className="absolute top-3 right-3 z-20 transform transition-all duration-300 group-hover:scale-105">
-                            <Badge variant="secondary" className="bg-black/60 text-white border-0 backdrop-blur-md text-xs px-2.5 py-1.5 shadow-lg">
+                        {/* Type Badge */}
+                        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-30 transition-transform duration-300">
+                            <Badge variant="secondary" className="bg-black/60 text-white font-medium border border-white/10 backdrop-blur-md text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 shadow-md">
                                 {getTypeLabel(movie.type)}
                             </Badge>
                         </div>
 
-
-
-                        {/* Glassmorphism Movie Info Overlay */}
-                        <div className="absolute inset-0 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-all duration-500 delay-100 z-20">
-                            <div className="bg-black/30 backdrop-blur-md border-t border-white/10 p-4 space-y-3">
-                                {/* Movie Title Section - Enhanced */}
-                                <div className="space-y-1">
-                                    <h3 className="text-base font-bold text-white line-clamp-2 leading-tight drop-shadow-xl">
+                        {/* Elegant Glassmorphism Overlay */}
+                        <div className="absolute inset-0 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                            {/* Deep shadow at bottom for text readability */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none" />
+                            
+                            {/* Content container */}
+                            <div className="relative p-3 sm:p-4 w-full text-white space-y-2 sm:space-y-3">
+                                {/* Title */}
+                                <div>
+                                    <h3 className="text-sm sm:text-base font-bold line-clamp-2 leading-tight">
                                         {movie.name}
                                     </h3>
-                                    {movie.origin_name && movie.origin_name !== movie.name && (
-                                        <p className="text-xs text-white/80 line-clamp-1 font-medium drop-shadow-lg">
+                                    {movie.origin_name && (
+                                        <p className="text-[10px] sm:text-xs text-white/70 line-clamp-1 mt-0.5 font-mono">
                                             {movie.origin_name}
                                         </p>
                                     )}
                                 </div>
 
-                                {/* Movie Meta Info - Enhanced grid */}
-                                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-white/90">
-                                    <div className="flex items-center gap-1.5 transition-colors duration-300 hover:text-yellow-400">
-                                        <Calendar className="h-3 w-3 text-yellow-400 shrink-0" />
-                                        <span className="drop-shadow-lg truncate font-medium">{movie.year}</span>
+                                {/* Meta Grid */}
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/90">
+                                    <div className="flex items-center gap-1.5">
+                                        <Calendar className="h-3 w-3 text-warning shrink-0" />
+                                        <span className="truncate">{movie.year}</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 transition-colors duration-300 hover:text-green-400">
-                                        <Eye className="h-3 w-3 text-green-400 shrink-0" />
-                                        <span className="drop-shadow-lg truncate font-medium">{movie.quality}</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <Eye className="h-3 w-3 text-success shrink-0" />
+                                        <span className="truncate">{movie.quality}</span>
                                     </div>
                                     {movie.time && (
-                                        <div className="flex items-center gap-1.5 transition-colors duration-300 hover:text-blue-400">
+                                        <div className="flex items-center gap-1.5">
                                             <Clock className="h-3 w-3 text-blue-400 shrink-0" />
-                                            <span className="drop-shadow-lg truncate font-medium">{movie.time}</span>
+                                            <span className="truncate">{movie.time}</span>
                                         </div>
                                     )}
-                                    <div className="flex items-center gap-1.5 transition-colors duration-300 hover:text-purple-400">
-                                        <Globe className="h-3 w-3 text-purple-400 shrink-0" />
-                                        <span className="drop-shadow-lg truncate font-medium">{movie.lang}</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <Globe className="h-3 w-3 text-primary shrink-0" />
+                                        <span className="truncate">{movie.lang}</span>
                                     </div>
                                 </div>
 
-                                {/* Genres Section - Enhanced */}
+                                {/* Genres (Max 2 to save space) */}
                                 {movie.category && movie.category.length > 0 && (
-                                    <div className="space-y-2">
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {movie.category.slice(0, 2).map((genre, index) => (
-                                                <Badge 
-                                                    key={genre.id} 
-                                                    variant="outline" 
-                                                    className="text-xs text-white border-white/30 bg-white/10 backdrop-blur-sm px-2 py-1 h-auto transition-all duration-300 hover:bg-white/20 hover:scale-105"
-                                                    style={{ animationDelay: `${index * 50}ms` }}
-                                                >
-                                                    {genre.name}
-                                                </Badge>
-                                            ))}
-                                        </div>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {movie.category.slice(0, 2).map((genre) => (
+                                            <Badge 
+                                                key={genre.id} 
+                                                variant="outline" 
+                                                className="text-[9px] sm:text-[10px] text-white/90 border-white/20 bg-white/10 px-1.5 py-0 rounded-sm font-normal"
+                                            >
+                                                {genre.name}
+                                            </Badge>
+                                        ))}
                                     </div>
                                 )}
 
-                                {/* Enhanced Info Button */}
-                                <div className="flex justify-center pt-2">
-                                    <Link href={`/movie/${movie.slug}`}>
-                                        <Button 
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 px-4 text-xs text-white border-white/40 bg-white/10 hover:bg-white/20 backdrop-blur-md transition-all duration-300 hover:scale-105 shadow-lg"
-                                        >
-                                            <Info className="h-3 w-3 mr-1.5" />
-                                            Chi tiết
-                                        </Button>
-                                    </Link>
-                                </div>
+                                {/* Action Button */}
+                                <Link href={`/movie/${movie.slug}`} className="block w-full pt-1">
+                                    <Button 
+                                        size="sm"
+                                        className="w-full text-[11px] sm:text-xs h-7 sm:h-8 bg-primary/90 hover:bg-primary text-white border-none rounded-md"
+                                    >
+                                        <Info className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
+                                        Chi tiết
+                                    </Button>
+                                </Link>
                             </div>
                         </div>
                     </div>
@@ -161,7 +154,6 @@ export function MovieCard({
         )
     }
 
-    // Default variant (simple card without hover expand)
     return (
         <Link 
             href={`/movie/${movie.slug}`}
