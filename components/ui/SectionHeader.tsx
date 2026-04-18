@@ -31,7 +31,7 @@ export function SectionHeader({
                             <Icon className="h-4 w-4 text-white" />
                         </div>
                     )}
-                    <h2 className="text-xl sm:text-2xl font-bold shiny-text">{title}</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary pt-1">{title}</h2>
                 </div>
                 {subtitle && (
                     <p className="text-sm sm:text-base text-muted-foreground ml-0 sm:ml-11">{subtitle}</p>

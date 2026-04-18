@@ -229,7 +229,7 @@ export function HeroSection() {
 
                         {/* Movie Title */}
                         <div className="space-y-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-                            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold text-white leading-tight line-clamp-2 drop-shadow-2xl">
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/60 leading-tight line-clamp-2 drop-shadow-xl pb-1">
                                 {currentMovie.name}
                             </h1>
                             {currentMovie.origin_name && currentMovie.origin_name !== currentMovie.name && (
@@ -260,9 +260,9 @@ export function HeroSection() {
                             <Link href={`/movie/${currentMovie.slug}`}>
                                 <Button 
                                     size="lg"
-                                    className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black font-bold px-8 py-4 text-lg rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-105 transform"
+                                    className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-bold px-8 py-4 text-xs sm:text-sm lg:text-lg rounded-full shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-105 transform border border-white/10"
                                 >
-                                    <Play className="h-6 w-6 mr-3 fill-current" />
+                                    <Play className="h-5 w-5 sm:h-6 sm:w-6 mr-2 sm:mr-3 fill-current" />
                                     Xem ngay
                                 </Button>
                             </Link>
@@ -300,31 +300,53 @@ export function HeroSection() {
                 </div>
             </div>
 
-            {/* Enhanced Related Movies Thumbnails */}
-            <div className="absolute bottom-6 right-6 hidden xl:flex space-x-3 z-30">
-                {movies.slice(1, 6).map((movie, index) => (
-                    <button
-                        key={movie._id}
-                        onClick={() => changeSlide((currentIndex + index + 1) % movies.length)}
-                        disabled={isTransitioning}
-                        className="group relative w-20 h-28 rounded-lg overflow-hidden opacity-70 hover:opacity-100 transition-all duration-300 hover:scale-110 shadow-xl hover:shadow-2xl transform disabled:opacity-50"
-                    >
-                        <img
-                            src={getImageUrl(movie.poster_url)}
-                            alt={movie.name}
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <Play className="w-6 h-6 text-white fill-current" />
-                        </div>
-                        <div className="absolute bottom-1 left-1 right-1">
-                            <p className="text-xs text-white font-medium line-clamp-2 drop-shadow-lg">
-                                {movie.name}
-                            </p>
-                        </div>
-                    </button>
-                ))}
+            {/* Breakthrough Cinematic Thumbnail Navigator */}
+            <div className="absolute bottom-6 right-6 hidden xl:flex items-end gap-3 z-30 p-3 bg-black/20 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl">
+                {movies.map((movie, index) => {
+                    // Hiển thị phần tử hiện tại và 4 phần tử tiếp theo (hoay vòng)
+                    const isVisible = (index - currentIndex + movies.length) % movies.length <= 4;
+                    if (!isVisible) return null;
+
+                    const isActive = index === currentIndex;
+
+                    return (
+                        <button
+                            key={movie._id}
+                            onClick={() => changeSlide(index)}
+                            disabled={isTransitioning}
+                            className={`group relative overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] rounded-xl cursor-pointer ${
+                                isActive 
+                                    ? 'w-56 h-32 border border-primary/50 shadow-[0_0_30px_-5px_rgba(200,0,223,0.4)]' 
+                                    : 'w-24 h-16 border border-white/20 hover:border-white/50 opacity-60 hover:opacity-100 hover:w-28 hover:h-20'
+                            } disabled:opacity-50`}
+                        >
+                            <img
+                                src={getImageUrl(movie.thumb_url || movie.poster_url)}
+                                alt={movie.name}
+                                className={`absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`}
+                            />
+                            {isActive ? (
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-3">
+                                   <p className="text-white text-sm font-bold truncate drop-shadow-md">{movie.name}</p>
+                                   <div className="flex items-center gap-2 mt-1.5">
+                                      <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                                          <div className="h-full bg-gradient-to-r from-primary to-secondary w-1/2 rounded-full animate-pulse" />
+                                      </div>
+                                      <span className="text-[10px] uppercase tracking-wider text-primary font-bold">Đang xem</span>
+                                   </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 transition-colors duration-300" />
+                                    {/* Tooltip-like title that appears on hover for inactive thumbnails */}
+                                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        <p className="text-[10px] text-white font-medium truncate">{movie.name}</p>
+                                    </div>
+                                </>
+                            )}
+                        </button>
+                    )
+                })}
             </div>
         </div>
     )
