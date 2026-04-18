@@ -14,27 +14,6 @@ export function CountriesPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Gradient colors for country cards
-    const gradientColors = [
-        "from-blue-600 via-blue-500 to-purple-600",
-        "from-purple-600 via-pink-500 to-red-500", 
-        "from-green-600 via-emerald-500 to-teal-600",
-        "from-orange-600 via-red-500 to-pink-600",
-        "from-indigo-600 via-purple-500 to-pink-600",
-        "from-pink-600 via-rose-500 to-orange-500",
-        "from-gray-700 via-gray-600 to-slate-600",
-        "from-cyan-600 via-blue-500 to-indigo-600",
-        "from-emerald-600 via-green-500 to-teal-600",
-        "from-violet-600 via-purple-500 to-indigo-600",
-        "from-amber-600 via-orange-500 to-red-600",
-        "from-teal-600 via-cyan-500 to-blue-600"
-    ]
-
-    // Get gradient color for country by index
-    const getGradientColor = (index: number) => {
-        return gradientColors[index % gradientColors.length]
-    }
-
     // Complete country mapping with flags and full names
     const countryData: { [key: string]: { name: string; flag: string } } = {
         'viet-nam': { name: 'Việt Nam', flag: '🇻🇳' },
@@ -145,30 +124,27 @@ export function CountriesPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 mt-8">
                 {countries.map((country, index) => {
                     const countryInfo = countryData[country.slug] || { name: country.name, flag: '🌍' }
-                    const gradientClass = getGradientColor(index)
                     
                     return (
                         <Link key={country._id} href={`/country/${country.slug}`}>
-                            <Card className="group h-36 relative overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-xl border-0">
+                            <Card className="group h-32 relative overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-primary/20 hover:shadow-lg border-border/40 bg-card/40 backdrop-blur-md">
                                 <CardContent className="p-0 h-full">
-                                    <div className={`h-full w-full bg-gradient-to-br ${gradientClass} flex flex-col items-center justify-center text-white relative overflow-hidden`}>
-                                        {/* Background pattern */}
-                                        <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition-colors duration-300" />
+                                    <div className="h-full w-full flex flex-col items-center justify-center relative overflow-hidden p-4">
+                                        {/* Subtle background glow on hover */}
+                                        <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors duration-300 pointer-events-none" />
                                         
                                         {/* Content */}
-                                        <div className="relative z-10 text-center px-3 py-2">
-                                            <div className="text-3xl sm:text-4xl mb-2 group-hover:scale-110 transition-transform duration-300">
+                                        <div className="relative z-10 flex flex-col items-center gap-3">
+                                            <div className="text-4xl shadow-sm drop-shadow-md group-hover:-translate-y-1 transition-transform duration-300">
                                                 {countryInfo.flag}
                                             </div>
-                                            <h3 className="text-sm sm:text-base font-bold leading-tight line-clamp-2 group-hover:scale-105 transition-transform duration-300">
+                                            <h3 className="text-sm font-semibold tracking-wide text-foreground/80 group-hover:text-primary transition-colors duration-300 text-center">
                                                 {countryInfo.name}
                                             </h3>
                                         </div>
 
-                                        {/* Hover arrow */}
-                                        <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                            <ChevronRight className="h-4 w-4" />
-                                        </div>
+                                        {/* Decorative gradient blur */}
+                                        <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-primary/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                     </div>
                                 </CardContent>
                             </Card>

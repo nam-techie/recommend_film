@@ -14,28 +14,6 @@ export function GenreSection() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Modern gradient colors with better contrast
-    const gradientColors = [
-        "from-blue-600 via-blue-500 to-purple-600",
-        "from-purple-600 via-pink-500 to-red-500", 
-        "from-green-600 via-emerald-500 to-teal-600",
-        "from-orange-600 via-red-500 to-pink-600",
-        "from-indigo-600 via-purple-500 to-pink-600",
-        "from-pink-600 via-rose-500 to-orange-500",
-        "from-gray-700 via-gray-600 to-slate-600",
-        "from-cyan-600 via-blue-500 to-indigo-600",
-        "from-emerald-600 via-green-500 to-teal-600",
-        "from-violet-600 via-purple-500 to-indigo-600",
-        "from-amber-600 via-orange-500 to-red-600",
-        "from-teal-600 via-cyan-500 to-blue-600"
-    ]
-
- 
-    // Get gradient color for genre by index
-    const getGradientColor = (index: number) => {
-        return gradientColors[index % gradientColors.length]
-    }
-
 
     useEffect(() => {
         const loadGenres = async () => {
@@ -97,37 +75,33 @@ export function GenreSection() {
             />
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
-                {genres.map((genre, index) => {
-                    const gradientColor = getGradientColor(index)
-                    
+                {genres.map((genre) => {
                     return (
                         <Link key={genre._id} href={`/genre/${genre.slug}`}>
-                            <Card className="group cursor-pointer transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/20 border-0 overflow-hidden h-32 relative">
-                                <CardContent className="p-0 h-full relative">
-                                    {/* Background with gradient */}
-                                    <div className={`bg-gradient-to-br ${gradientColor} h-full flex flex-col items-center justify-center text-white relative overflow-hidden rounded-lg`}>
-                                        {/* Animated background pattern */}
-                                        <div className="absolute inset-0 opacity-10">
-                                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_50%)]" />
-                                            <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(45deg,transparent_30%,rgba(255,255,255,0.1)_50%,transparent_70%)] transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                                        </div>
+                            <Card className="group h-32 relative overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-primary/20 hover:shadow-lg border-border/40 bg-card/40 backdrop-blur-md">
+                                <CardContent className="p-0 h-full">
+                                    <div className="h-full w-full flex flex-col items-center justify-center relative overflow-hidden p-4">
+                                        {/* Subtle background glow on hover */}
+                                        <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors duration-300 pointer-events-none" />
                                         
-                                        {/* Overlay */}
-                                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300 rounded-lg" />
-                                        
+                                        {/* Content border decoration top-left */}
+                                        <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary/0 group-hover:border-primary/50 rounded-tl-lg transition-colors duration-500 m-2" />
+                                        {/* Content border decoration bottom-right */}
+                                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary/0 group-hover:border-primary/50 rounded-br-lg transition-colors duration-500 m-2" />
+
                                         {/* Content */}
-                                        <div className="relative z-10 text-center px-3 space-y-2">
-                                            <h3 className="font-bold text-sm sm:text-base leading-tight line-clamp-2">
+                                        <div className="relative z-10 flex flex-col items-center gap-3">
+                                            <h3 className="font-bold text-sm sm:text-base leading-tight line-clamp-2 text-foreground/80 group-hover:text-primary transition-colors duration-300 text-center">
                                                 {genre.name}
                                             </h3>
-                                            <div className="flex items-center justify-center text-xs opacity-80 group-hover:opacity-100 transition-opacity duration-300">
+                                            <div className="flex items-center justify-center text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors duration-300">
                                                 <span className="mr-1">Khám phá</span>
                                                 <ChevronRight className="h-3 w-3 transform group-hover:translate-x-1 transition-transform duration-300" />
                                             </div>
                                         </div>
 
-                                        {/* Hover effect border */}
-                                        <div className="absolute inset-0 border-2 border-white/0 group-hover:border-white/30 rounded-lg transition-colors duration-300" />
+                                        {/* Decorative gradient blur */}
+                                        <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-primary/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                     </div>
                                 </CardContent>
                             </Card>
