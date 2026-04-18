@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Jost, Overpass_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -36,7 +36,12 @@ export const metadata: Metadata = {
         title: "CineMind - Cinema meets Mind",
         description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn",
     },
-    viewport: "width=device-width, initial-scale=1, maximum-scale=1",
+};
+
+export const viewport: Viewport = {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
 };
 
 export default function RootLayout({
