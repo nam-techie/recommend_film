@@ -206,8 +206,29 @@ export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
 
 export async function searchMovies(params: SearchParams): Promise<ApiResponse<any>> {
   try {
-    const endpoint = params.keyword ? '/v1/api/tim-kiem' : '/api/danh-sach/phim-moi-cap-nhat'
-    const response = await fetch(buildApiUrl(endpoint, params))
+    let endpoint = '/api/danh-sach/phim-moi-cap-nhat';
+    let queryParams: any = { ...params };
+    
+    // tim-kiem MUST have a keyword.
+    if (params.keyword) {
+      endpoint = '/v1/api/tim-kiem';
+    } else {
+      if (params.type_list) {
+        endpoint = `/v1/api/danh-sach/${params.type_list}`;
+        delete queryParams.type_list;
+      } else if (params.category) {
+        endpoint = `/v1/api/the-loai/${params.category}`;
+        delete queryParams.category;
+      } else if (params.country) {
+        endpoint = `/v1/api/quoc-gia/${params.country}`;
+        delete queryParams.country;
+      } else if (params.year) {
+        endpoint = `/v1/api/nam/${params.year}`;
+        delete queryParams.year;
+      }
+    }
+
+    const response = await fetch(buildApiUrl(endpoint, queryParams))
     if (!response.ok) throw new Error('Failed to search movies')
     return await response.json()
   } catch (error) {

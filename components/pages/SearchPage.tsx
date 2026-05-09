@@ -11,7 +11,7 @@ import { Search, Filter, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucid
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { searchMovies, fetchGenres, fetchCountries, Movie, Genre, Country } from '@/lib/api'
+import { searchMovies, fetchGenres, fetchCountries, fetchNewMovies, Movie, Genre, Country } from '@/lib/api'
 
 export function SearchPage() {
     const router = useRouter()
@@ -60,10 +60,10 @@ export function SearchPage() {
 
     const searchTypes = [
         { value: 'all', label: 'Tất cả' },
-        { value: 'title', label: 'Tên phim' },
-        { value: 'actor', label: 'Diễn viên' },
-        { value: 'director', label: 'Đạo diễn' },
-        { value: 'keyword', label: 'Từ khóa' },
+        { value: 'phim-le', label: 'Phim lẻ' },
+        { value: 'phim-bo', label: 'Phim bộ' },
+        { value: 'hoat-hinh', label: 'Hoạt hình' },
+        { value: 'tv-shows', label: 'TV Shows' },
     ]
 
     const years = [
@@ -154,13 +154,30 @@ export function SearchPage() {
         setSortType(sType)
 
         // Only search if not everything is default
-        if (keyword || genre !== 'all' || country !== 'all' || year !== 'all' || lang !== 'all') {
-            performSearch({ keyword, genre, country, year, lang, sField, sType })
+        if (keyword || type !== 'all' || genre !== 'all' || country !== 'all' || year !== 'all' || lang !== 'all') {
+            performSearch({ keyword, type, genre, country, year, lang, sField, sType })
         } else {
-            setSearchResults([])
-            setTotalResults(0)
+            loadDefaultMovies()
         }
     }, [searchParams])
+
+    const loadDefaultMovies = async () => {
+        try {
+            setLoading(true)
+            const response = await fetchNewMovies(1)
+            if (response.items) {
+                setSearchResults(response.items)
+                setTotalResults(response.pagination?.totalItems || response.items.length)
+            } else if (response.data?.items) {
+                setSearchResults(response.data.items)
+                setTotalResults(response.data.params?.pagination?.totalItems || response.data.items.length)
+            }
+        } catch (err) {
+            console.error('Error loading default movies:', err)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const performSearch = async (filters: any) => {
         try {
@@ -169,6 +186,7 @@ export function SearchPage() {
             
             const params = {
                 keyword: filters.keyword || undefined,
+                type_list: filters.type !== 'all' ? filters.type : undefined,
                 page: 1,
                 sort_field: filters.sField,
                 sort_type: filters.sType as 'asc' | 'desc',
@@ -242,7 +260,7 @@ export function SearchPage() {
         return `https://phimimg.com/${path}`
     }
 
-    const hasActiveFilters = searchQuery || selectedGenre !== 'all' || selectedCountry !== 'all' || selectedYear !== 'all' || selectedLanguage !== 'all'
+    const hasActiveFilters = searchQuery || searchType !== 'all' || selectedGenre !== 'all' || selectedCountry !== 'all' || selectedYear !== 'all' || selectedLanguage !== 'all'
 
     return (
         <div className="space-y-6 sm:space-y-8 pb-10">
@@ -469,6 +487,7 @@ export function SearchPage() {
             {hasActiveFilters && (
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-2 animate-in fade-in">
                     {searchQuery && <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs px-3">{searchQuery}</Badge>}
+                    {searchType !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">Loại: {searchTypes.find(t => t.value === searchType)?.label}</Badge>}
                     {selectedGenre !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">Thể loại: {genres.find(g => g.slug === selectedGenre)?.name}</Badge>}
                     {selectedCountry !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">QG: {countries.find(c => c.slug === selectedCountry)?.name}</Badge>}
                     {selectedYear !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 font-mono text-[10px] sm:text-xs">{selectedYear}</Badge>}
