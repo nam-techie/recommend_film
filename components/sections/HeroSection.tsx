@@ -157,7 +157,7 @@ export function HeroSection() {
     }
 
     return (
-        <div className="relative h-[50vh] sm:h-[60vh] lg:h-[80vh] min-h-[500px] overflow-hidden rounded-xl lg:rounded-2xl group">
+        <div className="relative h-[50vh] sm:h-[60vh] lg:h-[80vh] min-h-[500px] overflow-hidden rounded-none sm:rounded-xl lg:rounded-2xl group">
             {/* Background Images with Smooth Transition */}
             <div className="absolute inset-0">
                 {movies.map((movie, index) => (

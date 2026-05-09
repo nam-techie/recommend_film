@@ -17,10 +17,13 @@ export function HomePage() {
     return (
         <>
             <div className="space-y-8 sm:space-y-12 lg:space-y-16">
-                <HeroSection />
+                <div className="w-full sm:container sm:mx-auto sm:px-4 sm:pt-4">
+                    <HeroSection />
+                </div>
                 
-                {/* Phim đánh giá cao nhất - giữ lại từ design cũ */}
-                <FeaturedMovies />
+                <div className="container mx-auto px-4 space-y-8 sm:space-y-12 lg:space-y-16 pb-8">
+                    {/* Phim đánh giá cao nhất - giữ lại từ design cũ */}
+                    <FeaturedMovies />
                 
                 {/* Phim theo quốc gia - theo ảnh mẫu */}
                 <KoreanMovies />
@@ -39,8 +42,9 @@ export function HomePage() {
                 {/* Phim mới ra mắt */}
                 <NewReleases />
                 
-                {/* Section thể loại */}
-                <GenreSection />
+                    {/* Section thể loại */}
+                    <GenreSection />
+                </div>
             </div>
             
             {/* Scroll to top button */}

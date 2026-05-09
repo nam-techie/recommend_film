@@ -62,7 +62,7 @@ export default function RootLayout({
                     forcedTheme="dark"
                 >
                     <Navbar />
-                    <main className="container mx-auto px-4 py-6 sm:py-8 flex-1 overflow-visible">
+                    <main className="flex-1 overflow-visible pb-10">
                         {children}
                     </main>
                     <Footer />
