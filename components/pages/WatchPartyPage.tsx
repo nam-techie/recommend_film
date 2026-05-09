@@ -647,61 +647,61 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
     return (
         <div className="h-screen bg-black flex flex-col overflow-hidden">
             {/* Header - Compact */}
-            <div className="border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm px-6 py-3 flex-shrink-0">
+            <div className="border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm px-4 sm:px-6 py-2 sm:py-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 sm:space-x-4">
                         <Link href="/">
                             <Button variant="outline" size="sm" onClick={handleLeaveRoom} className="text-gray-300 border-gray-600 hover:bg-gray-700">
                                 ← Thoát phòng
                             </Button>
                         </Link>
                         <div>
-                            <div className="flex items-center gap-3">
-                                <h1 className="font-semibold text-lg text-white">{room.movie.title}</h1>
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <h1 className="font-semibold text-base sm:text-lg text-white line-clamp-1 max-w-[120px] sm:max-w-[200px] md:max-w-md">{room.movie.title}</h1>
                                 {isHost && (
-                                    <Badge className="text-xs bg-red-600 text-white font-medium px-2 py-0.5">
+                                    <Badge className="text-[10px] sm:text-xs bg-red-600 text-white font-medium px-1.5 sm:px-2 py-0 sm:py-0.5">
                                         HOST
                                     </Badge>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-400">
-                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                                <span>
-                                    {isConnected ? 'Kết nối thành công' : 'Đang kết nối...'} • 
-                                    {getActiveUsers().length} người đang xem
+                            <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-400 mt-0.5">
+                                <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="truncate">
+                                    <span className="hidden sm:inline">{isConnected ? 'Kết nối thành công' : 'Đang kết nối...'} • </span>
+                                    {getActiveUsers().length} <span className="hidden sm:inline">người </span>đang xem
                                 </span>
                             </div>
                         </div>
                     </div>
                     
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-2 sm:space-x-3">
                         <Button 
                             variant="outline" 
                             size="sm"
                             onClick={handleCopyRoomLink}
-                            className="text-gray-300 border-gray-600 hover:bg-gray-700"
+                            className="text-gray-300 border-gray-600 hover:bg-gray-700 hidden sm:flex"
                         >
-                            <Copy className="h-4 w-4 mr-2" />
-                            Chia sẻ
+                            <Copy className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Chia sẻ</span>
                         </Button>
                         
                         <Button 
                             variant="outline" 
                             size="sm"
                             onClick={() => setShowChat(!showChat)}
-                            className={`${showChat ? 'bg-purple-600 text-white border-purple-600' : 'text-gray-300 border-gray-600 hover:bg-gray-700'}`}
+                            className={`${showChat ? 'bg-purple-600 text-white border-purple-600' : 'text-gray-300 border-gray-600 hover:bg-gray-700'} px-2 sm:px-3`}
                         >
-                            <MessageCircle className="h-4 w-4 mr-2" />
-                            Chat
+                            <MessageCircle className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Chat</span>
                         </Button>
                     </div>
                 </div>
             </div>
 
             {/* Main content */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
                 {/* Video player */}
-                <div className={`${showChat ? 'flex-1' : 'w-full'} bg-black flex items-center justify-center`}>
+                <div className={`${showChat ? 'h-[35vh] sm:h-[45vh] lg:h-full lg:flex-1' : 'w-full h-full'} w-full bg-black flex items-center justify-center shrink-0`}>
                     <div className="relative w-full h-full">
                         <iframe
                             ref={videoRef}
@@ -722,9 +722,9 @@ export default function WatchPartyPage({ movieSlug, roomId }: WatchPartyPageProp
                     </div>
                 </div>
 
-                {/* Chat sidebar - Fixed layout */}
+                {/* Chat sidebar - Responsive layout */}
                 {showChat && (
-                    <div className="w-96 bg-gray-900 border-l border-gray-700 flex flex-col h-full animate-slide-in-right">
+                    <div className="w-full lg:w-96 flex-1 lg:h-full bg-gray-900 lg:border-l border-t lg:border-t-0 border-gray-700 flex flex-col h-full overflow-hidden animate-slide-in-right">
                         {/* Chat header */}
                         <div className="px-4 py-3 border-b border-gray-700 bg-gray-800 flex items-center justify-between flex-shrink-0">
                             <div className="flex items-center gap-2">

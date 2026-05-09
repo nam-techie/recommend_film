@@ -47,7 +47,7 @@ export function MovieCard({
         return (
             <div className="group relative cursor-pointer hover:z-50 focus-within:z-50 transition-all duration-300">
                 {/* Main Card Container - SMOOTH SCALING */}
-                <div className="relative overflow-hidden rounded-xl bg-card border border-border/40 transition-all duration-400 ease-out group-hover:scale-110 sm:group-hover:scale-[1.15] group-hover:shadow-2xl group-hover:border-primary/50 group-hover:bg-card">
+                <div className="relative overflow-hidden rounded-xl bg-card border border-border/40 transition-all duration-400 ease-out group-hover:scale-110 sm:group-hover:scale-[1.15] group-active:scale-95 sm:group-active:scale-105 group-hover:shadow-2xl group-hover:border-primary/50 group-hover:bg-card">
                     {/* Poster Image with fixed relative aspect ratio */}
                     <div className="relative aspect-[2/3] overflow-hidden bg-muted/40">
                         {!imageLoaded && (
@@ -140,7 +140,7 @@ export function MovieCard({
                                 <Link href={`/movie/${movie.slug}`} className="block w-full pt-1">
                                     <Button 
                                         size="sm"
-                                        className="w-full text-[11px] sm:text-xs h-7 sm:h-8 bg-primary/90 hover:bg-primary text-white border-none rounded-md"
+                                        className="w-full text-[11px] sm:text-xs h-7 sm:h-8 bg-primary/90 hover:bg-primary active:scale-95 transition-transform text-white border-none rounded-md"
                                     >
                                         <Info className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5" />
                                         Chi tiết
@@ -157,7 +157,7 @@ export function MovieCard({
     return (
         <Link 
             href={`/movie/${movie.slug}`}
-            className="group relative block overflow-hidden rounded-lg transition-transform duration-300 hover:scale-105"
+            className="group relative block overflow-hidden rounded-lg transition-transform duration-300 hover:scale-105 active:scale-95"
         >
             <div className="relative aspect-[2/3] overflow-hidden bg-muted">
                 <img

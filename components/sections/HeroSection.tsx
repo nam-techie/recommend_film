@@ -214,35 +214,34 @@ export function HeroSection() {
                                 <Star className="h-4 w-4 mr-2 fill-current" />
                                 {currentMovie.displayRating?.toFixed(1)}
                             </Badge>
-                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-4 py-2 text-sm">
-                                <Calendar className="h-4 w-4 mr-2" />
+                            <Badge variant="default" className="bg-primary/90 hover:bg-primary text-white border-none shadow-lg shadow-primary/20 px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm font-semibold tracking-wide">
                                 {currentMovie.year}
                             </Badge>
-                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-4 py-2 text-sm">
-                                <Clock className="h-4 w-4 mr-2" />
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm">
+                                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                                 {currentMovie.time || 'Đang cập nhật'}
                             </Badge>
-                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-4 py-2 text-sm">
+                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm">
                                 {getTypeLabel(currentMovie.type)}
                             </Badge>
                         </div>
 
                         {/* Movie Title */}
-                        <div className="space-y-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-                            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/60 leading-tight line-clamp-2 drop-shadow-xl pb-1">
+                        <div className="space-y-2 sm:space-y-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+                            <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-7xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/60 leading-tight line-clamp-2 drop-shadow-xl pb-1">
                                 {currentMovie.name}
                             </h1>
                             {currentMovie.origin_name && currentMovie.origin_name !== currentMovie.name && (
-                                <p className="text-lg sm:text-xl lg:text-3xl text-white/80 font-light line-clamp-1 drop-shadow-lg">
+                                <p className="text-sm sm:text-xl lg:text-3xl text-white/80 font-light line-clamp-1 drop-shadow-lg">
                                     {currentMovie.origin_name}
                                 </p>
                             )}
                         </div>
 
                         {/* Genres */}
-                        <div className="flex flex-wrap gap-2 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
                             {getMovieGenres(currentMovie).map((genre) => (
-                                <Badge key={genre} variant="outline" className="text-white border-white/40 bg-black/30 backdrop-blur-sm px-3 py-1">
+                                <Badge key={genre} variant="outline" className="text-white border-white/40 bg-black/30 backdrop-blur-sm px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs">
                                     {genre}
                                 </Badge>
                             ))}
@@ -250,19 +249,18 @@ export function HeroSection() {
 
                         {/* Description */}
                         {currentMovie.content && (
-                            <p className="text-sm sm:text-base lg:text-lg text-white/90 leading-relaxed line-clamp-3 max-w-2xl drop-shadow-lg animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
+                            <p className="text-xs sm:text-base lg:text-lg text-white/90 leading-relaxed line-clamp-2 sm:line-clamp-3 max-w-2xl drop-shadow-lg animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
                                 {currentMovie.content}
                             </p>
                         )}
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-4 pt-4 animate-fade-in-up" style={{ animationDelay: '1s' }}>
+                        <div className="flex items-center gap-2 sm:gap-4 pt-2 sm:pt-4 animate-fade-in-up" style={{ animationDelay: '1s' }}>
                             <Link href={`/movie/${currentMovie.slug}`}>
                                 <Button 
                                     size="lg"
-                                    className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-bold px-8 py-4 text-xs sm:text-sm lg:text-lg rounded-full shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-105 transform border border-white/10"
+                                    className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-bold px-4 sm:px-8 py-2 sm:py-4 h-9 sm:h-12 text-[11px] sm:text-sm lg:text-lg rounded-full shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-105 active:scale-95 transform border border-white/10"
                                 >
-                                    <Play className="h-5 w-5 sm:h-6 sm:w-6 mr-2 sm:mr-3 fill-current" />
+                                    <Play className="h-4 w-4 sm:h-6 sm:w-6 mr-1.5 sm:mr-3 fill-current" />
                                     Xem ngay
                                 </Button>
                             </Link>
@@ -271,9 +269,9 @@ export function HeroSection() {
                                 <Button 
                                     size="lg"
                                     variant="outline"
-                                    className="text-white border-white/50 hover:bg-white/20 backdrop-blur-sm rounded-full px-8 py-4 text-lg transition-all duration-300 hover:scale-105 transform"
+                                    className="text-white border-white/50 hover:bg-white/20 backdrop-blur-sm rounded-full px-4 sm:px-8 py-2 sm:py-4 h-9 sm:h-12 text-[11px] sm:text-sm lg:text-lg transition-all duration-300 hover:scale-105 active:scale-95 transform"
                                 >
-                                    <Info className="h-6 w-6 mr-3" />
+                                    <Info className="h-4 w-4 sm:h-6 w-6 mr-1.5 sm:mr-3" />
                                     Chi tiết
                                 </Button>
                             </Link>
