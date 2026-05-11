@@ -20,21 +20,23 @@ interface FilterPillsProps {
 }
 
 const FilterPills = ({ title, options, selectedValues, onToggle }: FilterPillsProps) => (
-    <div className="space-y-3 mb-6">
-        <label className="text-[12px] font-semibold text-muted-foreground tracking-wider uppercase border-l-2 border-primary pl-2">{title}</label>
-        <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col md:flex-row md:items-start py-3 border-b border-border/20 last:border-0">
+        <div className="w-full md:w-[130px] shrink-0 mb-3 md:mb-0 md:pt-1.5">
+            <label className="text-[13px] font-semibold text-muted-foreground tracking-wide">{title}:</label>
+        </div>
+        <div className="flex flex-wrap gap-1.5 md:gap-2 flex-1">
             {options.map((option) => {
                 const isSelected = selectedValues.includes(option.value) || (option.value === 'all' && selectedValues.length === 0);
                 return (
                     <Button
                         key={option.value}
-                        variant={isSelected ? "default" : "outline"}
+                        variant="ghost"
                         size="sm"
                         onClick={() => onToggle(option.value)}
-                        className={`h-8 px-4 text-xs rounded-full transition-all duration-200 border ${
+                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
                             isSelected 
-                                ? 'bg-primary/20 text-primary border-primary/30 hover:bg-primary/30 font-semibold' 
-                                : 'bg-background/40 hover:bg-muted/50 border-border/40 text-muted-foreground hover:text-foreground'
+                                ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
+                                : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
                         }`}
                     >
                         {option.label}
@@ -289,9 +291,9 @@ export function CountryDetailPage({ countrySlug, initialPage = 1 }: CountryDetai
 
             {/* Filters Panel - Collapsible */}
             {showFilters && (
-                <div className="animate-in fade-in slide-in-from-top-2 mb-8 relative z-40">
-                    <Card className="border border-border/40 bg-card/40 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden">
-                        <CardContent className="p-5 sm:p-7">
+                <div className="animate-in fade-in slide-in-from-top-2 mb-8">
+                    <div className="bg-card border border-border/30 rounded-xl overflow-hidden shadow-lg">
+                        <div className="p-5 sm:p-7">
                             
                             <FilterPills title="Loại phim" options={movieTypes} selectedValues={selectedType} onToggle={handleToggle(setSelectedType, false)} />
                             <FilterPills title="Xếp hạng" options={ratings} selectedValues={selectedRating} onToggle={handleToggle(setSelectedRating, true)} />
@@ -337,8 +339,8 @@ export function CountryDetailPage({ countrySlug, initialPage = 1 }: CountryDetai
                                     </Button>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -13,6 +13,41 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { searchMovies, fetchGenres, fetchCountries, fetchNewMovies, Movie, Genre, Country } from '@/lib/api'
 
+interface FilterPillsProps {
+    title: string;
+    options: { value: string; label: string }[];
+    selectedValue: string;
+    onToggle: (value: string) => void;
+}
+
+const FilterPills = ({ title, options, selectedValue, onToggle }: FilterPillsProps) => (
+    <div className="flex flex-col md:flex-row md:items-start py-3 border-b border-border/20 last:border-0">
+        <div className="w-full md:w-[130px] shrink-0 mb-3 md:mb-0 md:pt-1.5">
+            <label className="text-[13px] font-semibold text-muted-foreground tracking-wide">{title}:</label>
+        </div>
+        <div className="flex flex-wrap gap-1.5 md:gap-2 flex-1">
+            {options.map((option) => {
+                const isSelected = selectedValue === option.value;
+                return (
+                    <Button
+                        key={option.value}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onToggle(option.value)}
+                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                            isSelected 
+                                ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
+                                : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
+                        }`}
+                    >
+                        {option.label}
+                    </Button>
+                )
+            })}
+        </div>
+    </div>
+)
+
 export function SearchPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -408,97 +443,85 @@ export function SearchPage() {
                     </div>
 
                     {/* Advanced Filters Panel - Collapsible */}
+                    {/* Advanced Filters Panel - Collapsible */}
                     {showAdvancedFilters && (
-                        <div className="animate-in fade-in slide-in-from-top-2 pt-2">
-                            <Card className="border border-border/40 bg-card/40 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden">
-                                <CardContent className="p-4 sm:p-5">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">Thể loại</label>
-                                            <Select value={selectedGenre} onValueChange={(val) => handleFilterChange('genre', val)}>
-                                                <SelectTrigger className="h-9 sm:h-10 bg-background/50 border-border/40 text-xs sm:text-sm rounded-lg">
-                                                    <SelectValue placeholder="Tất cả" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">Tất cả</SelectItem>
-                                                    {genres.map((genre) => (
-                                                        <SelectItem key={genre._id} value={genre.slug} className="text-xs sm:text-sm">{genre.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                        <div className="animate-in fade-in slide-in-from-top-2 pt-2 pb-6">
+                            <div className="bg-card border border-border/30 rounded-xl overflow-hidden shadow-lg">
+                                <div className="p-5 sm:p-7">
+                                    <FilterPills 
+                                        title="Loại phim" 
+                                        options={searchTypes} 
+                                        selectedValue={searchType} 
+                                        onToggle={(val) => handleFilterChange('type', val)} 
+                                    />
+                                    <FilterPills 
+                                        title="Quốc gia" 
+                                        options={[{value: 'all', label: 'Tất cả'}, ...countries.map(c => ({value: c.slug, label: c.name}))]} 
+                                        selectedValue={selectedCountry} 
+                                        onToggle={(val) => handleFilterChange('country', val)} 
+                                    />
+                                    <FilterPills 
+                                        title="Thể loại" 
+                                        options={[{value: 'all', label: 'Tất cả'}, ...genres.map(g => ({value: g.slug, label: g.name}))]} 
+                                        selectedValue={selectedGenre} 
+                                        onToggle={(val) => handleFilterChange('genre', val)} 
+                                    />
+                                    <FilterPills 
+                                        title="Năm phát hành" 
+                                        options={years} 
+                                        selectedValue={selectedYear} 
+                                        onToggle={(val) => handleFilterChange('year', val)} 
+                                    />
+                                    <FilterPills 
+                                        title="Định dạng" 
+                                        options={languages} 
+                                        selectedValue={selectedLanguage} 
+                                        onToggle={(val) => handleFilterChange('language', val)} 
+                                    />
+                                    <div className="flex flex-col md:flex-row md:items-start py-3 border-b border-border/20 last:border-0">
+                                        <div className="w-full md:w-[130px] shrink-0 mb-3 md:mb-0 md:pt-1.5">
+                                            <label className="text-[13px] font-semibold text-muted-foreground tracking-wide">Sắp xếp:</label>
                                         </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">Quốc gia</label>
-                                            <Select value={selectedCountry} onValueChange={(val) => handleFilterChange('country', val)}>
-                                                <SelectTrigger className="h-9 sm:h-10 bg-background/50 border-border/40 text-xs sm:text-sm rounded-lg">
-                                                    <SelectValue placeholder="Tất cả" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">Tất cả</SelectItem>
-                                                    {countries.map((country) => (
-                                                        <SelectItem key={country._id} value={country.slug} className="text-xs sm:text-sm">{country.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">Năm</label>
-                                            <Select value={selectedYear} onValueChange={(val) => handleFilterChange('year', val)}>
-                                                <SelectTrigger className="h-9 sm:h-10 bg-background/50 border-border/40 text-xs sm:text-sm rounded-lg">
-                                                    <SelectValue placeholder="Tất cả" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {years.map((year) => (
-                                                        <SelectItem key={year.value} value={year.value} className="text-xs sm:text-sm">{year.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">Định dạng</label>
-                                            <Select value={selectedLanguage} onValueChange={(val) => handleFilterChange('language', val)}>
-                                                <SelectTrigger className="h-9 sm:h-10 bg-background/50 border-border/40 text-xs sm:text-sm rounded-lg">
-                                                    <SelectValue placeholder="Tất cả" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {languages.map((lang) => (
-                                                        <SelectItem key={lang.value} value={lang.value} className="text-xs sm:text-sm">{lang.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="mt-4 pt-4 border-t border-border/30 flex flex-col sm:flex-row items-center gap-3 justify-end">
-                                        <div className="flex w-full sm:w-auto items-center gap-2">
-                                            <label className="text-xs text-muted-foreground shrink-0 hidden sm:block">Sắp xếp:</label>
-                                            <Select value={sortBy} onValueChange={(val) => handleFilterChange('sort_field', val)}>
-                                                <SelectTrigger className="h-8 w-full sm:w-[140px] text-xs bg-background/30 rounded-md border-border/30">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {sortOptions.map((opt) => (
-                                                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <Select value={sortType} onValueChange={(val) => handleFilterChange('sort_type', val)}>
-                                                <SelectTrigger className="h-8 w-[100px] sm:w-[110px] text-xs bg-background/30 rounded-md border-border/30 shrink-0">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {sortTypes.map((type) => (
-                                                        <SelectItem key={type.value} value={type.value} className="text-xs">{type.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                        <div className="flex flex-wrap gap-4 flex-1">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {sortOptions.map((opt) => (
+                                                    <Button
+                                                        key={opt.value}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleFilterChange('sort_field', opt.value)}
+                                                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                                                            sortBy === opt.value 
+                                                                ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
+                                                                : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                            <div className="w-px h-6 bg-border/50 hidden md:block mt-1"></div>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {sortTypes.map((opt) => (
+                                                    <Button
+                                                        key={opt.value}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleFilterChange('sort_type', opt.value)}
+                                                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                                                            sortType === opt.value 
+                                                                ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
+                                                                : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </Button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
