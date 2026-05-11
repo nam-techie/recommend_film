@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MovieCard } from '@/components/ui/MovieCard'
-import { Search, Filter, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, Filter, SlidersHorizontal, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -40,6 +40,9 @@ export function SearchPage() {
     const [genres, setGenres] = useState<Genre[]>([])
     const [countries, setCountries] = useState<Country[]>([])
     const [totalResults, setTotalResults] = useState(0)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(0)
+    const [pageInput, setPageInput] = useState('')
 
     // Load static filters
     useEffect(() => {
@@ -111,7 +114,7 @@ export function SearchPage() {
     // Specific updaters hooked directly to Router to create Auto-Fetch illusion
     const handleFilterChange = (key: string, value: string) => {
         // Cập nhật URL -> Effect sẽ chạy
-        const currentParams = {
+        const currentParams: Record<string, string> = {
             keyword: searchQuery,
             type: searchType,
             genre: selectedGenre,
@@ -121,7 +124,18 @@ export function SearchPage() {
             sort_field: sortBy,
             sort_type: sortType
         }
+        
+        // Reset page to 1 whenever a filter changes, unless the filter being changed is the page itself
+        if (key !== 'page') {
+            currentParams.page = '1'
+        }
+        
         updateRouteParams({ ...currentParams, [key]: value })
+    }
+
+    const handlePageChange = (page: number) => {
+        handleFilterChange('page', page.toString())
+        window.scrollTo({ top: 0, behavior: 'smooth' })
     }
 
     const handleSearchSubmit = () => {
@@ -143,6 +157,7 @@ export function SearchPage() {
         const lang = searchParams.get('language') || 'all'
         const sField = searchParams.get('sort_field') || 'modified_time'
         const sType = searchParams.get('sort_type') || 'desc'
+        const page = parseInt(searchParams.get('page') || '1', 10)
 
         setSearchQuery(keyword)
         setSearchType(type)
@@ -152,25 +167,28 @@ export function SearchPage() {
         setSelectedLanguage(lang)
         setSortBy(sField)
         setSortType(sType)
+        setCurrentPage(page)
 
         // Only search if not everything is default
-        if (keyword || type !== 'all' || genre !== 'all' || country !== 'all' || year !== 'all' || lang !== 'all') {
-            performSearch({ keyword, type, genre, country, year, lang, sField, sType })
+        if (keyword || type !== 'all' || genre !== 'all' || country !== 'all' || year !== 'all' || lang !== 'all' || page !== 1) {
+            performSearch({ keyword, type, genre, country, year, lang, sField, sType, page })
         } else {
-            loadDefaultMovies()
+            loadDefaultMovies(page)
         }
     }, [searchParams])
 
-    const loadDefaultMovies = async () => {
+    const loadDefaultMovies = async (page: number = 1) => {
         try {
             setLoading(true)
-            const response = await fetchNewMovies(1)
+            const response = await fetchNewMovies(page)
             if (response.items) {
                 setSearchResults(response.items)
                 setTotalResults(response.pagination?.totalItems || response.items.length)
+                setTotalPages(response.pagination?.totalPages || 1)
             } else if (response.data?.items) {
                 setSearchResults(response.data.items)
                 setTotalResults(response.data.params?.pagination?.totalItems || response.data.items.length)
+                setTotalPages(response.data.params?.pagination?.totalPages || 1)
             }
         } catch (err) {
             console.error('Error loading default movies:', err)
@@ -187,7 +205,7 @@ export function SearchPage() {
             const params = {
                 keyword: filters.keyword || undefined,
                 type_list: filters.type !== 'all' ? filters.type : undefined,
-                page: 1,
+                page: filters.page || 1,
                 sort_field: filters.sField,
                 sort_type: filters.sType as 'asc' | 'desc',
                 sort_lang: filters.lang !== 'all' ? filters.lang : undefined,
@@ -202,12 +220,15 @@ export function SearchPage() {
             if (response.items) {
                 setSearchResults(response.items)
                 setTotalResults(response.pagination?.totalItems || response.items.length)
+                setTotalPages(response.pagination?.totalPages || 1)
             } else if (response.data?.items) {
                 setSearchResults(response.data.items)
                 setTotalResults(response.data.params?.pagination?.totalItems || response.data.items.length)
+                setTotalPages(response.data.params?.pagination?.totalPages || 1)
             } else {
                 setSearchResults([])
                 setTotalResults(0)
+                setTotalPages(0)
             }
         } catch (err) {
             setError('Có lỗi xảy ra khi tìm kiếm. Vui lòng thử lại.')
@@ -562,6 +583,146 @@ export function SearchPage() {
                         </Button>
                     </div>
                 ) : null}
+
+                {/* Pagination UI */}
+                {totalPages > 1 && searchResults.length > 0 && !loading && !error && (
+                    <div className="flex flex-col items-center mt-12 mb-8 gap-5">
+                        <div className="flex justify-center items-center gap-1 sm:gap-2 flex-wrap">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handlePageChange(1)}
+                                disabled={currentPage <= 1 || isPending}
+                                className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 border-border/50 bg-card/50 hover:bg-muted"
+                                title="Trang đầu"
+                            >
+                                <ChevronsLeft className="h-4 w-4" />
+                            </Button>
+                            
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePageChange(currentPage - 1)}
+                                disabled={currentPage <= 1 || isPending}
+                                className="flex items-center space-x-1 h-9 sm:h-10 px-2 sm:px-3 border-border/50 bg-card/50 hover:bg-muted"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                                <span className="hidden sm:inline">Trước</span>
+                            </Button>
+
+                            <div className="flex items-center gap-1 mx-1 sm:mx-2">
+                                {(() => {
+                                    const pages = [];
+                                    const showPages = 5;
+                                    
+                                    let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
+                                    let endPage = startPage + showPages - 1;
+                                    
+                                    if (endPage > totalPages) {
+                                        endPage = totalPages;
+                                        startPage = Math.max(1, endPage - showPages + 1);
+                                    }
+
+                                    if (startPage > 1) {
+                                        pages.push(
+                                            <Button key={1} variant="outline" size="sm" onClick={() => handlePageChange(1)} disabled={isPending} className="w-9 h-9 sm:w-10 sm:h-10 border-border/50 bg-card/50 hover:bg-muted text-xs sm:text-sm">1</Button>
+                                        );
+                                        if (startPage > 2) {
+                                            pages.push(<span key="ellipsis1" className="px-1 sm:px-2 text-muted-foreground text-xs sm:text-sm tracking-widest">...</span>);
+                                        }
+                                    }
+
+                                    for (let i = startPage; i <= endPage; i++) {
+                                        pages.push(
+                                            <Button
+                                                key={i}
+                                                variant={currentPage === i ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => handlePageChange(i)}
+                                                disabled={isPending}
+                                                className={`w-9 h-9 sm:w-10 sm:h-10 text-xs sm:text-sm border-border/50 ${currentPage === i ? 'bg-gradient-to-r from-primary to-secondary text-primary-foreground border-transparent shadow-md pointer-events-none' : 'bg-card/50 hover:bg-muted'}`}
+                                            >
+                                                {i}
+                                            </Button>
+                                        );
+                                    }
+
+                                    if (endPage < totalPages) {
+                                        if (endPage < totalPages - 1) {
+                                            pages.push(<span key="ellipsis2" className="px-1 sm:px-2 text-muted-foreground text-xs sm:text-sm tracking-widest">...</span>);
+                                        }
+                                        pages.push(
+                                            <Button key={totalPages} variant="outline" size="sm" onClick={() => handlePageChange(totalPages)} disabled={isPending} className="w-9 h-9 sm:w-10 sm:h-10 border-border/50 bg-card/50 hover:bg-muted text-xs sm:text-sm">{totalPages}</Button>
+                                        );
+                                    }
+
+                                    return pages;
+                                })()}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePageChange(currentPage + 1)}
+                                disabled={currentPage >= totalPages || isPending}
+                                className="flex items-center space-x-1 h-9 sm:h-10 px-2 sm:px-3 border-border/50 bg-card/50 hover:bg-muted"
+                            >
+                                <span className="hidden sm:inline">Sau</span>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                            
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handlePageChange(totalPages)}
+                                disabled={currentPage >= totalPages || isPending}
+                                className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 border-border/50 bg-card/50 hover:bg-muted"
+                                title="Trang cuối"
+                            >
+                                <ChevronsRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        
+                        <div className="flex items-center gap-2.5 bg-card/30 border border-border/50 p-1.5 rounded-xl shadow-sm backdrop-blur-sm">
+                            <span className="text-xs font-medium text-muted-foreground pl-2 uppercase tracking-wider">Đến trang</span>
+                            <div className="flex items-center bg-background border border-border/40 rounded-lg overflow-hidden h-8 sm:h-9 focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/40 transition-all">
+                                <input 
+                                    type="number" 
+                                    min={1} 
+                                    max={totalPages}
+                                    value={pageInput}
+                                    onChange={(e) => setPageInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            const p = parseInt(pageInput);
+                                            if (p >= 1 && p <= totalPages) {
+                                                handlePageChange(p);
+                                                setPageInput('');
+                                            }
+                                        }
+                                    }}
+                                    className="w-14 sm:w-16 h-full px-2 text-xs sm:text-sm text-center bg-transparent outline-none font-medium text-foreground placeholder:text-muted-foreground/50"
+                                    placeholder="Trang"
+                                />
+                                <div className="w-px h-5 bg-border/50"></div>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-full rounded-none px-3 bg-muted/20 hover:bg-primary/10 hover:text-primary transition-colors text-xs font-bold"
+                                    onClick={() => {
+                                        const p = parseInt(pageInput);
+                                        if (p >= 1 && p <= totalPages) {
+                                            handlePageChange(p);
+                                            setPageInput('');
+                                        }
+                                    }}
+                                >
+                                    ĐI
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

@@ -206,7 +206,7 @@ export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
 
 export async function searchMovies(params: SearchParams): Promise<ApiResponse<any>> {
   try {
-    let endpoint = '/api/danh-sach/phim-moi-cap-nhat';
+    let endpoint = '/danh-sach/phim-moi-cap-nhat';
     let queryParams: any = { ...params };
     
     // tim-kiem MUST have a keyword.
