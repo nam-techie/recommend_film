@@ -1,4 +1,4 @@
-// API Types based on phimapi.com documentation
+// API types based on the current KKPhim/PhimAPI documentation.
 export interface Movie {
   _id: string
   name: string
@@ -152,8 +152,10 @@ export interface Country {
   slug: string
 }
 
-const API_BASE_URL = 'https://phimapi.com'
-const CDN_IMAGE_URL = 'https://phimimg.com'
+// KKPhim publishes its API documentation at kkphim1.com, while the documented
+// JSON API base URL remains phimapi.com.
+const API_BASE_URL = process.env.NEXT_PUBLIC_MOVIE_API_URL || 'https://phimapi.com'
+const CDN_IMAGE_URL = process.env.NEXT_PUBLIC_MOVIE_IMAGE_URL || 'https://phimimg.com'
 
 // Helper function to build image URL
 export function getImageUrl(path: string): string {
@@ -177,14 +179,38 @@ function buildApiUrl(endpoint: string, params?: Record<string, any>): string {
   return url.toString()
 }
 
+function normalizeMovieListResponse(response: any): ApiResponse<any> {
+  const items = Array.isArray(response?.items)
+    ? response.items
+    : Array.isArray(response?.data?.items)
+      ? response.data.items
+      : []
+
+  const pagination = response?.pagination || response?.data?.params?.pagination
+
+  return {
+    ...response,
+    items,
+    pagination
+  }
+}
+
+function extractLookupItems<T>(response: any): T[] {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.data)) return response.data
+  if (Array.isArray(response?.data?.items)) return response.data.items
+  if (Array.isArray(response?.items)) return response.items
+  return []
+}
+
 // API Functions
 export async function fetchNewMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
+    const response = await fetch(buildApiUrl('/v1/api/danh-sach', { page }), {
       next: { revalidate: 300 } // Cache for 5 minutes
     })
     if (!response.ok) throw new Error('Failed to fetch new movies')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error fetching new movies:', error)
     throw error
@@ -206,7 +232,7 @@ export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
 
 export async function searchMovies(params: SearchParams): Promise<ApiResponse<any>> {
   try {
-    let endpoint = '/danh-sach/phim-moi-cap-nhat';
+    let endpoint = '/v1/api/danh-sach';
     let queryParams: any = { ...params };
     
     // tim-kiem MUST have a keyword.
@@ -230,7 +256,7 @@ export async function searchMovies(params: SearchParams): Promise<ApiResponse<an
 
     const response = await fetch(buildApiUrl(endpoint, queryParams))
     if (!response.ok) throw new Error('Failed to search movies')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error searching movies:', error)
     throw error
@@ -301,7 +327,7 @@ export async function fetchMoviesByYear(
   try {
     const response = await fetch(buildApiUrl(`/v1/api/nam/${year}`, params))
     if (!response.ok) throw new Error('Failed to fetch movies by year')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error fetching movies by year:', error)
     throw error
@@ -312,8 +338,7 @@ export async function fetchGenres(): Promise<Genre[]> {
   try {
     const response = await fetch(buildApiUrl('/the-loai'))
     if (!response.ok) throw new Error('Failed to fetch genres')
-    const data = await response.json()
-    return Array.isArray(data) ? data : data.data || []
+    return extractLookupItems<Genre>(await response.json())
   } catch (error) {
     console.error('Error fetching genres:', error)
     throw error
@@ -325,8 +350,8 @@ export async function fetchCountries(): Promise<Country[]> {
     const response = await fetch(buildApiUrl('/quoc-gia'))
     if (!response.ok) throw new Error('Failed to fetch countries')
     const data = await response.json()
-    // API trả về trực tiếp array
-    return Array.isArray(data) ? data : []
+    // Current API wraps lookup values in data.items.
+    return extractLookupItems<Country>(data)
   } catch (error) {
     console.error('Error fetching countries:', error)
     throw error
@@ -338,9 +363,9 @@ export async function fetchMoviesByType(
   params: SearchParams = {}
 ): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/type/${typeList}`, params))
+    const response = await fetch(buildApiUrl(`/v1/api/danh-sach/${typeList}`, params))
     if (!response.ok) throw new Error('Failed to fetch movies by type')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error fetching movies by type:', error)
     throw error
@@ -350,11 +375,11 @@ export async function fetchMoviesByType(
 // Fetch trending movies (most viewed)
 export async function fetchTrendingMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
+    const response = await fetch(buildApiUrl('/v1/api/danh-sach', { page }), {
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error('Failed to fetch trending movies')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error fetching trending movies:', error)
     throw error
@@ -364,11 +389,11 @@ export async function fetchTrendingMovies(page: number = 1): Promise<ApiResponse
 // Fetch featured movies (high rated)
 export async function fetchFeaturedMovies(page: number = 1): Promise<ApiResponse<any>> {
   try {
-    const response = await fetch(buildApiUrl('/danh-sach/phim-moi-cap-nhat', { page }), {
+    const response = await fetch(buildApiUrl('/v1/api/danh-sach', { page }), {
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error('Failed to fetch featured movies')
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error('Error fetching featured movies:', error)
     throw error
@@ -385,7 +410,7 @@ export async function fetchMoviesByTypeV3(
       next: { revalidate: 300 }
     })
     if (!response.ok) throw new Error(`Failed to fetch ${type}`)
-    return await response.json()
+    return normalizeMovieListResponse(await response.json())
   } catch (error) {
     console.error(`Error fetching ${type}:`, error)
     throw error
