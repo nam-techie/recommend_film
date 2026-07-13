@@ -7,7 +7,7 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -61,11 +61,16 @@ const createRoomSchema = z.object({
   roomName: z.string().trim().max(80).optional(), accessMode: z.enum(['public', 'link_only', 'password']).default('link_only'),
   password: z.string().min(6).max(64).optional(), movie: movieSchema, initialEpisodeId: z.string().optional()
 }).refine((input) => input.accessMode !== 'password' || Boolean(input.password), { message: 'Password is required', path: ['password'] })
-const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().min(1).max(5000) })
+const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().min(1).max(5000), anonymous: z.boolean().optional().default(false) })
 const playbackSchema = z.object({
   episodeId: z.string().min(1).max(120), currentTime: z.number().finite().nonnegative(), isPlaying: z.boolean(),
   action: z.enum(['play', 'pause', 'seek', 'heartbeat']), clientEventId: z.string().min(8).max(100)
 })
+const voiceSignalSchema = z.object({
+  targetMemberId: z.string().min(1).max(100),
+  description: z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().max(100_000) }).optional(),
+  candidate: z.object({ candidate: z.string().max(8_000), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().int().nonnegative().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional()
+}).refine((value) => value.description || value.candidate, 'Voice signal is required')
 
 class MemoryStore {
   constructor() { this.rooms = new Map(); this.dedupe = new Map() }
@@ -143,7 +148,17 @@ const publicRoom = (room) => ({
   userCount: Object.values(room.members).filter((member) => member.connected).length,
   createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status
 })
-const clientRoom = (room) => { const copy = structuredClone(room); delete copy.passwordHash; return copy }
+const clientMember = (member) => {
+  const copy = structuredClone(member)
+  delete copy.uid; delete copy.socketIds
+  return copy
+}
+const clientRoom = (room) => {
+  const copy = structuredClone(room)
+  delete copy.passwordHash
+  for (const member of Object.values(copy.members)) { delete member.uid; delete member.socketIds }
+  return copy
+}
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)) }
 const readBody = async (req) => { const chunks = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > 1_000_000) throw new Error('PAYLOAD_TOO_LARGE'); chunks.push(chunk) } return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') }
 const isSafeMediaUrl = (value) => { try { const url = new URL(value); const host = url.hostname.toLowerCase(); return ['http:', 'https:'].includes(url.protocol) && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1' && !/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host) } catch { return false } }
@@ -214,10 +229,10 @@ const server = http.createServer(async (req, res) => {
       const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes.find((episode) => episode.linkM3u8)
       if (!initial?.linkM3u8) return json(res, 400, { code: 'HLS_REQUIRED', error: 'Xem chung cần ít nhất một nguồn HLS để đồng bộ chính xác.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
-      const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, micEnabled: false, voiceJoined: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
-        members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
+        members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
       await store.setRoom(room); log('room_created', { roomId: room.id, accessMode: room.accessMode, ownerUid: owner.uid })
       return json(res, 201, { roomId: room.id, roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
@@ -230,7 +245,7 @@ const server = http.createServer(async (req, res) => {
       if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
       if (Object.keys(room.members).length >= MAX_ROOM_MEMBERS) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người.' })
       const account = await verifyFirebaseToken(input.firebaseIdToken)
-      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: account?.picture, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, micEnabled: false, voiceJoined: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
       return json(res, 201, { roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
@@ -289,7 +304,7 @@ io.on('connection', async (socket) => {
   const { roomId, memberId } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
   const member = room.members[memberId]; member.connected = true; member.lastSeenAt = Date.now(); member.socketIds = [...new Set([...member.socketIds, socket.id])]; room.emptySince = null
   if (memberId === room.hostMemberId && room.status === 'host_reconnecting') { room.status = 'active'; room.hostReconnectDeadline = null; clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId); log('host_resumed', { roomId }) }
-  socket.join(roomId); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', member); io.emit('room:list_changed')
+  socket.join(roomId); socket.join(`${roomId}:${memberId}`); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', clientMember(member)); io.emit('room:list_changed')
 
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
   socket.on('sync:request', async (payload, ack) => { const fresh = await store.getRoom(roomId); const response = { serverTime: Date.now(), clientSentAt: payload?.clientSentAt, playback: fresh?.playback }; ack?.(response); socket.emit('sync:pong', response) })
@@ -324,10 +339,36 @@ io.on('connection', async (socket) => {
     if (!(await store.allow(`reaction:${memberId}`, 5, 5000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
     io.to(roomId).emit('reaction:new', { id: id('reaction'), memberId, displayName: sender.displayName, emoji, timestamp: Date.now() }); ack?.({ ok: true })
   })
+  socket.on('voice:permission', async (payload, ack) => {
+    const fresh = await store.getRoom(roomId)
+    if (!fresh || fresh.hostMemberId !== memberId) return ack?.({ ok: false, code: 'HOST_ONLY' })
+    const enabled = Boolean(payload?.enabled)
+    applyVoicePermission(fresh, enabled)
+    await store.setRoom(fresh)
+    io.to(roomId).emit('voice:permission_changed', { enabled })
+    if (!enabled) io.to(roomId).emit('voice:all_muted')
+    ack?.({ ok: true })
+  })
+  socket.on('voice:mic_state', async (payload, ack) => {
+    const fresh = await store.getRoom(roomId); const current = fresh?.members[memberId]
+    if (!fresh || !current) return ack?.({ ok: false, code: 'ROOM_NOT_FOUND' })
+    const micEnabled = Boolean(payload?.micEnabled)
+    const result = applyMemberMicState(fresh, memberId, micEnabled)
+    if (!result.ok) return ack?.(result)
+    await store.setRoom(fresh)
+    io.to(roomId).emit('voice:member_state', { memberId, micEnabled, voiceJoined: current.voiceJoined })
+    ack?.({ ok: true })
+  })
+  socket.on('voice:signal', async (payload) => {
+    const parsed = voiceSignalSchema.safeParse(payload); if (!parsed.success) return
+    const fresh = await store.getRoom(roomId); const sender = fresh?.members[memberId]; const target = fresh?.members[parsed.data.targetMemberId]
+    if (!fresh?.voiceEnabled || !sender?.connected || !sender.voiceJoined || !target?.connected || !target.voiceJoined || !(await store.allow(`voice-signal:${memberId}`, 120, 10_000))) return
+    io.to(`${roomId}:${target.memberId}`).emit('voice:signal', { fromMemberId: memberId, description: parsed.data.description, candidate: parsed.data.candidate })
+  })
 
   const disconnectMember = async () => {
     const fresh = await store.getRoom(roomId); if (!fresh?.members[memberId]) return
-    const current = fresh.members[memberId]; current.socketIds = current.socketIds.filter((socketId) => socketId !== socket.id); current.connected = current.socketIds.length > 0; current.lastSeenAt = Date.now()
+    const current = fresh.members[memberId]; current.socketIds = current.socketIds.filter((socketId) => socketId !== socket.id); current.connected = current.socketIds.length > 0; current.lastSeenAt = Date.now(); if (!current.connected) { current.micEnabled = false; current.voiceJoined = false }
     if (!current.connected) socket.to(roomId).emit('room:member_left', { memberId })
     if (memberId === fresh.hostMemberId && !current.connected) {
       fresh.status = 'host_reconnecting'; fresh.hostReconnectDeadline = Date.now() + HOST_GRACE_SECONDS * 1000; io.to(roomId).emit('host:reconnecting', { graceSeconds: HOST_GRACE_SECONDS }); clearTimeout(hostTimers.get(roomId)); hostTimers.set(roomId, setTimeout(() => transferHost(roomId), HOST_GRACE_SECONDS * 1000))

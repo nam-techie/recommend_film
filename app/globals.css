@@ -706,3 +706,34 @@ button, a, [role="button"] {
   background: rgba(17, 24, 39, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+@keyframes watchPartyReactionFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 18px) scale(0.82);
+  }
+  16% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.05);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(-50%, -34px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52px) scale(0.94);
+  }
+}
+
+.watch-party-reaction {
+  animation: watchPartyReactionFloat 3s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-party-reaction {
+    animation-name: none;
+    opacity: 1;
+  }
+}

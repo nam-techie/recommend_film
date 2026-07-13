@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -25,4 +25,27 @@ test('host successor is the earliest connected member with stable tie break', ()
     old: { memberId: 'old', joinedAt: 2, connected: false }
   }
   assert.equal(chooseHostSuccessor(members, 'host')?.memberId, 'a')
+})
+
+test('disabling room voice mutes and removes every member from voice', () => {
+  const room = {
+    voiceEnabled: true,
+    members: {
+      host: { micEnabled: true, voiceJoined: true },
+      guest: { micEnabled: false, voiceJoined: true }
+    }
+  }
+  applyVoicePermission(room, false)
+  assert.equal(room.voiceEnabled, false)
+  assert.deepEqual(room.members.host, { micEnabled: false, voiceJoined: false })
+  assert.deepEqual(room.members.guest, { micEnabled: false, voiceJoined: false })
+})
+
+test('member can only unmute after the host enables voice', () => {
+  const room = { voiceEnabled: false, members: { guest: { micEnabled: false, voiceJoined: false } } }
+  assert.deepEqual(applyMemberMicState(room, 'guest', true), { ok: false, code: 'VOICE_DISABLED' })
+
+  applyVoicePermission(room, true)
+  assert.equal(applyMemberMicState(room, 'guest', true).ok, true)
+  assert.deepEqual(room.members.guest, { micEnabled: true, voiceJoined: true })
 })

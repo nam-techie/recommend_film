@@ -25,3 +25,24 @@ export function chooseHostSuccessor(members, currentHostMemberId) {
     .filter((member) => member.connected && member.memberId !== currentHostMemberId)
     .sort((a, b) => a.joinedAt - b.joinedAt || a.memberId.localeCompare(b.memberId))[0] || null
 }
+
+export function applyVoicePermission(room, enabled) {
+  room.voiceEnabled = Boolean(enabled)
+  if (!room.voiceEnabled) {
+    Object.values(room.members || {}).forEach((member) => {
+      member.micEnabled = false
+      member.voiceJoined = false
+    })
+  }
+  return room
+}
+
+export function applyMemberMicState(room, memberId, micEnabled) {
+  const member = room.members?.[memberId]
+  if (!member) return { ok: false, code: 'ROOM_NOT_FOUND' }
+  if (micEnabled && !room.voiceEnabled) return { ok: false, code: 'VOICE_DISABLED' }
+
+  member.micEnabled = Boolean(micEnabled)
+  member.voiceJoined = Boolean(room.voiceEnabled)
+  return { ok: true, member }
+}

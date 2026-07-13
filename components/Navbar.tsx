@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Film, Home, Search, Menu, X, Globe, Tv, Grid3X3, Sparkles } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import Link from 'next/link'
@@ -11,7 +11,10 @@ import { AuthDialog } from '@/components/auth/AuthDialog'
 const Navbar = () => {
     const pathname = usePathname()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+    const [avatarFailed, setAvatarFailed] = useState(false)
     const { user, loading: authLoading, logout } = useAuth()
+
+    useEffect(() => setAvatarFailed(false), [user?.photoURL])
 
     const navItems = [
         { href: '/', label: 'Trang chủ', icon: Home },
@@ -71,7 +74,7 @@ const Navbar = () => {
                     <div className="flex items-center space-x-3">
                         {!authLoading && (user ? (
                             <Button variant="outline" size="sm" onClick={() => void logout()} className="gap-2">
-                                {user.photoURL && <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full" />}
+                                {user.photoURL && !avatarFailed ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} className="h-7 w-7 rounded-full object-cover" /> : <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">{(user.displayName || user.email || 'U').split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>}
                                 <span className="hidden sm:inline max-w-28 truncate">{user.displayName || 'Tài khoản'}</span>
                             </Button>
                         ) : (

@@ -10,7 +10,8 @@ export interface WatchPartyEpisode {
 }
 export interface WatchPartyMember {
   memberId: string; displayName: string; role: 'host' | 'viewer'
-  joinedAt: number; lastSeenAt: number; connected: boolean; socketIds: string[]
+  avatar?: string; isAnonymous?: boolean; micEnabled?: boolean; voiceJoined?: boolean
+  joinedAt: number; lastSeenAt: number; connected: boolean; socketIds?: string[]
 }
 export interface WatchPartyPlayback {
   episodeId: string; currentTime: number; isPlaying: boolean; revision: number
@@ -30,7 +31,7 @@ export interface WatchPartyRoom {
   movie: { slug: string; title: string; originalTitle?: string; poster?: string; episodes: WatchPartyEpisode[] }
   playback: WatchPartyPlayback; members: Record<string, WatchPartyMember>; messages: WatchPartyMessage[]
   hostMemberId: string; controlMode: 'host_only'; createdAt: number; expiresAt: number
-  status: WatchPartyRoomStatus; emptySince?: number | null
+  status: WatchPartyRoomStatus; emptySince?: number | null; voiceEnabled: boolean
 }
 export interface WatchPartyRoomPreview {
   id: string; roomName: string; accessMode: WatchPartyAccessMode; requiresPassword: boolean; syncCapability: WatchPartySyncCapability

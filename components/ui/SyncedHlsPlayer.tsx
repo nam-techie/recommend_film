@@ -1,14 +1,41 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { AlertTriangle, FastForward, Maximize, Pause, Play, RefreshCw, Rewind, Volume2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  AudioLines,
+  LockKeyhole,
+  Maximize,
+  MessageCircle,
+  Mic,
+  MicOff,
+  Minimize,
+  Pause,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  SmilePlus,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { WATCH_PARTY_DRIFT_HARD_SECONDS, WATCH_PARTY_DRIFT_SOFT_SECONDS, WatchPartyEpisode, WatchPartyPlayback, WatchPartyReaction, WatchPartyRoomStatus } from '@/lib/watch-party-types'
+import {
+  WATCH_PARTY_DRIFT_HARD_SECONDS,
+  WATCH_PARTY_DRIFT_SOFT_SECONDS,
+  WatchPartyEpisode,
+  WatchPartyMember,
+  WatchPartyPlayback,
+  WatchPartyReaction,
+  WatchPartyRoomStatus,
+} from '@/lib/watch-party-types'
 import { playableHlsUrl } from '@/lib/media-url'
+import { cn } from '@/lib/utils'
 
 type PlayerState = 'idle' | 'loading_manifest' | 'loading_media' | 'ready' | 'playing' | 'buffering' | 'autoplay_blocked' | 'fallback_embed' | 'fatal_error'
 type ProgressReason = 'timeupdate' | 'pause' | 'seek'
+type GestureFeedback = { label: string; side: 'left' | 'center' | 'right' } | null
 
 interface Props {
   episode?: WatchPartyEpisode
@@ -23,11 +50,61 @@ interface Props {
   allowIframeFallback?: boolean
   initialTime?: number
   standalone?: boolean
+  isFullscreen?: boolean
+  chatOpen?: boolean
+  unreadCount?: number
+  fillContainer?: boolean
+  onToggleChat?: () => void
+  onToggleFullscreen?: () => void
+  voiceEnabled?: boolean
+  micEnabled?: boolean
+  voiceJoined?: boolean
+  speakingMembers?: WatchPartyMember[]
+  reactionOptions?: string[]
+  reactionError?: string | null
+  onToggleMic?: () => void
+  onToggleVoicePermission?: () => void
+  onSendReaction?: (emoji: string) => void
 }
 
 const formatTime = (seconds = 0) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
+const memberInitials = (name = '?') => name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase() || '?'
 
-export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockOffset, reactions, roomStatus, onPlaybackUpdate, onProgress, allowIframeFallback = false, initialTime = 0, standalone = false }: Props) {
+function SeekIcon({ direction }: { direction: 'back' | 'forward' }) {
+  const Icon = direction === 'back' ? RotateCcw : RotateCw
+  return <span className="relative flex h-6 w-6 items-center justify-center"><Icon className="h-6 w-6" /><span className="absolute text-[8px] font-bold leading-none">10</span></span>
+}
+
+export function SyncedHlsPlayer({
+  episode,
+  playback,
+  isHost,
+  isConnected,
+  clockOffset,
+  reactions,
+  roomStatus,
+  onPlaybackUpdate,
+  onProgress,
+  allowIframeFallback = false,
+  initialTime = 0,
+  standalone = false,
+  isFullscreen = false,
+  chatOpen = false,
+  unreadCount = 0,
+  fillContainer = false,
+  onToggleChat,
+  onToggleFullscreen,
+  voiceEnabled = false,
+  micEnabled = false,
+  voiceJoined = false,
+  speakingMembers = [],
+  reactionOptions = [],
+  reactionError = null,
+  onToggleMic,
+  onToggleVoicePermission,
+  onSendReaction,
+}: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const applyingRemoteRef = useRef(false)
@@ -37,6 +114,10 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const scrubbingRef = useRef(false)
   const latestPlaybackRef = useRef(playback)
   const retryTimersRef = useRef<number[]>([])
+  const controlsTimerRef = useRef<number | null>(null)
+  const gestureTimerRef = useRef<number | null>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
+  const previousVolumeRef = useRef(0.85)
   const [playerState, setPlayerState] = useState<PlayerState>('idle')
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceVersion, setSourceVersion] = useState(0)
@@ -46,16 +127,43 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const [volume, setVolume] = useState(0.85)
   const [isScrubbing, setIsScrubbing] = useState(false)
   const [scrubTime, setScrubTime] = useState(0)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const [gestureFeedback, setGestureFeedback] = useState<GestureFeedback>(null)
+  const [showReactionTray, setShowReactionTray] = useState(false)
 
   const playerStateRef = useRef(playerState)
   useEffect(() => { playerStateRef.current = playerState }, [playerState])
-
   useEffect(() => { latestPlaybackRef.current = playback }, [playback])
 
   const targetTime = useMemo(() => {
     const elapsed = playback.isPlaying ? Math.max(0, Date.now() + clockOffset - playback.serverUpdatedAt) / 1000 : 0
     return Math.max(0, playback.currentTime + elapsed)
   }, [clockOffset, playback])
+
+  const clearInteractionTimers = useCallback(() => {
+    if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current)
+    if (gestureTimerRef.current) window.clearTimeout(gestureTimerRef.current)
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
+    controlsTimerRef.current = null
+    gestureTimerRef.current = null
+    feedbackTimerRef.current = null
+  }, [])
+
+  useEffect(() => clearInteractionTimers, [clearInteractionTimers])
+
+  const scheduleControls = useCallback(() => {
+    setControlsVisible(true)
+    if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current)
+    controlsTimerRef.current = null
+    if (!standalone && isPlaying && !isScrubbing && !showReactionTray && playerState === 'playing') {
+      controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2500)
+    }
+  }, [isPlaying, isScrubbing, playerState, showReactionTray, standalone])
+
+  useEffect(() => {
+    if (!isPlaying || isScrubbing || playerState !== 'playing') setControlsVisible(true)
+    scheduleControls()
+  }, [isPlaying, isScrubbing, playerState, scheduleControls])
 
   const destroySource = useCallback(() => {
     retryTimersRef.current.forEach((timer) => window.clearTimeout(timer))
@@ -112,13 +220,17 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     let networkRetries = 0
     let recoveredMedia = false
     const ready = () => { if (!disposed) setPlayerState('ready') }
-    const metadata = () => { if (!disposed) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (initialTime > 0) video.currentTime = Math.min(initialTime, Math.max(0, video.duration - 1)); ready() } }
+    const metadata = () => {
+      if (!disposed) {
+        setDuration(Number.isFinite(video.duration) ? video.duration : 0)
+        if (initialTime > 0) video.currentTime = Math.min(initialTime, Math.max(0, video.duration - 1))
+        ready()
+      }
+    }
     const handleVideoError = () => {
       if (!disposed) {
         const mediaError = video.error
         console.warn('Video element error', { code: mediaError?.code, message: mediaError?.message, networkState: video.networkState, readyState: video.readyState, source: video.currentSrc })
-        // hls.js owns the MediaSource on Chromium. Let its ERROR handler
-        // recover first; destroying it here races recoverMediaError().
         if (hlsRef.current) return
         useFallbackOrFail('Lỗi khi tải hoặc phát nguồn video gốc.')
       }
@@ -127,17 +239,13 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     video.addEventListener('error', handleVideoError)
     setPlayerState('loading_manifest')
 
-    // CDN startup can be slow; five seconds caused healthy sources to fail.
     const timeoutId = window.setTimeout(() => {
-      if (!disposed && (playerStateRef.current === 'loading_manifest' || playerStateRef.current === 'loading_media' || playerStateRef.current === 'idle')) {
+      if (!disposed && ['loading_manifest', 'loading_media', 'idle'].includes(playerStateRef.current)) {
         console.warn('HLS stream load timed out, automatically falling back to iframe embed.')
-        useFallbackOrFail('Nguồn HLS tải quá lâu (hết thời gian chờ). Đã chuyển sang trình phát dự phòng.')
+        useFallbackOrFail('Nguồn HLS tải quá lâu. Đã chuyển sang trình phát dự phòng.')
       }
     }, 15000)
 
-    // Chromium may report that it recognizes the HLS MIME type while still
-    // failing with MEDIA_ERR_SRC_NOT_SUPPORTED. Prefer MSE/hls.js whenever
-    // available; native HLS remains the Safari fallback.
     if (Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true, lowLatencyMode: false })
       hlsRef.current = hls
@@ -200,8 +308,7 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     if (isExplicitSeek || (hardCorrectionReady && Math.abs(drift) >= WATCH_PARTY_DRIFT_HARD_SECONDS)) {
       video.currentTime = Math.max(0, nowTarget)
       lastHardSeekAtRef.current = Date.now()
-    }
-    else if (Math.abs(drift) >= WATCH_PARTY_DRIFT_SOFT_SECONDS) video.playbackRate = drift > 0 ? 1.05 : 0.95
+    } else if (Math.abs(drift) >= WATCH_PARTY_DRIFT_SOFT_SECONDS) video.playbackRate = drift > 0 ? 1.05 : 0.95
     else video.playbackRate = 1
     try {
       if (state.isPlaying && video.paused) await video.play()
@@ -218,7 +325,7 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
 
   useEffect(() => {
     if (standalone || isHost) return
-    if (playerState !== 'ready' && playerState !== 'playing' && playerState !== 'buffering' && playerState !== 'autoplay_blocked') return
+    if (!['ready', 'playing', 'buffering', 'autoplay_blocked'].includes(playerState)) return
     void applyRoomPlayback()
   }, [applyRoomPlayback, isHost, playback.revision, playerState, standalone])
 
@@ -243,7 +350,14 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     onPlaybackUpdate({ episodeId: episode.id, currentTime: video.currentTime, isPlaying: !video.paused, action })
   }
 
-  const commitSeek = (requestedTime: number) => {
+  const togglePlayback = useCallback(() => {
+    const video = videoRef.current
+    if (!video?.currentSrc || !isHost || !isConnected || playerState === 'fatal_error') return
+    if (video.paused) void video.play().catch(() => setPlayerState('autoplay_blocked'))
+    else video.pause()
+  }, [isConnected, isHost, playerState])
+
+  const commitSeek = useCallback((requestedTime: number) => {
     const video = videoRef.current
     if (!video || !episode || !isHost || !isConnected || !Number.isFinite(requestedTime)) return
     const value = Math.max(0, Math.min(duration || requestedTime, requestedTime))
@@ -252,16 +366,92 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     setCurrentTime(value)
     setScrubTime(value)
     onPlaybackUpdate({ episodeId: episode.id, currentTime: value, isPlaying: !video.paused, action: 'seek' })
+  }, [duration, episode, isConnected, isHost, onPlaybackUpdate])
+
+  const showGestureFeedback = useCallback((label: string, side: 'left' | 'center' | 'right') => {
+    setGestureFeedback({ label, side })
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
+    feedbackTimerRef.current = window.setTimeout(() => setGestureFeedback(null), 700)
+  }, [])
+
+  const toggleMute = useCallback(() => {
+    setVolume((value) => {
+      if (value > 0) { previousVolumeRef.current = value; return 0 }
+      return previousVolumeRef.current || 0.85
+    })
+    scheduleControls()
+  }, [scheduleControls])
+
+  const toggleFullscreen = useCallback(() => {
+    if (onToggleFullscreen) { onToggleFullscreen(); return }
+    const root = rootRef.current
+    if (!root) return
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void root.requestFullscreen?.()
+  }, [onToggleFullscreen])
+
+  useEffect(() => {
+    if (standalone) return undefined
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      const key = event.key.toLowerCase()
+      if (key === 'f') { event.preventDefault(); toggleFullscreen(); return }
+      if (key === 'm') { event.preventDefault(); toggleMute(); return }
+      if (!isHost) return
+      if (key === ' ' || key === 'k') { event.preventDefault(); togglePlayback() }
+      else if (event.key === 'ArrowLeft') { event.preventDefault(); commitSeek(currentTime - 10); showGestureFeedback('−10 giây', 'left') }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); commitSeek(currentTime + 10); showGestureFeedback('+10 giây', 'right') }
+      scheduleControls()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [commitSeek, currentTime, isHost, scheduleControls, showGestureFeedback, standalone, toggleFullscreen, toggleMute, togglePlayback])
+
+  const handleSurfaceClick = () => {
+    scheduleControls()
+    if (gestureTimerRef.current) window.clearTimeout(gestureTimerRef.current)
+    gestureTimerRef.current = window.setTimeout(() => {
+      if (isHost) {
+        const willPlay = videoRef.current?.paused ?? true
+        togglePlayback()
+        showGestureFeedback(willPlay ? 'Phát' : 'Tạm dừng', 'center')
+      }
+    }, 240)
+  }
+
+  const handleSurfaceDoubleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (gestureTimerRef.current) window.clearTimeout(gestureTimerRef.current)
+    gestureTimerRef.current = null
+    scheduleControls()
+    if (!isHost) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const side = event.clientX - rect.left < rect.width / 2 ? 'left' : 'right'
+    commitSeek(currentTime + (side === 'left' ? -10 : 10))
+    showGestureFeedback(side === 'left' ? '−10 giây' : '+10 giây', side)
   }
 
   if (!episode) return <div className="flex h-full min-h-80 items-center justify-center bg-black text-gray-400">Chưa có tập phim để phát.</div>
-  if (playerState === 'fallback_embed') return <div className="relative aspect-video h-full w-full bg-black">
+  if (playerState === 'fallback_embed') return <div ref={rootRef} className={cn('relative w-full bg-black', fillContainer ? 'h-full' : 'aspect-video h-full')}>
     <iframe src={episode.linkEmbed} title={episode.name} className="h-full w-full border-0" allowFullScreen allow="autoplay; encrypted-media; picture-in-picture" />
     <div className="absolute left-3 top-3 max-w-md rounded-lg border border-amber-500/40 bg-black/90 px-3 py-2 text-sm text-amber-100">{sourceError || 'Nguồn này chỉ hỗ trợ đồng bộ giới hạn. Chat, reaction và đổi tập vẫn hoạt động.'}</div>
+    <div className="absolute bottom-3 right-3 flex gap-2">
+      {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className="relative h-11 w-11 rounded-full border-white/20 bg-black/60 text-white hover:bg-white/20"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
+      <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFullscreen} className="h-11 w-11 rounded-full border-white/20 bg-black/60 text-white hover:bg-white/20">{isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}</Button>
+    </div>
   </div>
 
   const connectionText = !isConnected ? 'Mất kết nối' : roomStatus === 'host_reconnecting' ? 'Host đang kết nối lại' : playerState === 'buffering' ? 'Đang tải dữ liệu' : playerState === 'playing' || playerState === 'ready' ? 'Đã đồng bộ' : 'Đang bắt kịp'
-  return <div className="relative aspect-video h-full w-full overflow-hidden bg-black">
+  const controlsAreVisible = standalone || controlsVisible || !isPlaying
+  const iconButtonClass = 'h-11 w-11 rounded-full border-white/20 bg-black/45 text-white shadow-none hover:bg-white/20 hover:text-white'
+
+  return <div
+    ref={rootRef}
+    className={cn('group relative w-full overflow-hidden bg-black text-white', fillContainer ? 'h-full min-h-0' : 'aspect-video h-full')}
+    onPointerMove={standalone ? undefined : scheduleControls}
+    onPointerDown={standalone ? undefined : scheduleControls}
+    onMouseLeave={() => { if (!standalone && isPlaying) scheduleControls() }}
+  >
     <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline
       onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (!standalone) void applyRoomPlayback() } }}
       onWaiting={() => setPlayerState('buffering')}
@@ -271,34 +461,62 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
       onPause={() => { setIsPlaying(false); onProgress?.(currentTime, duration, 'pause'); emitNative('pause') }}
       onSeeked={(event) => { const time = event.currentTarget.currentTime; setCurrentTime(time); onProgress?.(time, duration, 'seek'); if (suppressSeekEventRef.current) { suppressSeekEventRef.current = false; return } emitNative('seek') }} />
 
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">{reactions.map((reaction, index) => <div key={reaction.id} className="absolute animate-bounce text-4xl" style={{ left: `${18 + (index * 13) % 65}%`, bottom: `${22 + (index * 7) % 42}%` }}>{reaction.emoji}</div>)}</div>
-    <div className="absolute left-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs" aria-live="polite"><span className={`mr-2 inline-block h-2 w-2 rounded-full ${connectionText === 'Đã đồng bộ' ? 'bg-emerald-400' : !isConnected ? 'bg-red-400' : 'bg-amber-400'}`} />{connectionText}</div>
-    {!isHost && <div className="absolute right-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs">Host đang điều khiển</div>}
+    {!standalone && <button type="button" aria-label={isHost ? 'Nhấn để phát hoặc tạm dừng; nhấn đúp hai bên để tua 10 giây' : 'Hiện điều khiển video'} className="absolute inset-0 z-10 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400" onClick={handleSurfaceClick} onDoubleClick={handleSurfaceDoubleClick} />}
 
-    {(playerState === 'loading_manifest' || playerState === 'loading_media') && (
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 z-10">
-        <div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div>
-        {allowIframeFallback && episode?.linkEmbed && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => useFallbackOrFail('Đã chuyển sang trình phát dự phòng theo yêu cầu.')}
-            className="border-white/30 text-xs text-white hover:bg-white/10"
-          >
-            Chuyển sang trình phát dự phòng (Iframe)
-          </Button>
-        )}
+    {!standalone && <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden" aria-live="polite">
+      {reactions.map((reaction, index) => <div key={reaction.id} className="watch-party-reaction absolute flex -translate-x-1/2 flex-col items-center" style={{ left: `${16 + (index * 17) % 68}%`, bottom: `${23 + (index * 9) % 33}%` }}>
+        <span className="text-4xl drop-shadow-lg sm:text-5xl">{reaction.emoji}</span>
+        <span className="mt-1 max-w-28 truncate rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white/90">{reaction.displayName}</span>
+      </div>)}
+    </div>}
+
+    {gestureFeedback && <div className={cn('pointer-events-none absolute top-1/2 z-30 -translate-y-1/2 rounded-full bg-black/65 px-5 py-4 text-center font-semibold shadow-xl', gestureFeedback.side === 'left' ? 'left-[18%]' : gestureFeedback.side === 'right' ? 'right-[18%]' : 'left-1/2 -translate-x-1/2')}>
+      {gestureFeedback.side === 'center' && (gestureFeedback.label === 'Phát' ? <Play className="mx-auto mb-1 h-7 w-7 fill-current" /> : <Pause className="mx-auto mb-1 h-7 w-7 fill-current" />)}
+      <span className="text-xs sm:text-sm">{gestureFeedback.label}</span>
+    </div>}
+
+    <div className={cn('absolute left-3 top-3 z-30 flex items-center rounded-full bg-black/65 px-3 py-1.5 text-xs transition-opacity duration-200', controlsAreVisible ? 'opacity-100' : 'opacity-0')} aria-live="polite">
+      <span className={cn('mr-2 inline-block h-2 w-2 rounded-full', connectionText === 'Đã đồng bộ' ? 'bg-emerald-400' : !isConnected ? 'bg-red-400' : 'bg-amber-400')} />{connectionText}
+    </div>
+    {!standalone && !isHost && <div className={cn('absolute right-3 top-3 z-30 hidden items-center rounded-full bg-black/65 px-3 py-1.5 text-xs transition-opacity duration-200 sm:flex', controlsAreVisible ? 'opacity-100' : 'opacity-0')}><LockKeyhole className="mr-1.5 h-3.5 w-3.5" />Host đang điều khiển</div>}
+    {!standalone && speakingMembers.length > 0 && <div className="pointer-events-none absolute right-3 top-12 z-30 flex max-w-[70%] flex-wrap justify-end gap-2" aria-live="polite">
+      {speakingMembers.slice(0, 4).map((member) => <div key={member.memberId} className="flex items-center gap-2 rounded-full border border-emerald-400/70 bg-black/75 py-1 pl-1 pr-2 shadow-lg"><span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-purple-500/30 text-[10px] font-bold ring-2 ring-emerald-400">{memberInitials(member.displayName)}{member.avatar && <img src={member.avatar} alt="" referrerPolicy="no-referrer" onError={(event) => event.currentTarget.remove()} className="absolute inset-0 h-full w-full object-cover" />}</span><span className="max-w-24 truncate text-[11px] font-medium">{member.displayName}</span><AudioLines className="h-3.5 w-3.5 text-emerald-400" /></div>)}
+    </div>}
+
+    {(playerState === 'loading_manifest' || playerState === 'loading_media') && <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/60">
+      <div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div>
+      {allowIframeFallback && episode.linkEmbed && <Button size="sm" variant="outline" onClick={() => useFallbackOrFail('Đã chuyển sang trình phát dự phòng theo yêu cầu.')} className="border-white/30 bg-black/60 text-xs text-white hover:bg-white/10">Chuyển sang trình phát dự phòng</Button>}
+    </div>}
+    {playerState === 'buffering' && <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-3 text-sm">Đang tải đoạn phim…</div>}
+    {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
+    {playerState === 'fatal_error' && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/85 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => setSourceVersion((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
+
+    {!standalone && showReactionTray && <div className="absolute bottom-[5.6rem] right-3 z-40 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-black/85 p-1.5 shadow-2xl backdrop-blur-sm sm:bottom-24 sm:right-4">
+      {reactionOptions.map((emoji) => <button key={emoji} type="button" aria-label={`Gửi reaction ${emoji}`} disabled={!isConnected} onClick={() => { onSendReaction?.(emoji); setShowReactionTray(false); scheduleControls() }} className="flex h-10 w-10 items-center justify-center rounded-lg text-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 disabled:opacity-40 sm:h-11 sm:w-11">{emoji}</button>)}
+      {reactionError && <span className="absolute -top-8 right-0 whitespace-nowrap rounded-full bg-black/90 px-2 py-1 text-[11px] text-amber-200">{reactionError}</span>}
+    </div>}
+
+    <div className={cn('absolute inset-x-0 bottom-0 z-30 space-y-1.5 bg-gradient-to-t from-black via-black/85 to-transparent px-3 pb-3 pt-12 transition-opacity duration-200 sm:space-y-2 sm:px-4 sm:pb-4 sm:pt-16', controlsAreVisible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0')}>
+      <div className="flex items-center justify-between gap-3 text-xs sm:text-sm"><span className="truncate font-medium">{episode.name}</span><span className="hidden shrink-0 text-xs text-gray-300 sm:inline">{episode.serverName}</span></div>
+      <input aria-label="Tiến độ phát" title={!isHost ? 'Host đang điều khiển tiến độ phát' : undefined} type="range" min={0} max={duration || 0} step={0.1} value={Math.min(isScrubbing ? scrubTime : currentTime, duration || currentTime)} disabled={!isHost || !duration || !isConnected} onPointerDown={() => { scrubbingRef.current = true; setIsScrubbing(true); setScrubTime(currentTime) }} onChange={(event) => { const value = Number(event.target.value); setScrubTime(value); if (!scrubbingRef.current) commitSeek(value) }} onPointerUp={(event) => { commitSeek(Number(event.currentTarget.value)); scrubbingRef.current = false; setIsScrubbing(false) }} onPointerCancel={() => { scrubbingRef.current = false; setIsScrubbing(false); setScrubTime(currentTime) }} className="h-5 w-full cursor-pointer accent-purple-500 disabled:cursor-not-allowed" />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <Button size="icon" aria-label={isPlaying ? 'Tạm dừng' : 'Phát'} title={!isHost ? 'Host đang điều khiển' : isPlaying ? 'Tạm dừng (K)' : 'Phát (K)'} disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={togglePlayback} className={iconButtonClass}>{isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current" />}</Button>
+          <Button size="icon" variant="outline" aria-label="Lùi 10 giây" title={!isHost ? 'Host đang điều khiển' : 'Lùi 10 giây'} disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime - 10); showGestureFeedback('−10 giây', 'left') }} className={cn(iconButtonClass, 'hidden sm:inline-flex')}><SeekIcon direction="back" /></Button>
+          <Button size="icon" variant="outline" aria-label="Tiến 10 giây" title={!isHost ? 'Host đang điều khiển' : 'Tiến 10 giây'} disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime + 10); showGestureFeedback('+10 giây', 'right') }} className={cn(iconButtonClass, 'hidden sm:inline-flex')}><SeekIcon direction="forward" /></Button>
+          <span className="truncate font-mono text-[11px] text-white/90 sm:text-xs">{formatTime(isScrubbing ? scrubTime : currentTime)} <span className="text-white/50">/ {formatTime(duration)}</span></span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Button size="icon" variant="outline" aria-label={volume > 0 ? 'Tắt tiếng' : 'Bật tiếng'} title={volume > 0 ? 'Tắt tiếng (M)' : 'Bật tiếng (M)'} onClick={toggleMute} className={iconButtonClass}>{volume > 0 ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+          <input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="hidden w-20 accent-purple-500 lg:block" />
+          {!standalone && <Button size="icon" variant="outline" aria-label="Đồng bộ lại" title="Đồng bộ lại với phòng" onClick={() => void applyRoomPlayback()} className={cn(iconButtonClass, 'hidden md:inline-flex')}><RefreshCw className="h-5 w-5" /></Button>}
+          {!standalone && onToggleMic && <Button size="icon" variant="outline" aria-label={micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!voiceEnabled ? 'Host chưa mở voice' : micEnabled ? 'Tắt microphone' : voiceJoined ? 'Bật lại microphone' : 'Tham gia voice và bật microphone'} disabled={!voiceEnabled} onClick={onToggleMic} className={cn(iconButtonClass, micEnabled && 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200')}>{micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>}
+          {!standalone && onToggleVoicePermission && <Button size="icon" variant="outline" aria-label={voiceEnabled ? 'Tắt mic tất cả' : 'Mở voice cho phòng'} title={voiceEnabled ? 'Tắt mic tất cả và khóa voice' : 'Mở voice cho phòng'} onClick={onToggleVoicePermission} className={cn(iconButtonClass, 'hidden sm:inline-flex', voiceEnabled && 'border-emerald-400/60')}><AudioLines className="h-5 w-5" /></Button>}
+          {!standalone && onSendReaction && <Button size="icon" variant="outline" aria-label={showReactionTray ? 'Ẩn reaction' : 'Gửi reaction'} title="Gửi reaction" onClick={() => { setShowReactionTray((value) => !value); setControlsVisible(true) }} className={cn(iconButtonClass, showReactionTray && 'bg-white/20')}><SmilePlus className="h-5 w-5" /></Button>}
+          {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} title={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className={cn(iconButtonClass, 'relative', chatOpen && 'bg-white/20')}><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
+          <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} title={isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)'} onClick={toggleFullscreen} className={iconButtonClass}>{isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}</Button>
+        </div>
       </div>
-    )}
-    {playerState === 'buffering' && <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-3 text-sm">Đang tải đoạn phim…</div>}
-    {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
-    {playerState === 'fatal_error' && <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => setSourceVersion((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
-
-    <div className="absolute inset-x-0 bottom-0 space-y-2 bg-gradient-to-t from-black via-black/80 to-transparent p-4">
-      <div className="flex items-center justify-between text-sm"><span className="font-medium">{episode.name}</span><span className="text-xs text-gray-300">{episode.serverName}</span></div>
-      <input aria-label="Tiến độ phát" type="range" min={0} max={duration || 0} step={0.1} value={Math.min(isScrubbing ? scrubTime : currentTime, duration || currentTime)} disabled={!isHost || !duration || !isConnected} onPointerDown={() => { scrubbingRef.current = true; setIsScrubbing(true); setScrubTime(currentTime) }} onChange={(event) => { const value = Number(event.target.value); setScrubTime(value); if (!scrubbingRef.current) commitSeek(value) }} onPointerUp={(event) => { commitSeek(Number(event.currentTarget.value)); scrubbingRef.current = false; setIsScrubbing(false) }} onPointerCancel={() => { scrubbingRef.current = false; setIsScrubbing(false); setScrubTime(currentTime) }} className="w-full accent-purple-500" />
-      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Button size="icon" disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={() => { const video = videoRef.current; if (!video?.currentSrc) return; if (video.paused) void video.play().catch(() => setPlayerState('autoplay_blocked')); else video.pause() }}>{isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button><Button size="icon" variant="outline" aria-label="Lùi 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => commitSeek(currentTime - 10)}><Rewind className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Tiến 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => commitSeek(currentTime + 10)}><FastForward className="h-4 w-4" /></Button><span className="font-mono text-xs">{formatTime(isScrubbing ? scrubTime : currentTime)} / {formatTime(duration)}</span></div>
-        <div className="flex items-center gap-2"><Volume2 className="h-4 w-4" /><input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="w-20 accent-purple-500" /><Button size="icon" variant="outline" onClick={() => void applyRoomPlayback()}><RefreshCw className="h-4 w-4" /></Button><Button size="icon" variant="outline" onClick={() => void videoRef.current?.requestFullscreen?.()}><Maximize className="h-4 w-4" /></Button></div></div>
     </div>
   </div>
 }
