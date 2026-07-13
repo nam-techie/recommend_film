@@ -39,6 +39,15 @@ Nếu vẫn thấy `auth/configuration-not-found`, kiểm tra project trong `NEX
 
 ## Railway Watch Party server
 
+Sau khi Railway cấp public domain, cấu hình trên Vercel (không dùng localhost):
+
+```text
+NEXT_PUBLIC_WATCH_PARTY_API_URL=https://<watch-party-service>.up.railway.app
+NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://<watch-party-service>.up.railway.app
+```
+
+Luồng production là: trình duyệt → watch-party server → CDN HLS của KKPhim. API phim vẫn cung cấp metadata và URL nguồn; watch-party server chỉ proxy manifest/segment để tránh CDN bị browser chặn và để CORS ổn định.
+
 ```text
 REDIS_URL=...
 CLIENT_ORIGINS=https://your-vercel-domain.vercel.app
@@ -46,7 +55,7 @@ WATCH_PARTY_TOKEN_SECRET=use-a-long-random-secret
 FIREBASE_SERVICE_ACCOUNT_JSON={...single-line service account JSON...}
 ROOM_TTL_SECONDS=14400
 EMPTY_ROOM_TTL_SECONDS=300
-HOST_GRACE_SECONDS=30
+HOST_GRACE_SECONDS=15
 MAX_ROOM_MEMBERS=50
 NODE_ENV=production
 ```

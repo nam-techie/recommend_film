@@ -8,9 +8,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-export function AuthDialog({ children }: { children: ReactNode }) {
+interface AuthDialogProps { children?: ReactNode; defaultOpen?: boolean; onAuthenticated?: () => void }
+
+export function AuthDialog({ children, defaultOpen = false, onAuthenticated }: AuthDialogProps) {
   const { signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, configured } = useAuth()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -22,12 +24,12 @@ export function AuthDialog({ children }: { children: ReactNode }) {
 
   const run = async (action: () => Promise<unknown>, close = true) => {
     setBusy(true); setError(null); setNotice(null)
-    try { await action(); if (close) setOpen(false) }
+    try { await action(); if (close) { setOpen(false); onAuthenticated?.() } }
     catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Không thể xác thực tài khoản.') }
     finally { setBusy(false) }
   }
 
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild>{children}</DialogTrigger><DialogContent className="border-white/10 bg-[#111522] sm:max-w-md">
+  return <Dialog open={open} onOpenChange={setOpen}>{children && <DialogTrigger asChild>{children}</DialogTrigger>}<DialogContent className="border-white/10 bg-[#111522] sm:max-w-md">
     <DialogHeader><DialogTitle className="text-2xl text-white">{mode === 'login' ? 'Đăng nhập CineMind' : 'Tạo tài khoản CineMind'}</DialogTitle><DialogDescription>Đăng nhập để tạo phòng, lấy lại quyền host và đồng bộ lịch sử xem.</DialogDescription></DialogHeader>
     <div className="grid grid-cols-2 rounded-lg bg-black/30 p-1"><Button type="button" variant={mode === 'login' ? 'default' : 'ghost'} onClick={() => { setMode('login'); setError(null) }}>Đăng nhập</Button><Button type="button" variant={mode === 'register' ? 'default' : 'ghost'} onClick={() => { setMode('register'); setError(null) }}>Đăng ký</Button></div>
     {!configured && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">Thiếu biến môi trường Firebase phía client. Xem WATCH_PARTY_SETUP.md.</p>}

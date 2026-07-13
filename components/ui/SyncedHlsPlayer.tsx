@@ -93,7 +93,12 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
 
     const video = videoRef.current
     if (!video) return undefined
-    const hlsSource = playableHlsUrl(episode.linkM3u8)!
+    const hlsSource = playableHlsUrl(episode.linkM3u8)
+    if (!hlsSource) {
+      setSourceError('Thiếu NEXT_PUBLIC_WATCH_PARTY_API_URL. Hãy trỏ biến này tới watch-party server đã deploy.')
+      setPlayerState('fatal_error')
+      return undefined
+    }
     let disposed = false
     let networkRetries = 0
     let recoveredMedia = false
@@ -101,7 +106,11 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     const metadata = () => { if (!disposed) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (initialTime > 0) video.currentTime = Math.min(initialTime, Math.max(0, video.duration - 1)); ready() } }
     const handleVideoError = () => {
       if (!disposed) {
-        console.warn('Native video element error, falling back...')
+        const mediaError = video.error
+        console.warn('Video element error', { code: mediaError?.code, message: mediaError?.message, networkState: video.networkState, readyState: video.readyState, source: video.currentSrc })
+        // hls.js owns the MediaSource on Chromium. Let its ERROR handler
+        // recover first; destroying it here races recoverMediaError().
+        if (hlsRef.current) return
         useFallbackOrFail('Lỗi khi tải hoặc phát nguồn video gốc.')
       }
     }
@@ -109,24 +118,26 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     video.addEventListener('error', handleVideoError)
     setPlayerState('loading_manifest')
 
-    // Timeout fallback (5 seconds)
+    // CDN startup can be slow; five seconds caused healthy sources to fail.
     const timeoutId = window.setTimeout(() => {
       if (!disposed && (playerStateRef.current === 'loading_manifest' || playerStateRef.current === 'loading_media' || playerStateRef.current === 'idle')) {
         console.warn('HLS stream load timed out, automatically falling back to iframe embed.')
         useFallbackOrFail('Nguồn HLS tải quá lâu (hết thời gian chờ). Đã chuyển sang trình phát dự phòng.')
       }
-    }, 5000)
+    }, 15000)
 
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsSource
-      video.load()
-    } else if (Hls.isSupported()) {
+    // Chromium may report that it recognizes the HLS MIME type while still
+    // failing with MEDIA_ERR_SRC_NOT_SUPPORTED. Prefer MSE/hls.js whenever
+    // available; native HLS remains the Safari fallback.
+    if (Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true, lowLatencyMode: false })
       hlsRef.current = hls
       hls.on(Hls.Events.MEDIA_ATTACHED, () => { if (!disposed) setPlayerState('loading_media') })
       hls.on(Hls.Events.MANIFEST_PARSED, ready)
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (disposed || !data.fatal) return
+        if (disposed) return
+        console.warn('HLS playback error', { type: data.type, details: data.details, fatal: data.fatal, responseCode: data.response?.code, url: data.url })
+        if (!data.fatal) return
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 2) {
           const delay = networkRetries++ === 0 ? 1000 : 2000
           setSourceError(`Nguồn đang mất kết nối, thử lại lần ${networkRetries}/2…`)
@@ -143,6 +154,9 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
       })
       hls.attachMedia(video)
       hls.loadSource(hlsSource)
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = hlsSource
+      video.load()
     } else {
       useFallbackOrFail('Trình duyệt này không hỗ trợ nguồn HLS.')
     }

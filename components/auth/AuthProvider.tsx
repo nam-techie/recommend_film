@@ -43,8 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     if (!auth) { setLoading(false); return undefined }
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => { setUser(nextUser); setLoading(false) })
-    return () => unsubscribe()
+    // Do not leave protected routes on an infinite spinner if Firebase auth
+    // initialization is delayed or blocked by the browser/network.
+    const timeout = window.setTimeout(() => setLoading(false), 4000)
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => { window.clearTimeout(timeout); setUser(nextUser); setLoading(false) }, () => { window.clearTimeout(timeout); setUser(null); setLoading(false) })
+    return () => { window.clearTimeout(timeout); unsubscribe() }
   }, [])
 
   const requireAuth = useCallback(() => { if (!auth) throw new Error('Thiếu cấu hình NEXT_PUBLIC_FIREBASE_* trong file .env.'); return auth }, [])

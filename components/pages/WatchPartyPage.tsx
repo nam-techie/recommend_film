@@ -21,7 +21,7 @@ const formatTime = (value = 0) => `${Math.floor(value / 60)}:${Math.floor(value 
 
 export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?: string }) {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { saveProgress } = useWatchProgress()
   const endRef = useRef<HTMLDivElement>(null)
   const chatListRef = useRef<HTMLDivElement>(null)
@@ -45,21 +45,27 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [roomsLoading, setRoomsLoading] = useState(!roomId)
 
   useEffect(() => {
-    if (!normalizedRoomId) return undefined
+    if (authLoading || user) return
+    const returnUrl = roomId ? `/watch-party/${encodeURIComponent(normalizedRoomId)}` : '/watch-party'
+    router.replace(`/login?returnUrl=${encodeURIComponent(returnUrl)}`)
+  }, [authLoading, normalizedRoomId, roomId, router, user])
+
+  useEffect(() => {
+    if (!normalizedRoomId || authLoading || !user) return undefined
     let active = true
     setSession(loadWatchPartySession(normalizedRoomId))
     void getWatchPartyPreview(normalizedRoomId).then((value) => { if (active) setPreview(value) }).catch((error) => { if (active) setPreviewError(error instanceof Error ? error.message : 'Không thể tải phòng.') })
     return () => { active = false }
-  }, [normalizedRoomId])
+  }, [authLoading, normalizedRoomId, user])
 
   useEffect(() => {
-    if (roomId) return undefined
+    if (roomId || authLoading || !user) return undefined
     let active = true
     void listWatchParties().then((result) => { if (active) setPublicRooms(result.rooms) }).catch(() => { if (active) setPublicRooms([]) }).finally(() => { if (active) setRoomsLoading(false) })
     return () => { active = false }
-  }, [roomId])
+  }, [authLoading, roomId, user])
 
-  const party = useWatchParty(normalizedRoomId, session)
+  const party = useWatchParty(normalizedRoomId, user ? session : null)
   const activeEpisode = useMemo(() => party.room?.movie.episodes.find((item) => item.id === party.room?.playback.episodeId) || party.room?.movie.episodes[0], [party.room])
   const episodeGroups = useMemo(() => Object.entries((party.room?.movie.episodes || []).reduce<Record<string, WatchPartyEpisode[]>>((groups, episode) => {
     groups[episode.serverName] = [...(groups[episode.serverName] || []), episode]
@@ -108,6 +114,8 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     try { await navigator.clipboard.writeText(`${window.location.origin}/watch-party/${normalizedRoomId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1800) }
     catch { setCopied(false) }
   }
+
+  if (authLoading || !user) return <div className="flex min-h-[70vh] items-center justify-center text-white"><div className="h-10 w-10 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" /></div>
 
   if (!roomId) return <div className="container mx-auto px-4 py-8"><SectionHeader title="Xem chung" subtitle="Phát đồng bộ, trò chuyện và tương tác cùng bạn bè" icon={Users} showViewAll={false} /><div className="mx-auto mt-10 grid max-w-5xl gap-6 md:grid-cols-2"><Card className="border-white/10 bg-black/40"><CardContent className="space-y-5 p-6"><h2 className="text-2xl font-bold text-white">Tham gia bằng link hoặc mã phòng</h2><div className="flex gap-2"><Input value={joinInput} onChange={(event) => setJoinInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && router.push(`/watch-party/${normalizeRoom(joinInput)}`)} placeholder="Ví dụ: ABC123" /><Button disabled={!joinInput.trim()} onClick={() => router.push(`/watch-party/${normalizeRoom(joinInput)}`)}>Vào phòng</Button></div></CardContent></Card><Card className="border-white/10 bg-black/40"><CardContent className="space-y-4 p-6"><Film className="h-9 w-9 text-purple-400" /><h2 className="text-xl font-bold text-white">Tạo phòng mới</h2><p className="text-sm text-gray-400">Mở trang phim, chọn đúng tập rồi bấm “Xem chung”. Host cần đăng nhập Google.</p><Button asChild variant="outline"><Link href="/">Khám phá phim</Link></Button></CardContent></Card></div><section className="mx-auto mt-12 max-w-5xl"><h2 className="mb-4 text-xl font-bold text-white">Phòng công khai đang hoạt động</h2>{roomsLoading ? <p className="text-gray-400">Đang tải danh sách phòng…</p> : publicRooms.length === 0 ? <p className="rounded-lg border border-white/10 bg-black/30 p-6 text-center text-gray-400">Chưa có phòng công khai nào.</p> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{publicRooms.map((item) => <Link key={item.id} href={`/watch-party/${item.id}`} className="rounded-xl border border-white/10 bg-black/40 p-4 transition hover:border-purple-500/60"><div className="mb-3 flex gap-3">{item.movie.poster && <img src={item.movie.poster} alt="" className="h-20 w-14 rounded object-cover" />}<div><Badge className={item.syncCapability === 'full' ? 'bg-emerald-700' : 'bg-amber-700'}>{item.syncCapability === 'full' ? 'Sync' : 'Iframe'}</Badge><h3 className="mt-2 font-semibold text-white">{item.roomName}</h3><p className="line-clamp-1 text-sm text-gray-400">{item.movie.title} · {item.episode?.name}</p></div></div><p className="text-xs text-gray-500">Host {item.hostName} · {item.userCount} người · {item.playback.isPlaying ? 'Đang phát' : 'Tạm dừng'}</p></Link>)}</div>}</section></div>
 
