@@ -6,6 +6,7 @@ export interface WatchPartyEpisode {
   id: string; name: string; slug: string; serverName: string
   serverIndex: number; episodeIndex: number; linkM3u8?: string; linkEmbed?: string
   capability: 'full' | 'limited' | 'unavailable'
+  episodeKey?: string; sourceId?: string
 }
 export interface WatchPartyMember {
   memberId: string; displayName: string; role: 'host' | 'viewer'
@@ -55,4 +56,10 @@ export interface WatchProgress {
   movieSlug: string; movieTitle: string; poster?: string; episodeId: string; episodeName: string
   serverName: string; currentTime: number; duration: number; percentage: number; completed: boolean
   source: 'solo' | 'watch_party'; roomId?: string; updatedAt: number
+  episodeKey?: string; sourceId?: string; secondsWatched?: number; version?: 2
+}
+
+export interface WatchProgressMovieV2 {
+  resume: WatchProgress
+  episodes: Record<string, WatchProgress>
 }

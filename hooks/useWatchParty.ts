@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyMessage, WatchPartyReaction, WatchPartyRoom, WatchPartyRoomPreview, WatchPartySession } from '@/lib/watch-party-types'
+import { estimateClockOffset, makeEpisodeKey } from '@/lib/watch-sync'
 
 const DEV_URL = 'http://localhost:4001'
 const apiUrl = () => process.env.NEXT_PUBLIC_WATCH_PARTY_API_URL || (process.env.NODE_ENV === 'development' ? DEV_URL : '')
@@ -24,7 +25,9 @@ export function buildWatchPartyEpisodes(episodes: Array<{ server_name: string; s
     id: `${serverIndex}-${episodeIndex}-${episode.slug || episode.name}`, name: episode.name || `Tập ${episodeIndex + 1}`,
     slug: episode.slug || `tap-${episodeIndex + 1}`, serverName: server.server_name || `Server ${serverIndex + 1}`,
     serverIndex, episodeIndex, linkM3u8: episode.link_m3u8 || undefined, linkEmbed: episode.link_embed || undefined,
-    capability: episode.link_m3u8 ? 'full' : episode.link_embed ? 'limited' : 'unavailable'
+    capability: episode.link_m3u8 ? 'full' : episode.link_embed ? 'limited' : 'unavailable',
+    episodeKey: makeEpisodeKey(server.server_name || `server-${serverIndex + 1}`, episode.slug || episode.name),
+    sourceId: `${serverIndex}:${episodeIndex}:${episode.link_m3u8 || episode.link_embed || ''}`
   })))
 }
 
@@ -36,7 +39,7 @@ export async function createWatchParty(payload: CreateRoomPayload, firebaseIdTok
   const response = await request<{ roomId: string; roomToken: string; member: WatchPartySession['member']; room: WatchPartyRoomPreview; expiresAt: number }>('/api/rooms', { method: 'POST', headers: { Authorization: `Bearer ${firebaseIdToken}` }, body: JSON.stringify(payload) })
   const session = { roomId: response.roomId, roomToken: response.roomToken, member: response.member, expiresAt: response.expiresAt }; saveWatchPartySession(session); return { ...response, session }
 }
-export async function joinWatchParty(roomId: string, displayName: string, password?: string, firebaseIdToken?: string) {
+export async function joinWatchParty(roomId: string, displayName: string, password: string | undefined, firebaseIdToken: string) {
   const response = await request<{ roomToken: string; member: WatchPartySession['member']; room: WatchPartyRoomPreview; expiresAt: number }>(`/api/rooms/${roomId}/join`, { method: 'POST', body: JSON.stringify({ displayName, password, firebaseIdToken }) })
   const session = { roomId: roomId.toUpperCase(), roomToken: response.roomToken, member: response.member, expiresAt: response.expiresAt }; saveWatchPartySession(session); return { ...response, session }
 }
@@ -48,6 +51,7 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
   const socketRef = useRef<Socket | null>(null)
   const [room, setRoom] = useState<WatchPartyRoom | null>(null); const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null); const [clockOffset, setClockOffset] = useState(0)
+  const [commandError, setCommandError] = useState<string | null>(null)
   const [reactions, setReactions] = useState<WatchPartyReaction[]>([])
 
   useEffect(() => {
@@ -55,7 +59,16 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const socket = io(socketUrl(), { auth: { roomToken: session.roomToken }, transports: ['websocket', 'polling'] }); socketRef.current = socket
     let active = true; const reactionTimers = new Set<number>()
     const applyRoom = (next: WatchPartyRoom) => { if (active) setRoom((current) => !current || next.playback.revision >= current.playback.revision ? next : current) }
-    const syncClock = () => { const sent = Date.now(); socket.emit('sync:request', { clientSentAt: sent }, (response: { serverTime: number }) => { if (active) setClockOffset(response.serverTime - (sent + Date.now()) / 2) }) }
+    const syncClock = async () => {
+      const samples: Array<{ offset: number; roundTrip: number }> = []
+      for (let index = 0; index < 5 && active && socket.connected; index += 1) {
+        const sent = Date.now()
+        const response = await new Promise<{ serverTime: number } | null>((resolve) => socket.timeout(2000).emit('sync:request', { clientSentAt: sent }, (error: Error | null, value: { serverTime: number }) => resolve(error ? null : value)))
+        const received = Date.now()
+        if (response) samples.push({ roundTrip: received - sent, offset: response.serverTime - (sent + received) / 2 })
+      }
+      if (active && samples.length) setClockOffset(estimateClockOffset(samples))
+    }
     const onConnect = () => { if (active) { setIsConnected(true); setError(null); socket.emit('room:resume'); syncClock() } }
     const onDisconnect = () => { if (active) setIsConnected(false) }
     const onConnectError = (next: Error) => { if (active) setError(next.message === 'UNAUTHORIZED' ? 'Phiên phòng đã hết hạn. Vui lòng tham gia lại.' : 'Không thể kết nối phòng.') }
@@ -80,11 +93,24 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     }
   }, [roomId, session?.roomToken])
 
-  const sendPlaybackUpdate = useCallback((payload: Omit<PlaybackIntent, 'clientEventId'>) => socketRef.current?.emit('playback:update', { ...payload, clientEventId: crypto.randomUUID() }), [])
-  const changeEpisode = useCallback((episode: WatchPartyEpisode) => socketRef.current?.emit('episode:change', { episodeId: episode.id }), [])
+  const sendPlaybackUpdate = useCallback((payload: Omit<PlaybackIntent, 'clientEventId'>) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { setCommandError('DISCONNECTED'); return }
+    const clientEventId = crypto.randomUUID()
+    socket.timeout(4000).emit('playback:update', { ...payload, clientEventId }, (timeoutError: Error | null, ack: { ok: boolean; code?: string; revision?: number }) => {
+      const code = timeoutError ? 'TIMEOUT' : ack?.ok ? null : ack?.code || 'REJECTED'
+      setCommandError(code)
+      console.info(JSON.stringify({ event: 'watch_party_playback_ack', clientEventId, action: payload.action, ok: !code, code, revision: ack?.revision }))
+    })
+  }, [])
+  const changeEpisode = useCallback((episode: WatchPartyEpisode) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { setCommandError('DISCONNECTED'); return }
+    socket.timeout(4000).emit('episode:change', { episodeId: episode.id }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => setCommandError(timeoutError ? 'TIMEOUT' : ack?.ok ? null : ack?.code || 'REJECTED'))
+  }, [])
   const sendMessage = useCallback((text: string) => new Promise<{ ok: boolean; code?: string }>((resolve) => { const socket = socketRef.current; if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return } socket.timeout(5000).emit('chat:send', { text }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack)) }), [])
   const sendReaction = useCallback((emoji: string) => socketRef.current?.emit('reaction:send', { emoji }), [])
   const leaveRoom = useCallback(() => { socketRef.current?.emit('room:leave'); clearWatchPartySession(roomId) }, [roomId])
   const memberId = session?.member.memberId
-  return useMemo(() => ({ room, isConnected, error, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, leaveRoom, memberId])
+  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, leaveRoom, memberId])
 }

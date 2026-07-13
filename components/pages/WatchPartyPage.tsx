@@ -85,7 +85,8 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     if (!name) return
     setJoining(true); setPreviewError(null)
     try {
-      const firebaseIdToken = user ? await user.getIdToken() : undefined
+      if (!user) throw new Error('Bạn cần đăng nhập để tham gia xem chung.')
+      const firebaseIdToken = await user.getIdToken()
       const result = await joinWatchParty(normalizedRoomId, name, password || undefined, firebaseIdToken)
       setSession(result.session)
     } catch (error) { setPreviewError(error instanceof Error ? error.message : 'Không thể tham gia phòng.') }

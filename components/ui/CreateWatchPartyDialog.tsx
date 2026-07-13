@@ -26,7 +26,7 @@ export function CreateWatchPartyDialog({ children, movieSlug, movieTitle, movieP
   const [error, setError] = useState<string | null>(null)
   const [probeCapability, setProbeCapability] = useState<WatchPartyEpisode['capability'] | null>(null)
   const availableEpisodes = useMemo<WatchPartyEpisode[]>(() => episodes.length ? episodes : movieVideoUrl ? [{ id: 'fallback-0', name: 'Tập hiện tại', slug: 'tap-hien-tai', serverName: 'Nguồn mặc định', serverIndex: 0, episodeIndex: 0, ...(movieVideoUrl.includes('.m3u8') ? { linkM3u8: movieVideoUrl, capability: 'full' as const } : { linkEmbed: movieVideoUrl, capability: 'limited' as const }) }] : [], [episodes, movieVideoUrl])
-  const selected = availableEpisodes.find((item) => item.id === initialEpisodeId) || availableEpisodes[0]
+  const selected = availableEpisodes.find((item) => item.id === initialEpisodeId && item.linkM3u8) || availableEpisodes.find((item) => item.linkM3u8)
   const limited = selected?.capability === 'limited'
 
   useEffect(() => {
@@ -55,7 +55,8 @@ export function CreateWatchPartyDialog({ children, movieSlug, movieTitle, movieP
     <div className="space-y-5">
       <div className="flex gap-3 rounded-xl border border-white/10 bg-white/5 p-3">{moviePoster && <img src={moviePoster} alt="" className="h-20 w-14 rounded object-cover" />}<div><p className="font-semibold text-white">{movieTitle}</p><p className="text-sm text-gray-400">{selected?.name} · {selected?.serverName}</p><Badge className={`mt-2 ${limited ? 'bg-amber-700' : 'bg-emerald-700'}`}>{limited ? 'Đồng bộ giới hạn' : 'Đồng bộ đầy đủ'}</Badge></div></div>
       {limited && <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100"><AlertTriangle className="h-5 w-5 shrink-0" /><span>Nguồn iframe chỉ đồng bộ đổi tập, chat và reaction; không đảm bảo play, pause và seek.</span></div>}
-      {probeCapability === 'unavailable' && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100"><AlertTriangle className="h-5 w-5 shrink-0" /><span>Máy chủ không truy cập được nguồn hiện tại. Bạn vẫn có thể tạo phòng, player sẽ thử lại từ trình duyệt và chuyển nguồn dự phòng nếu có.</span></div>}
+      {!selected && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100"><AlertTriangle className="h-5 w-5 shrink-0" /><span>Phim này chưa có nguồn HLS nên không thể tạo phòng realtime. Iframe chỉ dùng dự phòng khi xem cá nhân.</span></div>}
+      {probeCapability === 'unavailable' && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100"><AlertTriangle className="h-5 w-5 shrink-0" /><span>Máy chủ không truy cập được nguồn HLS hiện tại. Hãy thử lại hoặc chọn nguồn khác.</span></div>}
       {!user && <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4"><p className="mb-3 text-sm text-purple-100">Bạn cần đăng nhập để trở thành host và có thể lấy lại quyền sau khi mất kết nối.</p><AuthDialog><Button type="button" className="w-full" disabled={authLoading}>Đăng nhập hoặc đăng ký</Button></AuthDialog></div>}
       {user && <p className="text-sm text-gray-300">Host: <span className="font-medium text-white">{user.displayName || user.email}</span></p>}
       <div className="space-y-2"><Label htmlFor="watch-party-name">Tên phòng</Label><Input id="watch-party-name" value={roomName} onChange={(event) => setRoomName(event.target.value)} maxLength={80} placeholder={`${movieTitle} — phòng của tôi`} /></div>

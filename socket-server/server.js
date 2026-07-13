@@ -18,7 +18,7 @@ const REDIS_URL = process.env.REDIS_URL || ''
 const TOKEN_SECRET = process.env.WATCH_PARTY_TOKEN_SECRET || (IS_PRODUCTION ? '' : 'dev-only-change-me')
 const ROOM_TTL_SECONDS = Number(process.env.ROOM_TTL_SECONDS || 14400)
 const EMPTY_ROOM_TTL_SECONDS = Number(process.env.EMPTY_ROOM_TTL_SECONDS || 300)
-const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 30)
+const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 15)
 const MAX_ROOM_MEMBERS = Number(process.env.MAX_ROOM_MEMBERS || 50)
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || (IS_PRODUCTION ? '' : 'http://localhost:3000,http://localhost:8080'))
   .split(',').map((value) => value.trim()).filter(Boolean)
@@ -61,7 +61,7 @@ const createRoomSchema = z.object({
   roomName: z.string().trim().max(80).optional(), accessMode: z.enum(['public', 'link_only', 'password']).default('link_only'),
   password: z.string().min(6).max(64).optional(), movie: movieSchema, initialEpisodeId: z.string().optional()
 }).refine((input) => input.accessMode !== 'password' || Boolean(input.password), { message: 'Password is required', path: ['password'] })
-const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().max(5000).optional() })
+const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().min(1).max(5000) })
 const playbackSchema = z.object({
   episodeId: z.string().min(1).max(120), currentTime: z.number().finite().nonnegative(), isPlaying: z.boolean(),
   action: z.enum(['play', 'pause', 'seek', 'heartbeat']), clientEventId: z.string().min(8).max(100)
@@ -147,6 +147,13 @@ const clientRoom = (room) => { const copy = structuredClone(room); delete copy.p
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)) }
 const readBody = async (req) => { const chunks = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > 1_000_000) throw new Error('PAYLOAD_TOO_LARGE'); chunks.push(chunk) } return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') }
 const isSafeMediaUrl = (value) => { try { const url = new URL(value); const host = url.hostname.toLowerCase(); return ['http:', 'https:'].includes(url.protocol) && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1' && !/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host) } catch { return false } }
+const isAllowedMediaHost = (value) => { try { const host = new URL(value).hostname.toLowerCase(); return /^v\d+\.kkphimplayer\d*\.com$/.test(host) || host === 'kkphimplayer.com' || host.endsWith('.kkphimplayer.com') } catch { return false } }
+const proxyPath = (value) => `/api/media/proxy?url=${encodeURIComponent(value)}`
+const rewriteHlsManifest = (manifest, sourceUrl) => manifest.split(/\r?\n/).map((line) => {
+  if (!line) return line
+  if (!line.startsWith('#')) return proxyPath(new URL(line, sourceUrl).href)
+  return line.replace(/URI="([^"]+)"/g, (_match, uri) => `URI="${proxyPath(new URL(uri, sourceUrl).href)}"`)
+}).join('\n')
 
 const rateLimits = new Map()
 function rateLimit(key, limit, windowMs) {
@@ -167,6 +174,26 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
     if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory' }) }
+    if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
+      const sourceUrl = url.searchParams.get('url') || ''
+      if (!isSafeMediaUrl(sourceUrl) || !isAllowedMediaHost(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
+      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 20_000)
+      try {
+        const headers = {}; if (req.headers.range) headers.Range = req.headers.range
+        const upstream = await fetch(sourceUrl, { headers, signal: controller.signal, redirect: 'follow' })
+        if (!upstream.ok) return json(res, upstream.status, { code: 'UPSTREAM_ERROR', error: `Nguồn media trả về ${upstream.status}.` })
+        const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+        const isManifest = contentType.includes('mpegurl') || new URL(sourceUrl).pathname.endsWith('.m3u8')
+        res.statusCode = upstream.status
+        res.setHeader('Content-Type', isManifest ? 'application/vnd.apple.mpegurl' : contentType)
+        res.setHeader('Cache-Control', isManifest ? 'public, max-age=5' : 'public, max-age=3600')
+        res.setHeader('Access-Control-Allow-Origin', origin && CLIENT_ORIGINS.includes(origin) ? origin : CLIENT_ORIGINS[0] || '*')
+        const contentRange = upstream.headers.get('content-range'); if (contentRange) res.setHeader('Content-Range', contentRange)
+        const acceptRanges = upstream.headers.get('accept-ranges'); if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
+        if (isManifest) return res.end(rewriteHlsManifest(await upstream.text(), sourceUrl))
+        return res.end(Buffer.from(await upstream.arrayBuffer()))
+      } finally { clearTimeout(timer) }
+    }
     if (req.method === 'POST' && url.pathname === '/api/media/probe') {
       const input = z.object({ linkM3u8: z.string().url().optional(), linkEmbed: z.string().url().optional() }).parse(await readBody(req))
       if (input.linkM3u8 && !isSafeMediaUrl(input.linkM3u8)) return json(res, 400, { code: 'UNSAFE_URL', error: 'URL nguồn không hợp lệ.' })
@@ -184,7 +211,8 @@ const server = http.createServer(async (req, res) => {
       const owner = await verifyFirebaseToken(authToken)
       if (!(await store.allow(`create:${ip}`, 5, 600_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn đã tạo quá nhiều phòng.' })
       const input = createRoomSchema.parse(await readBody(req)); let code = roomCode(); while (await store.getRoom(code)) code = roomCode()
-      const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes[0]
+      const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes.find((episode) => episode.linkM3u8)
+      if (!initial?.linkM3u8) return json(res, 400, { code: 'HLS_REQUIRED', error: 'Xem chung cần ít nhất một nguồn HLS để đồng bộ chính xác.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
       const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
@@ -201,7 +229,7 @@ const server = http.createServer(async (req, res) => {
       if (room?.accessMode === 'password' && !(await verifyRoomPassword(input.password || '', room.passwordHash))) return json(res, 403, { code: 'WRONG_PASSWORD', error: 'Mật khẩu phòng không đúng.' })
       if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
       if (Object.keys(room.members).length >= MAX_ROOM_MEMBERS) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người.' })
-      const account = input.firebaseIdToken ? await verifyFirebaseToken(input.firebaseIdToken) : null
+      const account = await verifyFirebaseToken(input.firebaseIdToken)
       const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: account?.picture, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
       return json(res, 201, { roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
@@ -230,7 +258,8 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const validation = error instanceof z.ZodError
     log('http_error', { path: url.pathname, error: validation ? 'VALIDATION_ERROR' : error.message })
-    return json(res, validation ? 400 : error.message === 'PAYLOAD_TOO_LARGE' ? 413 : 500, { code: validation ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR', error: validation ? 'Dữ liệu không hợp lệ.' : 'Máy chủ gặp sự cố.' })
+    const status = validation ? 400 : error.statusCode || (error.message === 'PAYLOAD_TOO_LARGE' ? 413 : 500)
+    return json(res, status, { code: validation ? 'VALIDATION_ERROR' : error.code || 'INTERNAL_ERROR', error: validation ? 'Dữ liệu không hợp lệ.' : error.statusCode ? error.message : 'Máy chủ gặp sự cố.' })
   }
 })
 
@@ -278,7 +307,8 @@ io.on('connection', async (socket) => {
   socket.on('episode:change', async (payload, ack) => {
     const fresh = await store.getRoom(roomId); if (!fresh || fresh.hostMemberId !== memberId || fresh.status !== 'active') return ack?.({ ok: false, code: 'HOST_ONLY' })
     const episode = fresh.movie.episodes.find((item) => item.id === payload?.episodeId); if (!episode) return ack?.({ ok: false, code: 'EPISODE_NOT_FOUND' })
-    fresh.syncCapability = episode.linkM3u8 ? 'full' : 'limited'; fresh.playback = { episodeId: episode.id, currentTime: 0, isPlaying: false, revision: fresh.playback.revision + 1, serverUpdatedAt: Date.now(), updatedBy: memberId, action: 'episode_change' }
+    if (!episode.linkM3u8) return ack?.({ ok: false, code: 'HLS_REQUIRED' })
+    fresh.syncCapability = 'full'; fresh.playback = { episodeId: episode.id, currentTime: 0, isPlaying: false, revision: fresh.playback.revision + 1, serverUpdatedAt: Date.now(), updatedBy: memberId, action: 'episode_change' }
     await store.setRoom(fresh); io.to(roomId).emit('episode:sync', { room: clientRoom(fresh), playback: fresh.playback }); ack?.({ ok: true, revision: fresh.playback.revision })
   })
   socket.on('chat:send', async (payload, ack) => {

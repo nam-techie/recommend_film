@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names web,watch-party --prefix-colors cyan,magenta \"next dev\" \"node socket-server/server.js\"",
+    "dev": "concurrently --kill-others-on-fail --names web,watch-party --prefix-colors cyan,magenta \"next dev\" \"node --watch socket-server/server.js\"",
     "dev:web": "next dev",
     "build": "next build",
     "start": "next start",

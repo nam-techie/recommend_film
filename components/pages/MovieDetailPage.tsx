@@ -1,8 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { fetchMovieDetail, MovieDetail, getImageUrl } from '@/lib/api'
 import { buildWatchPartyEpisodes } from '@/hooks/useWatchParty'
+import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { SyncedHlsPlayer } from '@/components/ui/SyncedHlsPlayer'
+import { WatchProgress } from '@/lib/watch-party-types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -25,7 +28,7 @@ import {
     Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 interface MovieDetailPageProps {
     slug: string
@@ -39,6 +42,9 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const [selectedEpisode, setSelectedEpisode] = useState(0)
     const [showPlayer, setShowPlayer] = useState(false)
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const { records, saveProgress } = useWatchProgress()
+    const lastSavedAtRef = useRef(0)
 
     useEffect(() => {
         const loadMovieDetail = async () => {
@@ -58,6 +64,16 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             loadMovieDetail()
         }
     }, [slug])
+
+    useEffect(() => {
+        if (!movieDetail?.episodes?.length || searchParams.get('watch') !== '1') return
+        const requested = searchParams.get('episode')
+        for (let serverIndex = 0; serverIndex < movieDetail.episodes.length; serverIndex += 1) {
+            const episodeIndex = movieDetail.episodes[serverIndex].server_data.findIndex((episode) => episode.slug === requested || `${serverIndex}-${movieDetail.episodes[serverIndex].server_data.indexOf(episode)}-${episode.slug}` === requested)
+            if (episodeIndex >= 0) { setSelectedServer(serverIndex); setSelectedEpisode(episodeIndex); break }
+        }
+        setShowPlayer(true)
+    }, [movieDetail, searchParams])
 
     const getRatingColor = (rating: number) => {
         if (rating >= 8) return 'from-green-500 to-emerald-500'
@@ -433,15 +449,21 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             {showPlayer && currentEpisode && (
                 <Card className="overflow-hidden bg-black/50 backdrop-blur border-white/10">
                     <CardContent className="p-0">
-                        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                            <iframe
-                                src={currentEpisode.link_embed}
-                                title={`${movie.name} - ${currentEpisode.name}`}
-                                className="absolute inset-0 w-full h-full"
-                                allowFullScreen
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            />
-                        </div>
+                        <SyncedHlsPlayer
+                            episode={currentWatchPartyEpisode}
+                            playback={{ episodeId: currentWatchPartyEpisode.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: 0, updatedBy: 'solo', action: 'pause' }}
+                            isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback
+                            initialTime={Number(searchParams.get('t') || records[slug]?.currentTime || 0)}
+                            onPlaybackUpdate={() => undefined}
+                            onProgress={(time, duration, reason) => {
+                                if (!Number.isFinite(duration) || duration <= 0) return
+                                const now = Date.now()
+                                if (reason === 'timeupdate' && now - lastSavedAtRef.current < 15_000) return
+                                lastSavedAtRef.current = now
+                                const progress: WatchProgress = { movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentWatchPartyEpisode.id, episodeKey: currentWatchPartyEpisode.episodeKey, sourceId: currentWatchPartyEpisode.sourceId, episodeName: currentWatchPartyEpisode.name, serverName: currentWatchPartyEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now }
+                                void saveProgress(progress)
+                            }}
+                        />
                         <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20">
                             <h3 className="text-lg font-bold mb-2 text-white">
                                 Đang xem: {currentEpisode.name}

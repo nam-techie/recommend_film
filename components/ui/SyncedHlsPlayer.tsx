@@ -5,6 +5,7 @@ import Hls from 'hls.js'
 import { AlertTriangle, Maximize, Pause, Play, RefreshCw, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WATCH_PARTY_DRIFT_HARD_SECONDS, WATCH_PARTY_DRIFT_SOFT_SECONDS, WatchPartyEpisode, WatchPartyPlayback, WatchPartyReaction, WatchPartyRoomStatus } from '@/lib/watch-party-types'
+import { playableHlsUrl } from '@/lib/media-url'
 
 type PlayerState = 'idle' | 'loading_manifest' | 'loading_media' | 'ready' | 'playing' | 'buffering' | 'autoplay_blocked' | 'fallback_embed' | 'fatal_error'
 type ProgressReason = 'timeupdate' | 'pause' | 'seek'
@@ -19,11 +20,14 @@ interface Props {
   roomStatus: WatchPartyRoomStatus
   onPlaybackUpdate: (payload: { episodeId: string; currentTime: number; isPlaying: boolean; action: 'play' | 'pause' | 'seek' | 'heartbeat' }) => void
   onProgress?: (currentTime: number, duration: number, reason: ProgressReason) => void
+  allowIframeFallback?: boolean
+  initialTime?: number
+  standalone?: boolean
 }
 
 const formatTime = (seconds = 0) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 
-export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockOffset, reactions, roomStatus, onPlaybackUpdate, onProgress }: Props) {
+export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockOffset, reactions, roomStatus, onPlaybackUpdate, onProgress, allowIframeFallback = false, initialTime = 0, standalone = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const applyingRemoteRef = useRef(false)
@@ -36,6 +40,9 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolume] = useState(0.85)
+
+  const playerStateRef = useRef(playerState)
+  useEffect(() => { playerStateRef.current = playerState }, [playerState])
 
   useEffect(() => { latestPlaybackRef.current = playback }, [playback])
 
@@ -62,14 +69,14 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     const hls = hlsRef.current
     hlsRef.current = null
     if (hls) hls.destroy()
-    if (episode?.linkEmbed) {
+    if (allowIframeFallback && episode?.linkEmbed) {
       setSourceError('Nguồn HLS đang lỗi, đã chuyển sang trình phát dự phòng.')
       setPlayerState('fallback_embed')
     } else {
       setSourceError(message)
       setPlayerState('fatal_error')
     }
-  }, [episode?.linkEmbed])
+  }, [allowIframeFallback, episode?.linkEmbed])
 
   useEffect(() => {
     destroySource()
@@ -79,23 +86,39 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     setSourceError(null)
     if (!episode) { setPlayerState('idle'); return undefined }
     if (!episode.linkM3u8) {
-      setPlayerState(episode.linkEmbed ? 'fallback_embed' : 'fatal_error')
-      if (!episode.linkEmbed) setSourceError('Tập này không có nguồn phát khả dụng.')
+      setPlayerState(allowIframeFallback && episode.linkEmbed ? 'fallback_embed' : 'fatal_error')
+      if (!allowIframeFallback || !episode.linkEmbed) setSourceError('Tập này không có nguồn HLS để đồng bộ chính xác. Host hãy chọn nguồn khác.')
       return undefined
     }
 
     const video = videoRef.current
     if (!video) return undefined
+    const hlsSource = playableHlsUrl(episode.linkM3u8)!
     let disposed = false
     let networkRetries = 0
     let recoveredMedia = false
     const ready = () => { if (!disposed) setPlayerState('ready') }
-    const metadata = () => { if (!disposed) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); ready() } }
+    const metadata = () => { if (!disposed) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (initialTime > 0) video.currentTime = Math.min(initialTime, Math.max(0, video.duration - 1)); ready() } }
+    const handleVideoError = () => {
+      if (!disposed) {
+        console.warn('Native video element error, falling back...')
+        useFallbackOrFail('Lỗi khi tải hoặc phát nguồn video gốc.')
+      }
+    }
     video.addEventListener('loadedmetadata', metadata)
+    video.addEventListener('error', handleVideoError)
     setPlayerState('loading_manifest')
 
+    // Timeout fallback (5 seconds)
+    const timeoutId = window.setTimeout(() => {
+      if (!disposed && (playerStateRef.current === 'loading_manifest' || playerStateRef.current === 'loading_media' || playerStateRef.current === 'idle')) {
+        console.warn('HLS stream load timed out, automatically falling back to iframe embed.')
+        useFallbackOrFail('Nguồn HLS tải quá lâu (hết thời gian chờ). Đã chuyển sang trình phát dự phòng.')
+      }
+    }, 5000)
+
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = episode.linkM3u8
+      video.src = hlsSource
       video.load()
     } else if (Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true, lowLatencyMode: false })
@@ -119,17 +142,19 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
         useFallbackOrFail('Không thể tải tập này — hãy thử server khác.')
       })
       hls.attachMedia(video)
-      hls.loadSource(episode.linkM3u8)
+      hls.loadSource(hlsSource)
     } else {
       useFallbackOrFail('Trình duyệt này không hỗ trợ nguồn HLS.')
     }
 
     return () => {
       disposed = true
+      window.clearTimeout(timeoutId)
       video.removeEventListener('loadedmetadata', metadata)
+      video.removeEventListener('error', handleVideoError)
       destroySource()
     }
-  }, [destroySource, episode?.id, episode?.linkEmbed, episode?.linkM3u8, sourceVersion, useFallbackOrFail])
+  }, [allowIframeFallback, destroySource, episode?.id, episode?.linkEmbed, episode?.linkM3u8, initialTime, sourceVersion, useFallbackOrFail])
 
   useEffect(() => { if (videoRef.current) videoRef.current.volume = volume }, [volume])
 
@@ -157,9 +182,16 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   }, [clockOffset])
 
   useEffect(() => {
+    if (standalone) return
     if (playerState !== 'ready' && playerState !== 'playing' && playerState !== 'buffering' && playerState !== 'autoplay_blocked') return
     void applyRoomPlayback()
-  }, [applyRoomPlayback, playback.revision, playerState])
+  }, [applyRoomPlayback, playback.revision, playerState, standalone])
+
+  useEffect(() => {
+    if (standalone || isHost || !isConnected || !['ready', 'playing', 'buffering'].includes(playerState)) return undefined
+    const timer = window.setInterval(() => void applyRoomPlayback(), 750)
+    return () => window.clearInterval(timer)
+  }, [applyRoomPlayback, isConnected, isHost, playerState, standalone])
 
   useEffect(() => {
     if (!isHost || !episode || playerState === 'fallback_embed' || playerState === 'fatal_error') return undefined
@@ -185,7 +217,7 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const connectionText = !isConnected ? 'Mất kết nối' : roomStatus === 'host_reconnecting' ? 'Host đang kết nối lại' : playerState === 'buffering' ? 'Đang tải dữ liệu' : playerState === 'playing' || playerState === 'ready' ? 'Đã đồng bộ' : 'Đang bắt kịp'
   return <div className="relative aspect-video h-full w-full overflow-hidden bg-black">
     <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline
-      onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); void applyRoomPlayback() } }}
+      onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (!standalone) void applyRoomPlayback() } }}
       onWaiting={() => setPlayerState('buffering')}
       onCanPlay={() => setPlayerState((state) => state === 'autoplay_blocked' ? state : 'ready')}
       onTimeUpdate={(event) => { const video = event.currentTarget; setCurrentTime(video.currentTime); onProgress?.(video.currentTime, video.duration, 'timeupdate'); if (!isHost && Math.abs(targetTime - video.currentTime) < 0.2) video.playbackRate = 1 }}
@@ -197,7 +229,21 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     <div className="absolute left-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs" aria-live="polite"><span className={`mr-2 inline-block h-2 w-2 rounded-full ${connectionText === 'Đã đồng bộ' ? 'bg-emerald-400' : !isConnected ? 'bg-red-400' : 'bg-amber-400'}`} />{connectionText}</div>
     {!isHost && <div className="absolute right-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs">Host đang điều khiển</div>}
 
-    {(playerState === 'loading_manifest' || playerState === 'loading_media' || playerState === 'buffering') && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div></div>}
+    {(playerState === 'loading_manifest' || playerState === 'loading_media' || playerState === 'buffering') && (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 z-10">
+        <div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div>
+        {allowIframeFallback && episode?.linkEmbed && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => useFallbackOrFail('Đã chuyển sang trình phát dự phòng theo yêu cầu.')}
+            className="border-white/30 text-xs text-white hover:bg-white/10"
+          >
+            Chuyển sang trình phát dự phòng (Iframe)
+          </Button>
+        )}
+      </div>
+    )}
     {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
     {playerState === 'fatal_error' && <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => setSourceVersion((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
 

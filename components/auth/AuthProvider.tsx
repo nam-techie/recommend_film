@@ -5,11 +5,12 @@ import { createUserWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEm
 import { auth } from '@/lib/firebase'
 
 export function firebaseAuthError(error: unknown) {
+  console.error('Firebase Auth Error Details:', error)
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
   const messages: Record<string, string> = {
-    'auth/configuration-not-found': 'Firebase Authentication chưa được bật cho project. Hãy mở Firebase Console → Authentication → Get started, sau đó bật Google và Email/Password.',
-    'auth/operation-not-allowed': 'Phương thức đăng nhập này chưa được bật trong Firebase Console.',
-    'auth/unauthorized-domain': 'Domain hiện tại chưa nằm trong Firebase Authentication → Settings → Authorized domains.',
+    'auth/configuration-not-found': 'Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng quay lại sau.',
+    'auth/operation-not-allowed': 'Phương thức đăng nhập này chưa được kích hoạt. Vui lòng quay lại sau.',
+    'auth/unauthorized-domain': 'Ứng dụng không được cấp quyền đăng nhập từ địa chỉ này.',
     'auth/popup-closed-by-user': 'Bạn đã đóng cửa sổ đăng nhập Google.',
     'auth/popup-blocked': 'Trình duyệt đang chặn cửa sổ đăng nhập. Hãy cho phép popup và thử lại.',
     'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
@@ -18,7 +19,7 @@ export function firebaseAuthError(error: unknown) {
     'auth/weak-password': 'Mật khẩu phải có ít nhất 6 ký tự.',
     'auth/invalid-email': 'Địa chỉ email không hợp lệ.',
     'auth/too-many-requests': 'Bạn thao tác quá nhiều lần. Hãy đợi một lúc rồi thử lại.',
-    'auth/network-request-failed': 'Không kết nối được Firebase. Hãy kiểm tra mạng và cấu hình API key.'
+    'auth/network-request-failed': 'Không kết nối được dịch vụ. Hãy kiểm tra mạng và thử lại.'
   }
   return new Error(messages[code] || (error instanceof Error ? error.message : 'Không thể xác thực tài khoản.'))
 }
