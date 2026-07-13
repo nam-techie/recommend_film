@@ -14,8 +14,8 @@ const overpassMono = Overpass_Mono({
   display: "swap",
 });
 import { ThemeProvider } from '@/components/theme-provider'
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import { AuthProvider } from '@/components/auth/AuthProvider'
+import { AppChrome } from '@/components/AppChrome'
 
 export const metadata: Metadata = {
     title: "CineMind - Cinema meets Mind",
@@ -54,19 +54,15 @@ export default function RootLayout({
             <body
                 className={`antialiased ${jost.variable} ${overpassMono.variable} font-sans min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
             >
-                <ThemeProvider
+                <AuthProvider><ThemeProvider
                     attribute="class"
                     defaultTheme="dark"
                     enableSystem={false}
                     disableTransitionOnChange
                     forcedTheme="dark"
                 >
-                    <Navbar />
-                    <main className="flex-1 overflow-visible pb-10">
-                        {children}
-                    </main>
-                    <Footer />
-                </ThemeProvider>
+                    <AppChrome>{children}</AppChrome>
+                </ThemeProvider></AuthProvider>
             </body>
         </html>
     );

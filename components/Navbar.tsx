@@ -5,17 +5,20 @@ import { Film, Home, Search, Menu, X, Globe, Tv, Grid3X3, Sparkles } from 'lucid
 import { Button } from "@/components/ui/button"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/components/auth/AuthProvider'
+import { AuthDialog } from '@/components/auth/AuthDialog'
 
 const Navbar = () => {
     const pathname = usePathname()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+    const { user, loading: authLoading, logout } = useAuth()
 
     const navItems = [
         { href: '/', label: 'Trang chủ', icon: Home },
         { href: '/search', label: 'Tìm kiếm', icon: Search },
         { href: '/countries', label: 'Quốc gia', icon: Globe },
         { href: '/tv-series', label: 'Phim bộ', icon: Tv },
-        { href: '/genres', label: 'Xem chung', icon: Grid3X3 },
+        { href: '/watch-party', label: 'Xem chung', icon: Grid3X3 },
         { href: '/ai-recommender', label: 'AI Recommender', icon: Sparkles },
     ]
 
@@ -66,6 +69,14 @@ const Navbar = () => {
 
                     {/* Right side controls */}
                     <div className="flex items-center space-x-3">
+                        {!authLoading && (user ? (
+                            <Button variant="outline" size="sm" onClick={() => void logout()} className="gap-2">
+                                {user.photoURL && <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full" />}
+                                <span className="hidden sm:inline max-w-28 truncate">{user.displayName || 'Tài khoản'}</span>
+                            </Button>
+                        ) : (
+                            <AuthDialog><Button size="sm">Đăng nhập</Button></AuthDialog>
+                        ))}
                         {/* Mobile Menu Button */}
                         <Button
                             variant="ghost"

@@ -12,6 +12,7 @@ import { AnimeMovies } from '@/components/sections/AnimeMovies'
 import { NewReleases } from '@/components/sections/NewReleases'
 import { GenreSection } from '@/components/sections/GenreSection'
 import { ScrollToTop } from '@/components/ui/ScrollToTop'
+import { ContinueWatching } from '@/components/sections/ContinueWatching'
 
 export function HomePage() {
     return (
@@ -22,6 +23,7 @@ export function HomePage() {
                 </div>
                 
                 <div className="container mx-auto px-4 space-y-8 sm:space-y-12 lg:space-y-16 pb-8">
+                    <ContinueWatching />
                     {/* Phim đánh giá cao nhất - giữ lại từ design cũ */}
                     <FeaturedMovies />
                 

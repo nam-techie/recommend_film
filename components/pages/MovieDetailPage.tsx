@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { fetchMovieDetail, MovieDetail, getImageUrl } from '@/lib/api'
+import { buildWatchPartyEpisodes } from '@/hooks/useWatchParty'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -221,11 +222,16 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const { movie, episodes } = movieDetail
     const rating = movie.tmdb?.vote_average || 0
     const currentEpisode = episodes && episodes[selectedServer]?.server_data[selectedEpisode]
+    const watchPartyEpisodes = buildWatchPartyEpisodes(episodes || [])
+    const currentWatchPartyEpisode = watchPartyEpisodes.find(
+        (episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode
+    ) || watchPartyEpisodes[0]
 
     // Get the video URL for the currently selected episode
     const getSelectedEpisodeVideoUrl = () => {
         if (!episodes || episodes.length === 0) return undefined
-        return episodes[selectedServer]?.server_data[selectedEpisode]?.link_embed
+        return episodes[selectedServer]?.server_data[selectedEpisode]?.link_m3u8 ||
+            episodes[selectedServer]?.server_data[selectedEpisode]?.link_embed
     }
 
     return (
@@ -342,6 +348,8 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                                     movieTitle={movie.name}
                                     moviePoster={getImageUrl(movie.poster_url)}
                                     movieVideoUrl={getSelectedEpisodeVideoUrl()}
+                                    episodes={watchPartyEpisodes}
+                                    initialEpisodeId={currentWatchPartyEpisode?.id}
                                 >
                                     <Button variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10">
                                         <Users className="h-4 w-4 mr-2" />

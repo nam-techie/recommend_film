@@ -1,0 +1,22 @@
+{
+  "name": "moviewiser-watch-party-socket",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "cinemind": "file:..",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "firebase-admin": "^13.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "redis": "^5.8.2",
+    "socket.io": "^4.8.1",
+    "zod": "^3.25.76"
+  }
+}

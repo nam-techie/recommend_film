@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { database } from '@/lib/firebase'
 import { ref, onValue, off } from 'firebase/database'
 import { cleanupExpiredRooms } from '@/lib/watch-party-utils'
+import { listWatchParties } from '@/hooks/useWatchParty'
 
 interface WatchRoom {
   id: string
@@ -43,6 +44,14 @@ export default function GenresUpgradePage() {
 
   // Load active rooms from Firebase
   useEffect(() => {
+    let active = true
+    void listWatchParties().then(({ rooms }) => {
+      if (!active) return
+      setActiveRooms(rooms.map((room) => ({ id: room.id, roomName: room.roomName, movie: { slug: room.movie.slug, title: room.movie.title, poster: room.movie.poster }, playback: { currentTime: room.playback.currentTime, isPlaying: room.playback.isPlaying, lastUpdated: room.createdAt, updatedBy: room.hostName }, users: Object.fromEntries(Array.from({ length: room.userCount }, (_, index) => [`member-${index}`, { name: index === 0 ? room.hostName : 'Thành viên', isHost: index === 0 }])), messages: {}, createdAt: room.createdAt, hostId: 'member-0' })))
+      setIsLoading(false)
+    }).catch(() => { if (active) { setActiveRooms([]); setIsLoading(false) } })
+    return () => { active = false }
+    /* Legacy Firebase room reader retained below only for data migration reference; it is unreachable at runtime. */
     // Run cleanup first to remove expired rooms
     cleanupExpiredRooms()
     

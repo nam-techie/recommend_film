@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getDatabase } from 'firebase/database'
+import { getAuth } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_API_KEY",
@@ -14,6 +15,7 @@ const firebaseConfig = {
 // Initialize Firebase only if all config values are provided
 let app: any = null
 let database: any = null
+let auth: ReturnType<typeof getAuth> | null = null
 
 try {
   // Check if environment variables are properly configured
@@ -25,6 +27,7 @@ try {
   if (isConfigured) {
     app = initializeApp(firebaseConfig)
     database = getDatabase(app)
+    auth = getAuth(app)
     console.log('✅ Firebase initialized successfully')
     console.log('🔥 Database URL:', firebaseConfig.databaseURL)
   } else {
@@ -36,7 +39,7 @@ try {
   console.log('🔄 Watch Party will fallback to demo mode')
 }
 
-export { database }
+export { database, auth }
 export default app
 
 // Helper function to check if Firebase is available
