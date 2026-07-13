@@ -5,6 +5,7 @@ import Hls from 'hls.js'
 import {
   AlertTriangle,
   AudioLines,
+  Headphones,
   LockKeyhole,
   Maximize,
   MessageCircle,
@@ -58,11 +59,13 @@ interface Props {
   onToggleFullscreen?: () => void
   voiceEnabled?: boolean
   micEnabled?: boolean
+  speakerEnabled?: boolean
   voiceJoined?: boolean
   speakingMembers?: WatchPartyMember[]
   reactionOptions?: string[]
   reactionError?: string | null
   onToggleMic?: () => void
+  onToggleSpeaker?: () => void
   onToggleVoicePermission?: () => void
   onSendReaction?: (emoji: string) => void
 }
@@ -96,11 +99,13 @@ export function SyncedHlsPlayer({
   onToggleFullscreen,
   voiceEnabled = false,
   micEnabled = false,
+  speakerEnabled = true,
   voiceJoined = false,
   speakingMembers = [],
   reactionOptions = [],
   reactionError = null,
   onToggleMic,
+  onToggleSpeaker,
   onToggleVoicePermission,
   onSendReaction,
 }: Props) {
@@ -511,7 +516,8 @@ export function SyncedHlsPlayer({
           <input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="hidden w-20 accent-purple-500 lg:block" />
           {!standalone && <Button size="icon" variant="outline" aria-label="Đồng bộ lại" title="Đồng bộ lại với phòng" onClick={() => void applyRoomPlayback()} className={cn(iconButtonClass, 'hidden md:inline-flex')}><RefreshCw className="h-5 w-5" /></Button>}
           {!standalone && onToggleMic && <Button size="icon" variant="outline" aria-label={micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!voiceEnabled ? 'Host chưa mở voice' : micEnabled ? 'Tắt microphone' : voiceJoined ? 'Bật lại microphone' : 'Tham gia voice và bật microphone'} disabled={!voiceEnabled} onClick={onToggleMic} className={cn(iconButtonClass, micEnabled && 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200')}>{micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>}
-          {!standalone && onToggleVoicePermission && <Button size="icon" variant="outline" aria-label={voiceEnabled ? 'Tắt mic tất cả' : 'Mở voice cho phòng'} title={voiceEnabled ? 'Tắt mic tất cả và khóa voice' : 'Mở voice cho phòng'} onClick={onToggleVoicePermission} className={cn(iconButtonClass, 'hidden sm:inline-flex', voiceEnabled && 'border-emerald-400/60')}><AudioLines className="h-5 w-5" /></Button>}
+          {!standalone && onToggleSpeaker && <Button size="icon" variant="outline" aria-label={speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!voiceEnabled} onClick={onToggleSpeaker} className={cn(iconButtonClass, speakerEnabled && voiceEnabled && 'border-sky-400/70 bg-sky-500/15 text-sky-100')}>{speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>}
+          {!standalone && onToggleVoicePermission && <Button size="icon" variant="outline" aria-label={voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic'} onClick={onToggleVoicePermission} className={cn(iconButtonClass, 'hidden sm:inline-flex', voiceEnabled && 'border-emerald-400/60')}><AudioLines className="h-5 w-5" /></Button>}
           {!standalone && onSendReaction && <Button size="icon" variant="outline" aria-label={showReactionTray ? 'Ẩn reaction' : 'Gửi reaction'} title="Gửi reaction" onClick={() => { setShowReactionTray((value) => !value); setControlsVisible(true) }} className={cn(iconButtonClass, showReactionTray && 'bg-white/20')}><SmilePlus className="h-5 w-5" /></Button>}
           {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} title={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className={cn(iconButtonClass, 'relative', chatOpen && 'bg-white/20')}><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
           <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} title={isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)'} onClick={toggleFullscreen} className={iconButtonClass}>{isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}</Button>

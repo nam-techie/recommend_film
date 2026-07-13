@@ -7,7 +7,7 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -21,7 +21,7 @@ const EMPTY_ROOM_TTL_SECONDS = Number(process.env.EMPTY_ROOM_TTL_SECONDS || 300)
 const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 15)
 const MAX_ROOM_MEMBERS = Number(process.env.MAX_ROOM_MEMBERS || 50)
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || (IS_PRODUCTION ? '' : 'http://localhost:3000,http://localhost:8080'))
-  .split(',').map((value) => value.trim()).filter(Boolean)
+  .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean)
 
 if (!TOKEN_SECRET) throw new Error('WATCH_PARTY_TOKEN_SECRET is required in production')
 if (IS_PRODUCTION && !REDIS_URL) throw new Error('REDIS_URL is required in production')
@@ -131,7 +131,8 @@ if (REDIS_URL) {
 const log = (event, data = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...data }))
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
-const corsOrigin = (origin, callback) => callback(null, !origin || CLIENT_ORIGINS.includes(origin))
+const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
+const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
 const signToken = (room, member) => jwt.sign({ roomId: room.id, memberId: member.memberId, roleAtIssue: member.role, sessionId: id('session') }, TOKEN_SECRET, { expiresIn: Math.max(1, Math.floor((room.expiresAt - Date.now()) / 1000)) })
 const verifyToken = (token) => jwt.verify(token, TOKEN_SECRET)
 const verifyFirebaseToken = async (token) => {
@@ -179,7 +180,7 @@ function rateLimit(key, limit, windowMs) {
 
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin
-  if (origin && CLIENT_ORIGINS.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
+  if (origin && originAllowed(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -202,7 +203,7 @@ const server = http.createServer(async (req, res) => {
         res.statusCode = upstream.status
         res.setHeader('Content-Type', isManifest ? 'application/vnd.apple.mpegurl' : contentType)
         res.setHeader('Cache-Control', isManifest ? 'public, max-age=5' : 'public, max-age=3600')
-        res.setHeader('Access-Control-Allow-Origin', origin && CLIENT_ORIGINS.includes(origin) ? origin : CLIENT_ORIGINS[0] || '*')
+        res.setHeader('Access-Control-Allow-Origin', origin && originAllowed(origin) ? origin : CLIENT_ORIGINS[0] || '*')
         const contentRange = upstream.headers.get('content-range'); if (contentRange) res.setHeader('Content-Range', contentRange)
         const acceptRanges = upstream.headers.get('accept-ranges'); if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
         if (isManifest) return res.end(rewriteHlsManifest(await upstream.text(), sourceUrl))
@@ -278,7 +279,11 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-const io = new Server(server, { cors: { origin: corsOrigin, methods: ['GET', 'POST'] }, transports: ['websocket', 'polling'] })
+const io = new Server(server, {
+  cors: { origin: corsOrigin, methods: ['GET', 'POST'] },
+  allowRequest: (request, callback) => callback(null, originAllowed(request.headers.origin)),
+  transports: ['websocket', 'polling'],
+})
 if (redisClient) { const sub = redisClient.duplicate(); await sub.connect(); io.adapter(createAdapter(redisClient, sub)) }
 
 io.use(async (socket, next) => {

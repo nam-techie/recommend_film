@@ -20,6 +20,18 @@ export function sourceCapability(episode) {
   return episode?.linkM3u8 ? 'full' : episode?.linkEmbed ? 'limited' : 'unavailable'
 }
 
+export function isAllowedClientOrigin(origin, configuredOrigins = []) {
+  if (!origin) return true
+  const normalized = String(origin).replace(/\/$/, '')
+  if (configuredOrigins.includes(normalized)) return true
+  try {
+    const url = new URL(normalized)
+    return ['http:', 'https:'].includes(url.protocol) && ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+  } catch {
+    return false
+  }
+}
+
 export function chooseHostSuccessor(members, currentHostMemberId) {
   return Object.values(members)
     .filter((member) => member.connected && member.memberId !== currentHostMemberId)

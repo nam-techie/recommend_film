@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CreateWatchPartyDialog } from '@/components/ui/CreateWatchPartyDialog'
+import { MovieSocialPanel } from '@/components/account/MovieSocialPanel'
 import { 
     Play, 
     Star, 
@@ -598,6 +599,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                         </Card>
                     )}
             </div>
+            <MovieSocialPanel movie={{ slug: movie.slug, title: movie.name, poster: getImageUrl(movie.poster_url), year: movie.year }} />
         </div>
     )
 }

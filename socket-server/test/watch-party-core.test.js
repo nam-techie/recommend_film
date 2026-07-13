@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -48,4 +48,18 @@ test('member can only unmute after the host enables voice', () => {
   applyVoicePermission(room, true)
   assert.equal(applyMemberMicState(room, 'guest', true).ok, true)
   assert.deepEqual(room.members.guest, { micEnabled: true, voiceJoined: true })
+})
+
+test('member stays in voice to listen after muting their own microphone', () => {
+  const room = { voiceEnabled: true, members: { guest: { micEnabled: true, voiceJoined: true } } }
+  assert.equal(applyMemberMicState(room, 'guest', false).ok, true)
+  assert.deepEqual(room.members.guest, { micEnabled: false, voiceJoined: true })
+})
+
+test('CORS allows configured web origins and local development without allowing arbitrary sites', () => {
+  const origins = ['https://cinemind.vercel.app']
+  assert.equal(isAllowedClientOrigin('https://cinemind.vercel.app', origins), true)
+  assert.equal(isAllowedClientOrigin('http://localhost:3000', origins), true)
+  assert.equal(isAllowedClientOrigin('http://127.0.0.1:3000', origins), true)
+  assert.equal(isAllowedClientOrigin('https://malicious.example', origins), false)
 })

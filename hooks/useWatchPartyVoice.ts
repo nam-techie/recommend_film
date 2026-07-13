@@ -21,7 +21,10 @@ interface Props extends VoiceBridge {
   voiceEnabled: boolean
 }
 
-const defaultIceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+const defaultIceServers: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+]
 
 function iceServers() {
   const raw = process.env.NEXT_PUBLIC_WATCH_PARTY_ICE_SERVERS_JSON
@@ -39,11 +42,15 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
   const peersRef = useRef(new Map<string, RTCPeerConnection>())
   const offeredPeersRef = useRef(new Set<string>())
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>())
+  const retryCountsRef = useRef(new Map<string, number>())
   const audioElementsRef = useRef(new Map<string, HTMLAudioElement>())
   const monitorTimersRef = useRef(new Map<string, number>())
   const audioContextRef = useRef<AudioContext | null>(null)
+  const joiningVoiceRef = useRef(false)
   const [voiceJoined, setVoiceJoined] = useState(false)
   const [micEnabled, setMicEnabled] = useState(false)
+  const [speakerEnabled, setSpeakerEnabled] = useState(true)
+  const [connectionVersion, setConnectionVersion] = useState(0)
   const [speakingMemberIds, setSpeakingMemberIds] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
 
@@ -103,8 +110,10 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
     }
     if (audioContextRef.current) void audioContextRef.current.close().catch(() => undefined)
     audioContextRef.current = null
+    retryCountsRef.current.clear()
     setVoiceJoined(false)
     setMicEnabled(false)
+    joiningVoiceRef.current = false
   }, [closePeer, markSpeaking, memberId])
 
   const createPeer = useCallback((remoteMemberId: string) => {
@@ -119,14 +128,24 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
       const stream = event.streams[0] || new MediaStream([event.track])
       let audio = audioElementsRef.current.get(remoteMemberId)
       if (!audio) { audio = new Audio(); audio.autoplay = true; audioElementsRef.current.set(remoteMemberId, audio) }
+      audio.muted = !speakerEnabled
       audio.srcObject = stream
-      void audio.play().catch(() => setError('Hãy bấm biểu tượng mic để bật âm thanh phòng.'))
+      if (speakerEnabled) void audio.play().catch(() => setError('Trình duyệt đang chặn âm thanh phòng. Hãy bấm nút loa phòng để nghe.'))
       monitorStream(remoteMemberId, stream)
     }
-    peer.onconnectionstatechange = () => { if (peer.connectionState === 'failed' || peer.connectionState === 'closed') closePeer(remoteMemberId) }
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === 'connected') { retryCountsRef.current.delete(remoteMemberId); setError(null) }
+      if (peer.connectionState === 'failed') {
+        const retries = (retryCountsRef.current.get(remoteMemberId) || 0) + 1
+        retryCountsRef.current.set(remoteMemberId, retries)
+        closePeer(remoteMemberId)
+        if (retries <= 2) window.setTimeout(() => setConnectionVersion((value) => value + 1), 800 * retries)
+        else setError('Không thể tạo đường truyền voice P2P. Mạng hiện tại có thể cần TURN server.')
+      } else if (peer.connectionState === 'closed') closePeer(remoteMemberId)
+    }
     peersRef.current.set(remoteMemberId, peer)
     return peer
-  }, [closePeer, monitorStream, sendVoiceSignal])
+  }, [closePeer, monitorStream, sendVoiceSignal, speakerEnabled])
 
   const makeOffer = useCallback(async (remoteMemberId: string) => {
     if (offeredPeersRef.current.has(remoteMemberId)) return
@@ -147,7 +166,24 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
       if (memberId.localeCompare(remoteMemberId) < 0) void makeOffer(remoteMemberId).catch(() => setError('Không thể kết nối voice với một thành viên.'))
     })
     peersRef.current.forEach((_peer, remoteMemberId) => { if (!connectedIds.includes(remoteMemberId)) closePeer(remoteMemberId) })
-  }, [cleanupVoice, closePeer, createPeer, makeOffer, memberId, members, voiceEnabled, voiceJoined])
+  }, [cleanupVoice, closePeer, connectionVersion, createPeer, makeOffer, memberId, members, voiceEnabled, voiceJoined])
+
+  useEffect(() => {
+    if (!voiceEnabled || !memberId || voiceJoined || joiningVoiceRef.current) return
+    joiningVoiceRef.current = true
+    void setMicState(false).then((ack) => {
+      if (ack.ok) setVoiceJoined(true)
+      else setError(ack.code === 'VOICE_DISABLED' ? 'Host vừa tắt voice của phòng.' : 'Không thể tham gia âm thanh phòng.')
+    }).finally(() => { joiningVoiceRef.current = false })
+  }, [memberId, setMicState, voiceEnabled, voiceJoined])
+
+  useEffect(() => {
+    audioElementsRef.current.forEach((audio) => {
+      audio.muted = !speakerEnabled
+      if (speakerEnabled) void audio.play().catch(() => setError('Trình duyệt đang chặn âm thanh phòng. Hãy bấm nút loa phòng để nghe.'))
+    })
+    if (speakerEnabled && audioContextRef.current?.state === 'suspended') void audioContextRef.current.resume().catch(() => undefined)
+  }, [speakerEnabled])
 
   useEffect(() => subscribeVoiceSignal((signal) => {
     if (!voiceJoined || !voiceEnabled || !memberId) return
@@ -183,7 +219,6 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
         localStreamRef.current = stream
         monitorStream(memberId, stream)
-        setVoiceJoined(true)
       } catch (nextError) {
         const name = nextError instanceof DOMException ? nextError.name : ''
         setError(name === 'NotAllowedError' ? 'Bạn chưa cấp quyền sử dụng microphone.' : 'Không mở được microphone trên thiết bị này.')
@@ -204,8 +239,14 @@ export function useWatchPartyVoice({ memberId, members, voiceEnabled, setMicStat
       setMicEnabled(false)
       return
     }
+    setVoiceJoined(true)
     setMicEnabled(next)
   }, [memberId, micEnabled, monitorStream, setMicState, voiceEnabled])
 
-  return { voiceJoined, micEnabled, speakingMemberIds, error, toggleMic, leaveVoice: cleanupVoice }
+  const toggleSpeaker = useCallback(() => {
+    setError(null)
+    setSpeakerEnabled((current) => !current)
+  }, [])
+
+  return { voiceJoined, micEnabled, speakerEnabled, speakingMemberIds, error, toggleMic, toggleSpeaker, leaveVoice: cleanupVoice }
 }

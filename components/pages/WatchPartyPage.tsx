@@ -8,6 +8,7 @@ import {
   Copy,
   Dices,
   Film,
+  Headphones,
   LockKeyhole,
   LogOut,
   Mic,
@@ -18,6 +19,7 @@ import {
   Send,
   UserRound,
   Users,
+  VolumeX,
   WifiOff,
   X,
 } from 'lucide-react'
@@ -360,8 +362,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <div className="hidden items-center gap-2 rounded-full bg-white/[0.05] px-3 py-2 text-xs text-slate-300 lg:flex"><span className={cn('h-2 w-2 rounded-full', party.isConnected ? 'bg-emerald-400' : 'bg-red-400')} />{party.isConnected ? 'Đã kết nối' : 'Mất kết nối'}</div>
-        {party.isHost && <Button variant="ghost" size="sm" aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Mở voice cho phòng'} title={room.voiceEnabled ? 'Tắt mic tất cả và khóa voice' : 'Cho phép mọi người mở mic'} onClick={() => void toggleVoicePermission()} className={cn('h-11 rounded-full px-3 text-slate-200 hover:bg-white/10', room.voiceEnabled && 'bg-emerald-500/10 text-emerald-200')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic all' : 'Mở voice'}</span></Button>}
+        {party.isHost && <Button variant="ghost" size="sm" aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic'} onClick={() => void toggleVoicePermission()} className={cn('h-11 rounded-full px-3 text-slate-200 hover:bg-white/10', room.voiceEnabled && 'bg-emerald-500/10 text-emerald-200')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
         <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('h-11 w-11 rounded-full text-slate-200 hover:bg-white/10', voice.micEnabled && 'bg-emerald-500/15 text-emerald-200')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('h-11 w-11 rounded-full text-slate-200 hover:bg-white/10', voice.speakerEnabled && room.voiceEnabled && 'bg-sky-500/15 text-sky-100')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <div className="relative">
           <Button variant="ghost" size="sm" aria-label="Người tham gia" aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)} className="h-11 rounded-full px-3 text-slate-200 hover:bg-white/10"><Users className="h-4 w-4" /><span>{party.userCount}</span></Button>
           {showMembers && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-white/10 bg-[#111522] shadow-2xl">
@@ -381,7 +384,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     <main className="mx-auto w-full max-w-[1920px]">
       <div ref={theaterRef} className={cn('relative grid min-w-0 overflow-hidden bg-black', isFullscreen ? 'h-screen grid-cols-1' : showChat ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1')}>
         <section className={cn('relative min-w-0 bg-black', isFullscreen && 'h-screen')}>
-          <SyncedHlsPlayer episode={activeEpisode} playback={room.playback} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={isFullscreen} chatOpen={showChat} unreadCount={unreadCount} fillContainer={isFullscreen} onToggleChat={toggleChat} onToggleFullscreen={toggleFullscreen} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} onToggleMic={() => void voice.toggleMic()} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
+          <SyncedHlsPlayer episode={activeEpisode} playback={room.playback} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={isFullscreen} chatOpen={showChat} unreadCount={unreadCount} fillContainer={isFullscreen} onToggleChat={toggleChat} onToggleFullscreen={toggleFullscreen} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
             if (!activeEpisode || !Number.isFinite(duration) || duration <= 0) return
             const now = Date.now()
             const progress: WatchProgress = { movieSlug: room.movie.slug, movieTitle: room.movie.title, poster: room.movie.poster, episodeId: activeEpisode.id, episodeName: activeEpisode.name, serverName: activeEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'watch_party', roomId: room.id, updatedAt: now }

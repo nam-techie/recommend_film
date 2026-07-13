@@ -6,6 +6,94 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "publicProfiles": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['uid','username','displayName','createdAt','updatedAt','isPublic']) && newData.child('uid').val() === $uid && newData.child('username').isString() && newData.child('username').val().matches(/^[a-z0-9_]{3,24}$/) && newData.child('displayName').isString() && newData.child('displayName').val().length <= 40 && (!newData.child('bio').exists() || newData.child('bio').val().length <= 180)"
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$username": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && (!newData.exists() || newData.val() === auth.uid)))",
+        ".validate": "!newData.exists() || ($username.matches(/^[a-z0-9_]{3,24}$/) && newData.val() === auth.uid)"
+      }
+    },
+    "watchlists": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "publicWatchlists": {
+      ".read": true,
+      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+    },
+    "publicRecent": {
+      ".read": true,
+      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+    },
+    "following": {
+      ".read": true,
+      "$uid": {
+        "$targetUid": { ".write": "auth != null && (auth.uid === $uid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "followers": {
+      ".read": true,
+      "$targetUid": {
+        "$followerUid": { ".write": "auth != null && (auth.uid === $followerUid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "reviews": {
+      ".read": true,
+      "$movieSlug": {
+        "$authorUid": {
+          ".write": "auth != null && auth.uid === $authorUid",
+          ".validate": "newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 10 && newData.child('content').val().length <= 1200"
+        }
+      }
+    },
+    "reviewLikes": {
+      ".read": true,
+      "$movieSlug": {
+        "$authorUid": {
+          ".write": "auth != null && auth.uid === $authorUid",
+          "$likerUid": { ".write": "auth != null && auth.uid === $likerUid", ".validate": "!newData.exists() || newData.val() === true" }
+        }
+      }
+    },
+    "reviewReplies": {
+      ".read": true,
+      "$movieSlug": {
+        "$reviewAuthorUid": {
+          ".write": "auth != null && auth.uid === $reviewAuthorUid",
+          "$replyId": { ".write": "auth != null && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || data.child('authorUid').val() === auth.uid)", ".validate": "!newData.exists() || (newData.child('content').isString() && newData.child('content').val().length > 0 && newData.child('content').val().length <= 300)" }
+        }
+      }
+    },
+    "activities": {
+      ".read": true,
+      "$uid": {
+        "$activityId": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.child('actorUid').val() === $uid" }
+      }
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$notificationId": {
+          ".write": "auth != null && (auth.uid === $uid || (!data.exists() && newData.child('actorUid').val() === auth.uid))",
+          ".validate": "!newData.exists() || (newData.child('actorUid').isString() && newData.child('type').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "reports": {
+      "$reportId": {
+        ".read": false,
+        ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid"
+      }
+    },
     ".read": false,
     ".write": false
   }
