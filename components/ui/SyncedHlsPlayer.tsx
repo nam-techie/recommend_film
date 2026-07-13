@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { AlertTriangle, Maximize, Pause, Play, RefreshCw, Volume2 } from 'lucide-react'
+import { AlertTriangle, FastForward, Maximize, Pause, Play, RefreshCw, Rewind, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WATCH_PARTY_DRIFT_HARD_SECONDS, WATCH_PARTY_DRIFT_SOFT_SECONDS, WatchPartyEpisode, WatchPartyPlayback, WatchPartyReaction, WatchPartyRoomStatus } from '@/lib/watch-party-types'
 import { playableHlsUrl } from '@/lib/media-url'
@@ -31,6 +31,10 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const applyingRemoteRef = useRef(false)
+  const lastAppliedRevisionRef = useRef(-1)
+  const lastHardSeekAtRef = useRef(0)
+  const suppressSeekEventRef = useRef(false)
+  const scrubbingRef = useRef(false)
   const latestPlaybackRef = useRef(playback)
   const retryTimersRef = useRef<number[]>([])
   const [playerState, setPlayerState] = useState<PlayerState>('idle')
@@ -40,6 +44,8 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolume] = useState(0.85)
+  const [isScrubbing, setIsScrubbing] = useState(false)
+  const [scrubTime, setScrubTime] = useState(0)
 
   const playerStateRef = useRef(playerState)
   useEffect(() => { playerStateRef.current = playerState }, [playerState])
@@ -82,6 +88,9 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     destroySource()
     setDuration(0)
     setCurrentTime(0)
+    setScrubTime(0)
+    setIsScrubbing(false)
+    scrubbingRef.current = false
     setIsPlaying(false)
     setSourceError(null)
     if (!episode) { setPlayerState('idle'); return undefined }
@@ -179,7 +188,19 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     applyingRemoteRef.current = true
     const nowTarget = state.currentTime + (state.isPlaying ? Math.max(0, Date.now() + clockOffset - state.serverUpdatedAt) / 1000 : 0)
     const drift = nowTarget - video.currentTime
-    if (state.action === 'seek' || state.action === 'episode_change' || Math.abs(drift) >= WATCH_PARTY_DRIFT_HARD_SECONDS) video.currentTime = Math.max(0, nowTarget)
+    const isNewRevision = state.revision > lastAppliedRevisionRef.current
+    const isExplicitSeek = isNewRevision && (state.action === 'seek' || state.action === 'episode_change')
+    if (isNewRevision) lastAppliedRevisionRef.current = state.revision
+    if (!isExplicitSeek && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      if (!state.isPlaying && !video.paused) video.pause()
+      applyingRemoteRef.current = false
+      return
+    }
+    const hardCorrectionReady = Date.now() - lastHardSeekAtRef.current >= 8000
+    if (isExplicitSeek || (hardCorrectionReady && Math.abs(drift) >= WATCH_PARTY_DRIFT_HARD_SECONDS)) {
+      video.currentTime = Math.max(0, nowTarget)
+      lastHardSeekAtRef.current = Date.now()
+    }
     else if (Math.abs(drift) >= WATCH_PARTY_DRIFT_SOFT_SECONDS) video.playbackRate = drift > 0 ? 1.05 : 0.95
     else video.playbackRate = 1
     try {
@@ -196,10 +217,10 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
   }, [clockOffset])
 
   useEffect(() => {
-    if (standalone) return
+    if (standalone || isHost) return
     if (playerState !== 'ready' && playerState !== 'playing' && playerState !== 'buffering' && playerState !== 'autoplay_blocked') return
     void applyRoomPlayback()
-  }, [applyRoomPlayback, playback.revision, playerState, standalone])
+  }, [applyRoomPlayback, isHost, playback.revision, playerState, standalone])
 
   useEffect(() => {
     if (standalone || isHost || !isConnected || !['ready', 'playing', 'buffering'].includes(playerState)) return undefined
@@ -222,6 +243,17 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
     onPlaybackUpdate({ episodeId: episode.id, currentTime: video.currentTime, isPlaying: !video.paused, action })
   }
 
+  const commitSeek = (requestedTime: number) => {
+    const video = videoRef.current
+    if (!video || !episode || !isHost || !isConnected || !Number.isFinite(requestedTime)) return
+    const value = Math.max(0, Math.min(duration || requestedTime, requestedTime))
+    suppressSeekEventRef.current = true
+    video.currentTime = value
+    setCurrentTime(value)
+    setScrubTime(value)
+    onPlaybackUpdate({ episodeId: episode.id, currentTime: value, isPlaying: !video.paused, action: 'seek' })
+  }
+
   if (!episode) return <div className="flex h-full min-h-80 items-center justify-center bg-black text-gray-400">Chưa có tập phim để phát.</div>
   if (playerState === 'fallback_embed') return <div className="relative aspect-video h-full w-full bg-black">
     <iframe src={episode.linkEmbed} title={episode.name} className="h-full w-full border-0" allowFullScreen allow="autoplay; encrypted-media; picture-in-picture" />
@@ -234,16 +266,16 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
       onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (!standalone) void applyRoomPlayback() } }}
       onWaiting={() => setPlayerState('buffering')}
       onCanPlay={() => setPlayerState((state) => state === 'autoplay_blocked' ? state : 'ready')}
-      onTimeUpdate={(event) => { const video = event.currentTarget; setCurrentTime(video.currentTime); onProgress?.(video.currentTime, video.duration, 'timeupdate'); if (!isHost && Math.abs(targetTime - video.currentTime) < 0.2) video.playbackRate = 1 }}
+      onTimeUpdate={(event) => { const video = event.currentTarget; if (!isScrubbing) setCurrentTime(video.currentTime); onProgress?.(video.currentTime, video.duration, 'timeupdate'); if (!isHost && Math.abs(targetTime - video.currentTime) < 0.2) video.playbackRate = 1 }}
       onPlay={() => { setIsPlaying(true); setPlayerState('playing'); emitNative('play') }}
       onPause={() => { setIsPlaying(false); onProgress?.(currentTime, duration, 'pause'); emitNative('pause') }}
-      onSeeked={() => { onProgress?.(currentTime, duration, 'seek'); emitNative('seek') }} />
+      onSeeked={(event) => { const time = event.currentTarget.currentTime; setCurrentTime(time); onProgress?.(time, duration, 'seek'); if (suppressSeekEventRef.current) { suppressSeekEventRef.current = false; return } emitNative('seek') }} />
 
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">{reactions.map((reaction, index) => <div key={reaction.id} className="absolute animate-bounce text-4xl" style={{ left: `${18 + (index * 13) % 65}%`, bottom: `${22 + (index * 7) % 42}%` }}>{reaction.emoji}</div>)}</div>
     <div className="absolute left-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs" aria-live="polite"><span className={`mr-2 inline-block h-2 w-2 rounded-full ${connectionText === 'Đã đồng bộ' ? 'bg-emerald-400' : !isConnected ? 'bg-red-400' : 'bg-amber-400'}`} />{connectionText}</div>
     {!isHost && <div className="absolute right-3 top-3 rounded-md bg-black/80 px-3 py-1.5 text-xs">Host đang điều khiển</div>}
 
-    {(playerState === 'loading_manifest' || playerState === 'loading_media' || playerState === 'buffering') && (
+    {(playerState === 'loading_manifest' || playerState === 'loading_media') && (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 z-10">
         <div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div>
         {allowIframeFallback && episode?.linkEmbed && (
@@ -258,13 +290,14 @@ export function SyncedHlsPlayer({ episode, playback, isHost, isConnected, clockO
         )}
       </div>
     )}
+    {playerState === 'buffering' && <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-3 text-sm">Đang tải đoạn phim…</div>}
     {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
     {playerState === 'fatal_error' && <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => setSourceVersion((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
 
     <div className="absolute inset-x-0 bottom-0 space-y-2 bg-gradient-to-t from-black via-black/80 to-transparent p-4">
       <div className="flex items-center justify-between text-sm"><span className="font-medium">{episode.name}</span><span className="text-xs text-gray-300">{episode.serverName}</span></div>
-      <input aria-label="Tiến độ phát" type="range" min={0} max={duration || 0} step={0.1} value={Math.min(currentTime, duration || currentTime)} disabled={!isHost || !duration || !isConnected} onChange={(event) => { const value = Number(event.target.value); if (videoRef.current) videoRef.current.currentTime = value; setCurrentTime(value) }} onMouseUp={() => emitNative('seek')} onTouchEnd={() => emitNative('seek')} className="w-full accent-purple-500" />
-      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Button size="icon" disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={() => { const video = videoRef.current; if (!video?.currentSrc) return; if (video.paused) void video.play().catch(() => setPlayerState('autoplay_blocked')); else video.pause() }}>{isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button><span className="font-mono text-xs">{formatTime(currentTime)} / {formatTime(duration)}</span></div>
+      <input aria-label="Tiến độ phát" type="range" min={0} max={duration || 0} step={0.1} value={Math.min(isScrubbing ? scrubTime : currentTime, duration || currentTime)} disabled={!isHost || !duration || !isConnected} onPointerDown={() => { scrubbingRef.current = true; setIsScrubbing(true); setScrubTime(currentTime) }} onChange={(event) => { const value = Number(event.target.value); setScrubTime(value); if (!scrubbingRef.current) commitSeek(value) }} onPointerUp={(event) => { commitSeek(Number(event.currentTarget.value)); scrubbingRef.current = false; setIsScrubbing(false) }} onPointerCancel={() => { scrubbingRef.current = false; setIsScrubbing(false); setScrubTime(currentTime) }} className="w-full accent-purple-500" />
+      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Button size="icon" disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={() => { const video = videoRef.current; if (!video?.currentSrc) return; if (video.paused) void video.play().catch(() => setPlayerState('autoplay_blocked')); else video.pause() }}>{isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button><Button size="icon" variant="outline" aria-label="Lùi 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => commitSeek(currentTime - 10)}><Rewind className="h-4 w-4" /></Button><Button size="icon" variant="outline" aria-label="Tiến 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => commitSeek(currentTime + 10)}><FastForward className="h-4 w-4" /></Button><span className="font-mono text-xs">{formatTime(isScrubbing ? scrubTime : currentTime)} / {formatTime(duration)}</span></div>
         <div className="flex items-center gap-2"><Volume2 className="h-4 w-4" /><input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="w-20 accent-purple-500" /><Button size="icon" variant="outline" onClick={() => void applyRoomPlayback()}><RefreshCw className="h-4 w-4" /></Button><Button size="icon" variant="outline" onClick={() => void videoRef.current?.requestFullscreen?.()}><Maximize className="h-4 w-4" /></Button></div></div>
     </div>
   </div>
