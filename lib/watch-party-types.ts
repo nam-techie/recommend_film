@@ -10,8 +10,20 @@ export interface WatchPartyEpisode {
 }
 export interface WatchPartyMember {
   memberId: string; displayName: string; role: 'host' | 'viewer'
-  avatar?: string; isAnonymous?: boolean; micEnabled?: boolean; voiceJoined?: boolean
+  avatar?: string; isAnonymous?: boolean
   joinedAt: number; lastSeenAt: number; connected: boolean; socketIds?: string[]
+}
+
+export type VoiceConnectionState = 'idle' | 'joining' | 'ready' | 'reconnecting' | 'degraded' | 'failed'
+export type VoiceConnectionQuality = 'excellent' | 'good' | 'poor' | 'unknown'
+
+export interface VoiceParticipant {
+  memberId: string
+  connected: boolean
+  micEnabled: boolean
+  audioSubscribed: boolean
+  isSpeaking: boolean
+  connectionQuality: VoiceConnectionQuality
 }
 export interface WatchPartyPlayback {
   episodeId: string; currentTime: number; isPlaying: boolean; revision: number

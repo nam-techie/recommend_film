@@ -37,29 +37,46 @@ Sau khi thay `.env`, phải dừng và chạy lại `npm run dev`; Next.js khôn
 
 Nếu vẫn thấy `auth/configuration-not-found`, kiểm tra project trong `NEXT_PUBLIC_FIREBASE_PROJECT_ID` có đúng project vừa bật Authentication hay không. Nếu thấy `auth/unauthorized-domain`, thêm domain hiện tại vào Authorized domains.
 
-## Railway Watch Party server
+## Render Watch Party server
 
-Sau khi Railway cấp public domain, cấu hình trên Vercel (không dùng localhost):
+Sau khi Render cấp public domain, cấu hình trên Vercel (không dùng localhost):
 
 ```text
-NEXT_PUBLIC_WATCH_PARTY_API_URL=https://<watch-party-service>.up.railway.app
-NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://<watch-party-service>.up.railway.app
+NEXT_PUBLIC_WATCH_PARTY_API_URL=https://<watch-party-service>.onrender.com
+NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://<watch-party-service>.onrender.com
 ```
 
-Luồng production là: trình duyệt → watch-party server → CDN HLS của KKPhim. API phim vẫn cung cấp metadata và URL nguồn; watch-party server chỉ proxy manifest/segment để tránh CDN bị browser chặn và để CORS ổn định.
+Trang xem riêng nhúng thẳng `link_embed`, không gọi Render, Redis hay HLS proxy. Luồng phòng xem chung là: trình duyệt → watch-party server → CDN HLS. API phim vẫn cung cấp metadata và URL nguồn; watch-party server chỉ proxy manifest/segment để tránh CDN bị browser chặn và để CORS ổn định.
+
+Render dùng Runtime `Node`, Root Directory `socket-server`, Build Command `npm ci`, Start Command `npm start` và Health Check Path `/ready`.
 
 ```text
 REDIS_URL=...
 CLIENT_ORIGINS=https://your-vercel-domain.vercel.app
+MEDIA_ALLOWED_HOSTS=s3.phim1280.tv
 WATCH_PARTY_TOKEN_SECRET=use-a-long-random-secret
 FIREBASE_SERVICE_ACCOUNT_JSON={...single-line service account JSON...}
 ROOM_TTL_SECONDS=14400
 EMPTY_ROOM_TTL_SECONDS=300
 HOST_GRACE_SECONDS=15
 MAX_ROOM_MEMBERS=50
+LIVEKIT_URL=wss://<project>.livekit.cloud
+LIVEKIT_API_KEY=<server-only-api-key>
+LIVEKIT_API_SECRET=<server-only-api-secret>
 NODE_ENV=production
 ```
 
 Never commit the Firebase service-account JSON. `CLIENT_ORIGINS` is a comma-separated allowlist and must not be `*` in production.
+
+`MEDIA_ALLOWED_HOSTS` bổ sung các hostname CDN HLS/segment tin cậy, phân cách bằng dấu phẩy. Không thêm `*`; server đã cho phép sẵn các host KKPhim và `s3.phim1280.tv`.
+
+Trên Vercel, đặt cả hai URL xem chung thành cùng origin HTTPS rồi redeploy vì biến `NEXT_PUBLIC_*` được đóng vào bundle lúc build:
+
+```text
+NEXT_PUBLIC_WATCH_PARTY_API_URL=https://moviewiser-socket.onrender.com
+NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://moviewiser-socket.onrender.com
+```
+
+Voice dùng LiveKit Cloud SFU. Chỉ cấu hình `LIVEKIT_URL`, `LIVEKIT_API_KEY` và `LIVEKIT_API_SECRET` trên Render; không cấu hình STUN/TURN hoặc secret LiveKit trên frontend. `GET /ready` trả thêm `voiceConfigured` để xác nhận máy chủ đã nhận đủ ba biến này.
 
 Run locally with `npm run dev`. If port 4001 is already occupied, stop the previous Watch Party Node process before starting another one.

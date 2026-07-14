@@ -205,7 +205,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, [authLoading, roomId, user])
 
   const party = useWatchParty(normalizedRoomId, user ? session : null)
-  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, members: party.room?.members || {}, voiceEnabled: Boolean(party.room?.voiceEnabled), setMicState: party.setMicState, sendVoiceSignal: party.sendVoiceSignal, subscribeVoiceSignal: party.subscribeVoiceSignal })
+  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled), getVoiceCredentials: party.getVoiceCredentials })
   const activeEpisode = useMemo(() => party.room?.movie.episodes.find((item) => item.id === party.room?.playback.episodeId) || party.room?.movie.episodes[0], [party.room])
   const episodeGroups = useMemo(() => Object.entries((party.room?.movie.episodes || []).reduce<Record<string, WatchPartyEpisode[]>>((groups, episode) => {
     groups[episode.serverName] = [...(groups[episode.serverName] || []), episode]
@@ -311,7 +311,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     const next = !party.room?.voiceEnabled
     setVoiceControlError(null)
     const ack = await party.setVoicePermission(next)
-    if (!ack.ok) setVoiceControlError(ack.code === 'HOST_ONLY' ? 'Chỉ host được thay đổi quyền voice.' : 'Không cập nhật được voice của phòng.')
+    if (!ack.ok) setVoiceControlError(ack.code === 'HOST_ONLY' ? 'Chỉ host được thay đổi quyền voice.' : ack.code === 'VOICE_NOT_CONFIGURED' ? 'LiveKit chưa được cấu hình trên máy chủ.' : 'Không cập nhật được voice của phòng.')
   }, [party])
 
   if (authLoading || !user) return <div className="flex min-h-[70vh] items-center justify-center text-white"><div className="h-10 w-10 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" /></div>
@@ -369,7 +369,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
           <Button variant="ghost" size="sm" aria-label="Người tham gia" aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)} className="h-11 rounded-full px-3 text-slate-200 hover:bg-white/10"><Users className="h-4 w-4" /><span>{party.userCount}</span></Button>
           {showMembers && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-white/10 bg-[#111522] shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><div><h2 className="text-sm font-semibold">Người trong phòng</h2><p className="text-xs text-slate-400">{party.userCount} đang online</p></div><Button size="icon" variant="ghost" aria-label="Đóng danh sách" onClick={() => setShowMembers(false)} className="h-9 w-9 rounded-full"><X className="h-4 w-4" /></Button></div>
-            <div className="max-h-80 space-y-1 overflow-y-auto p-2">{members.map((member) => <div key={member.memberId} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/[0.04]"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{member.displayName}{member.isAnonymous ? ' · Ẩn danh' : ''}</p><p className="text-xs text-slate-500">{member.connected ? 'Đang online' : 'Đã rời phòng'}</p></div>{member.micEnabled ? <Mic className="h-4 w-4 text-emerald-400" /> : <MicOff className="h-4 w-4 text-slate-600" />}{member.memberId === room.hostMemberId && <span className="rounded-full bg-purple-500/15 px-2 py-1 text-[10px] font-semibold text-purple-200">Host</span>}</div>)}</div>
+            <div className="max-h-80 space-y-1 overflow-y-auto p-2">{members.map((member) => { const voiceMember = voice.participantsById.get(member.memberId); return <div key={member.memberId} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/[0.04]"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{member.displayName}{member.isAnonymous ? ' · Ẩn danh' : ''}</p><p className="text-xs text-slate-500">{!member.connected ? 'Đã rời phòng' : room.voiceEnabled && !voiceMember ? 'Đang kết nối voice…' : 'Đang online'}</p></div>{voiceMember?.micEnabled ? <Mic className="h-4 w-4 text-emerald-400" /> : <MicOff className="h-4 w-4 text-slate-600" />}{member.memberId === room.hostMemberId && <span className="rounded-full bg-purple-500/15 px-2 py-1 text-[10px] font-semibold text-purple-200">Host</span>}</div> })}</div>
           </div>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => void copy()} className="hidden h-11 rounded-full px-3 text-slate-200 hover:bg-white/10 sm:inline-flex"><Copy className="h-4 w-4" />{copied ? 'Đã sao chép' : 'Mời'}</Button>
@@ -378,6 +378,8 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     </header>
 
     {(voice.error || voiceControlError) && <div className="bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-100" role="status">{voice.error || voiceControlError}</div>}
+
+    {voice.audioPlaybackBlocked && room.voiceEnabled && <div className="flex items-center justify-center gap-3 bg-sky-500/10 px-4 py-2 text-center text-xs text-sky-100" role="status"><span>Trình duyệt đang chặn âm thanh phòng.</span><Button size="sm" variant="outline" className="h-8 border-sky-300/30 bg-sky-500/10" onClick={() => void voice.startAudio()}>Bật âm thanh phòng</Button></div>}
 
     {room.status === 'host_reconnecting' && <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-100"><WifiOff className="h-4 w-4" />Đang chờ host kết nối lại. Phòng sẽ tự chuyển host sau 30 giây.</div>}
 

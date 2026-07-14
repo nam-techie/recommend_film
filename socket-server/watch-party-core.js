@@ -20,6 +20,29 @@ export function sourceCapability(episode) {
   return episode?.linkM3u8 ? 'full' : episode?.linkEmbed ? 'limited' : 'unavailable'
 }
 
+export function isAllowedMediaUrl(value, configuredHosts = []) {
+  try {
+    const url = new URL(value)
+    const host = url.hostname.toLowerCase()
+    if (!['http:', 'https:'].includes(url.protocol)) return false
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false
+    if (/^10\.|^127\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false
+    if (/^v\d+\.kkphimplayer\d*\.com$/.test(host) || host === 'kkphimplayer.com' || host.endsWith('.kkphimplayer.com')) return true
+    if (host === 's3.phim1280.tv') return true
+    return configuredHosts.some((entry) => {
+      const rule = String(entry || '').trim().toLowerCase()
+      if (!rule) return false
+      if (rule.startsWith('*.')) {
+        const suffix = rule.slice(2)
+        return host === suffix || host.endsWith(`.${suffix}`)
+      }
+      return host === rule
+    })
+  } catch {
+    return false
+  }
+}
+
 export function isAllowedClientOrigin(origin, configuredOrigins = []) {
   if (!origin) return true
   const normalized = String(origin).replace(/\/$/, '')
@@ -40,21 +63,9 @@ export function chooseHostSuccessor(members, currentHostMemberId) {
 
 export function applyVoicePermission(room, enabled) {
   room.voiceEnabled = Boolean(enabled)
-  if (!room.voiceEnabled) {
-    Object.values(room.members || {}).forEach((member) => {
-      member.micEnabled = false
-      member.voiceJoined = false
-    })
-  }
   return room
 }
 
-export function applyMemberMicState(room, memberId, micEnabled) {
-  const member = room.members?.[memberId]
-  if (!member) return { ok: false, code: 'ROOM_NOT_FOUND' }
-  if (micEnabled && !room.voiceEnabled) return { ok: false, code: 'VOICE_DISABLED' }
-
-  member.micEnabled = Boolean(micEnabled)
-  member.voiceJoined = Boolean(room.voiceEnabled)
-  return { ok: true, member }
+export function buildVoiceGrant(roomId) {
+  return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: ['microphone'] }
 }

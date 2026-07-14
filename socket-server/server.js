@@ -7,7 +7,8 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -22,6 +23,13 @@ const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 15)
 const MAX_ROOM_MEMBERS = Number(process.env.MAX_ROOM_MEMBERS || 50)
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || (IS_PRODUCTION ? '' : 'http://localhost:3000,http://localhost:8080'))
   .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean)
+const MEDIA_ALLOWED_HOSTS = (process.env.MEDIA_ALLOWED_HOSTS || '')
+  .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+const LIVEKIT_URL = process.env.LIVEKIT_URL || ''
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || ''
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || ''
+const voiceConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
+const livekitRooms = voiceConfigured ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) : null
 
 if (!TOKEN_SECRET) throw new Error('WATCH_PARTY_TOKEN_SECRET is required in production')
 if (IS_PRODUCTION && !REDIS_URL) throw new Error('REDIS_URL is required in production')
@@ -66,12 +74,6 @@ const playbackSchema = z.object({
   episodeId: z.string().min(1).max(120), currentTime: z.number().finite().nonnegative(), isPlaying: z.boolean(),
   action: z.enum(['play', 'pause', 'seek', 'heartbeat']), clientEventId: z.string().min(8).max(100)
 })
-const voiceSignalSchema = z.object({
-  targetMemberId: z.string().min(1).max(100),
-  description: z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().max(100_000) }).optional(),
-  candidate: z.object({ candidate: z.string().max(8_000), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().int().nonnegative().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional()
-}).refine((value) => value.description || value.candidate, 'Voice signal is required')
-
 class MemoryStore {
   constructor() { this.rooms = new Map(); this.dedupe = new Map() }
   async ping() { return 'PONG' }
@@ -129,12 +131,26 @@ if (REDIS_URL) {
 }
 
 const log = (event, data = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...data }))
+const deleteVoiceRoom = async (roomId, attempt = 1) => {
+  if (!livekitRooms) return
+  try { await livekitRooms.deleteRoom(roomId) }
+  catch (error) {
+    if (String(error?.code || '').toLowerCase() === 'not_found') return
+    if (attempt < 3) return new Promise((resolve) => setTimeout(() => resolve(deleteVoiceRoom(roomId, attempt + 1)), 250 * 2 ** (attempt - 1)))
+    log('voice_room_delete_failed', { roomId, attempts: attempt, error: error instanceof Error ? error.message : String(error) })
+  }
+}
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
 const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
 const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
 const signToken = (room, member) => jwt.sign({ roomId: room.id, memberId: member.memberId, roleAtIssue: member.role, sessionId: id('session') }, TOKEN_SECRET, { expiresIn: Math.max(1, Math.floor((room.expiresAt - Date.now()) / 1000)) })
 const verifyToken = (token) => jwt.verify(token, TOKEN_SECRET)
+const createVoiceToken = async (room, member) => {
+  const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: member.memberId, name: member.displayName, ttl: '10m' })
+  token.addGrant(buildVoiceGrant(room.id))
+  return token.toJwt()
+}
 const verifyFirebaseToken = async (token) => {
   if (!adminAuth) throw Object.assign(new Error('Firebase Admin is not configured'), { statusCode: 503, code: 'AUTH_NOT_CONFIGURED' })
   try { return await adminAuth.verifyIdToken(token) } catch { throw Object.assign(new Error('Bạn cần đăng nhập Google để tạo phòng.'), { statusCode: 401, code: 'AUTH_REQUIRED' }) }
@@ -162,8 +178,35 @@ const clientRoom = (room) => {
 }
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)) }
 const readBody = async (req) => { const chunks = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > 1_000_000) throw new Error('PAYLOAD_TOO_LARGE'); chunks.push(chunk) } return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') }
-const isSafeMediaUrl = (value) => { try { const url = new URL(value); const host = url.hostname.toLowerCase(); return ['http:', 'https:'].includes(url.protocol) && host !== 'localhost' && host !== '127.0.0.1' && host !== '::1' && !/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host) } catch { return false } }
-const isAllowedMediaHost = (value) => { try { const host = new URL(value).hostname.toLowerCase(); return /^v\d+\.kkphimplayer\d*\.com$/.test(host) || host === 'kkphimplayer.com' || host.endsWith('.kkphimplayer.com') } catch { return false } }
+const mediaAllowed = (value) => isAllowedMediaUrl(value, MEDIA_ALLOWED_HOSTS)
+const redirectStatuses = new Set([301, 302, 303, 307, 308])
+async function fetchAllowedMedia(sourceUrl, options = {}, maxRedirects = 5) {
+  let currentUrl = sourceUrl
+  for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
+    if (!mediaAllowed(currentUrl)) throw Object.assign(new Error('Nguồn media không được cho phép.'), { statusCode: 403, code: 'MEDIA_HOST_DENIED' })
+    const response = await fetch(currentUrl, { ...options, redirect: 'manual' })
+    if (!redirectStatuses.has(response.status)) return { response, finalUrl: currentUrl }
+    const location = response.headers.get('location')
+    if (!location) return { response, finalUrl: currentUrl }
+    currentUrl = new URL(location, currentUrl).href
+  }
+  throw Object.assign(new Error('Nguồn media chuyển hướng quá nhiều lần.'), { statusCode: 502, code: 'TOO_MANY_REDIRECTS' })
+}
+async function probeHlsSource(sourceUrl, timeoutMs = 5000) {
+  if (!sourceUrl || !mediaAllowed(sourceUrl)) return { hlsReachable: false, errorCode: 'MEDIA_HOST_DENIED' }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const { response, finalUrl } = await fetchAllowedMedia(sourceUrl, { method: 'GET', headers: { Range: 'bytes=0-1024' }, signal: controller.signal })
+    const contentType = response.headers.get('content-type') || undefined
+    const hlsReachable = response.ok && (contentType?.includes('mpegurl') || new URL(finalUrl).pathname.endsWith('.m3u8'))
+    return { hlsReachable, contentType, errorCode: hlsReachable ? undefined : 'UPSTREAM_ERROR' }
+  } catch (error) {
+    return { hlsReachable: false, errorCode: error?.code || (error?.name === 'AbortError' ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_ERROR') }
+  } finally {
+    clearTimeout(timer)
+  }
+}
 const proxyPath = (value) => `/api/media/proxy?url=${encodeURIComponent(value)}`
 const rewriteHlsManifest = (manifest, sourceUrl) => manifest.split(/\r?\n/).map((line) => {
   if (!line) return line
@@ -189,37 +232,48 @@ const server = http.createServer(async (req, res) => {
   const ip = req.socket.remoteAddress || 'unknown'
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
-    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory' }) }
+    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured }) }
     if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
       const sourceUrl = url.searchParams.get('url') || ''
-      if (!isSafeMediaUrl(sourceUrl) || !isAllowedMediaHost(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
+      if (!mediaAllowed(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
       const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 20_000)
       try {
         const headers = {}; if (req.headers.range) headers.Range = req.headers.range
-        const upstream = await fetch(sourceUrl, { headers, signal: controller.signal, redirect: 'follow' })
+        const { response: upstream, finalUrl } = await fetchAllowedMedia(sourceUrl, { headers, signal: controller.signal })
         if (!upstream.ok) return json(res, upstream.status, { code: 'UPSTREAM_ERROR', error: `Nguồn media trả về ${upstream.status}.` })
         const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
-        const isManifest = contentType.includes('mpegurl') || new URL(sourceUrl).pathname.endsWith('.m3u8')
+        const isManifest = contentType.includes('mpegurl') || new URL(finalUrl).pathname.endsWith('.m3u8')
         res.statusCode = upstream.status
         res.setHeader('Content-Type', isManifest ? 'application/vnd.apple.mpegurl' : contentType)
         res.setHeader('Cache-Control', isManifest ? 'public, max-age=5' : 'public, max-age=3600')
         res.setHeader('Access-Control-Allow-Origin', origin && originAllowed(origin) ? origin : CLIENT_ORIGINS[0] || '*')
         const contentRange = upstream.headers.get('content-range'); if (contentRange) res.setHeader('Content-Range', contentRange)
         const acceptRanges = upstream.headers.get('accept-ranges'); if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
-        if (isManifest) return res.end(rewriteHlsManifest(await upstream.text(), sourceUrl))
+        if (isManifest) return res.end(rewriteHlsManifest(await upstream.text(), finalUrl))
         return res.end(Buffer.from(await upstream.arrayBuffer()))
       } finally { clearTimeout(timer) }
     }
     if (req.method === 'POST' && url.pathname === '/api/media/probe') {
       const input = z.object({ linkM3u8: z.string().url().optional(), linkEmbed: z.string().url().optional() }).parse(await readBody(req))
-      if (input.linkM3u8 && !isSafeMediaUrl(input.linkM3u8)) return json(res, 400, { code: 'UNSAFE_URL', error: 'URL nguồn không hợp lệ.' })
-      let hlsReachable = false; let contentType
-      if (input.linkM3u8) {
-        const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000)
-        try { const response = await fetch(input.linkM3u8, { method: 'GET', headers: { Range: 'bytes=0-1024' }, signal: controller.signal, redirect: 'follow' }); contentType = response.headers.get('content-type') || undefined; hlsReachable = response.ok && (contentType?.includes('mpegurl') || input.linkM3u8.includes('.m3u8')) } catch { hlsReachable = false } finally { clearTimeout(timer) }
-      }
+      const { hlsReachable, contentType, errorCode } = input.linkM3u8 ? await probeHlsSource(input.linkM3u8) : { hlsReachable: false, contentType: undefined, errorCode: undefined }
       const fallbackAvailable = Boolean(input.linkEmbed)
-      return json(res, 200, { hlsReachable, contentType, fallbackAvailable, capability: hlsReachable ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
+      return json(res, 200, { hlsReachable, contentType, errorCode, fallbackAvailable, capability: hlsReachable ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
+    }
+    const voiceTokenMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/voice-token$/i)
+    if (req.method === 'POST' && voiceTokenMatch) {
+      if (!voiceConfigured) return json(res, 503, { code: 'VOICE_NOT_CONFIGURED', error: 'Dịch vụ voice chưa được cấu hình.' })
+      const roomToken = bearer(req)
+      if (!roomToken) return json(res, 401, { code: 'UNAUTHORIZED', error: 'Thiếu token phòng.' })
+      let claims
+      try { claims = verifyToken(roomToken) } catch { return json(res, 401, { code: 'UNAUTHORIZED', error: 'Token phòng không hợp lệ hoặc đã hết hạn.' }) }
+      const roomId = voiceTokenMatch[1].toUpperCase()
+      if (claims.roomId !== roomId) return json(res, 403, { code: 'ROOM_MISMATCH', error: 'Token không thuộc phòng này.' })
+      const room = await store.getRoom(roomId); const member = room?.members?.[claims.memberId]
+      if (!room || !member) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng hoặc thành viên không còn tồn tại.' })
+      if (!room.voiceEnabled) return json(res, 403, { code: 'VOICE_DISABLED', error: 'Host chưa bật voice cho phòng.' })
+      if (!(await store.allow(`voice-token:${member.memberId}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn yêu cầu kết nối voice quá nhanh.' })
+      const participantToken = await createVoiceToken(room, member)
+      return json(res, 200, { serverUrl: LIVEKIT_URL, participantToken })
     }
     if (req.method === 'POST' && url.pathname === '/api/rooms') {
       const authToken = bearer(req)
@@ -229,8 +283,10 @@ const server = http.createServer(async (req, res) => {
       const input = createRoomSchema.parse(await readBody(req)); let code = roomCode(); while (await store.getRoom(code)) code = roomCode()
       const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes.find((episode) => episode.linkM3u8)
       if (!initial?.linkM3u8) return json(res, 400, { code: 'HLS_REQUIRED', error: 'Xem chung cần ít nhất một nguồn HLS để đồng bộ chính xác.' })
+      const initialProbe = await probeHlsSource(initial.linkM3u8)
+      if (!initialProbe.hlsReachable) return json(res, 400, { code: initialProbe.errorCode || 'HLS_UNREACHABLE', error: initialProbe.errorCode === 'MEDIA_HOST_DENIED' ? 'Host HLS chưa được máy chủ cho phép.' : 'Máy chủ không tải được nguồn HLS đã chọn.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
-      const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, micEnabled: false, voiceJoined: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
         members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
@@ -246,7 +302,7 @@ const server = http.createServer(async (req, res) => {
       if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
       if (Object.keys(room.members).length >= MAX_ROOM_MEMBERS) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người.' })
       const account = await verifyFirebaseToken(input.firebaseIdToken)
-      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, micEnabled: false, voiceJoined: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
       return json(res, 201, { roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
@@ -348,32 +404,17 @@ io.on('connection', async (socket) => {
     const fresh = await store.getRoom(roomId)
     if (!fresh || fresh.hostMemberId !== memberId) return ack?.({ ok: false, code: 'HOST_ONLY' })
     const enabled = Boolean(payload?.enabled)
+    if (enabled && !voiceConfigured) return ack?.({ ok: false, code: 'VOICE_NOT_CONFIGURED' })
     applyVoicePermission(fresh, enabled)
     await store.setRoom(fresh)
     io.to(roomId).emit('voice:permission_changed', { enabled })
-    if (!enabled) io.to(roomId).emit('voice:all_muted')
+    if (!enabled) void deleteVoiceRoom(roomId)
     ack?.({ ok: true })
-  })
-  socket.on('voice:mic_state', async (payload, ack) => {
-    const fresh = await store.getRoom(roomId); const current = fresh?.members[memberId]
-    if (!fresh || !current) return ack?.({ ok: false, code: 'ROOM_NOT_FOUND' })
-    const micEnabled = Boolean(payload?.micEnabled)
-    const result = applyMemberMicState(fresh, memberId, micEnabled)
-    if (!result.ok) return ack?.(result)
-    await store.setRoom(fresh)
-    io.to(roomId).emit('voice:member_state', { memberId, micEnabled, voiceJoined: current.voiceJoined })
-    ack?.({ ok: true })
-  })
-  socket.on('voice:signal', async (payload) => {
-    const parsed = voiceSignalSchema.safeParse(payload); if (!parsed.success) return
-    const fresh = await store.getRoom(roomId); const sender = fresh?.members[memberId]; const target = fresh?.members[parsed.data.targetMemberId]
-    if (!fresh?.voiceEnabled || !sender?.connected || !sender.voiceJoined || !target?.connected || !target.voiceJoined || !(await store.allow(`voice-signal:${memberId}`, 120, 10_000))) return
-    io.to(`${roomId}:${target.memberId}`).emit('voice:signal', { fromMemberId: memberId, description: parsed.data.description, candidate: parsed.data.candidate })
   })
 
   const disconnectMember = async () => {
     const fresh = await store.getRoom(roomId); if (!fresh?.members[memberId]) return
-    const current = fresh.members[memberId]; current.socketIds = current.socketIds.filter((socketId) => socketId !== socket.id); current.connected = current.socketIds.length > 0; current.lastSeenAt = Date.now(); if (!current.connected) { current.micEnabled = false; current.voiceJoined = false }
+    const current = fresh.members[memberId]; current.socketIds = current.socketIds.filter((socketId) => socketId !== socket.id); current.connected = current.socketIds.length > 0; current.lastSeenAt = Date.now()
     if (!current.connected) socket.to(roomId).emit('room:member_left', { memberId })
     if (memberId === fresh.hostMemberId && !current.connected) {
       fresh.status = 'host_reconnecting'; fresh.hostReconnectDeadline = Date.now() + HOST_GRACE_SECONDS * 1000; io.to(roomId).emit('host:reconnecting', { graceSeconds: HOST_GRACE_SECONDS }); clearTimeout(hostTimers.get(roomId)); hostTimers.set(roomId, setTimeout(() => transferHost(roomId), HOST_GRACE_SECONDS * 1000))

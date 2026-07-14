@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyMemberMicState, applyVoicePermission, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -17,6 +17,15 @@ test('source capability prioritizes HLS, then iframe', () => {
   assert.equal(sourceCapability({}), 'unavailable')
 })
 
+test('media policy allows known HLS hosts and configured CDN hosts only', () => {
+  assert.equal(isAllowedMediaUrl('https://s3.phim1280.tv/movie/master.m3u8'), true)
+  assert.equal(isAllowedMediaUrl('https://v7.kkphimplayer7.com/movie/master.m3u8'), true)
+  assert.equal(isAllowedMediaUrl('https://segments.example.com/a.ts', ['*.example.com']), true)
+  assert.equal(isAllowedMediaUrl('https://example.com.evil.test/a.ts', ['*.example.com']), false)
+  assert.equal(isAllowedMediaUrl('http://127.0.0.1/private.m3u8', ['127.0.0.1']), false)
+  assert.equal(isAllowedMediaUrl('file:///etc/passwd', ['*']), false)
+})
+
 test('host successor is the earliest connected member with stable tie break', () => {
   const members = {
     host: { memberId: 'host', joinedAt: 1, connected: false },
@@ -27,33 +36,22 @@ test('host successor is the earliest connected member with stable tie break', ()
   assert.equal(chooseHostSuccessor(members, 'host')?.memberId, 'a')
 })
 
-test('disabling room voice mutes and removes every member from voice', () => {
-  const room = {
-    voiceEnabled: true,
-    members: {
-      host: { micEnabled: true, voiceJoined: true },
-      guest: { micEnabled: false, voiceJoined: true }
-    }
-  }
+test('voice permission remains authoritative room state without duplicating media state', () => {
+  const room = { voiceEnabled: true, members: { host: {}, guest: {} } }
   applyVoicePermission(room, false)
   assert.equal(room.voiceEnabled, false)
-  assert.deepEqual(room.members.host, { micEnabled: false, voiceJoined: false })
-  assert.deepEqual(room.members.guest, { micEnabled: false, voiceJoined: false })
+  assert.deepEqual(room.members, { host: {}, guest: {} })
 })
 
-test('member can only unmute after the host enables voice', () => {
-  const room = { voiceEnabled: false, members: { guest: { micEnabled: false, voiceJoined: false } } }
-  assert.deepEqual(applyMemberMicState(room, 'guest', true), { ok: false, code: 'VOICE_DISABLED' })
-
-  applyVoicePermission(room, true)
-  assert.equal(applyMemberMicState(room, 'guest', true).ok, true)
-  assert.deepEqual(room.members.guest, { micEnabled: true, voiceJoined: true })
-})
-
-test('member stays in voice to listen after muting their own microphone', () => {
-  const room = { voiceEnabled: true, members: { guest: { micEnabled: true, voiceJoined: true } } }
-  assert.equal(applyMemberMicState(room, 'guest', false).ok, true)
-  assert.deepEqual(room.members.guest, { micEnabled: false, voiceJoined: true })
+test('LiveKit grant is scoped to microphone publishing and room subscription', () => {
+  assert.deepEqual(buildVoiceGrant('ABC123'), {
+    roomJoin: true,
+    room: 'ABC123',
+    canSubscribe: true,
+    canPublish: true,
+    canPublishData: false,
+    canPublishSources: ['microphone']
+  })
 })
 
 test('CORS allows configured web origins and local development without allowing arbitrary sites', () => {

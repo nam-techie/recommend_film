@@ -1,11 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { fetchMovieDetail, MovieDetail, getImageUrl } from '@/lib/api'
 import { buildWatchPartyEpisodes } from '@/hooks/useWatchParty'
-import { useWatchProgress } from '@/hooks/useWatchProgress'
-import { SyncedHlsPlayer } from '@/components/ui/SyncedHlsPlayer'
-import { WatchProgress } from '@/lib/watch-party-types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -44,8 +41,6 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const [showPlayer, setShowPlayer] = useState(false)
     const router = useRouter()
     const searchParams = useSearchParams()
-    const { records, saveProgress } = useWatchProgress()
-    const lastSavedAtRef = useRef(0)
 
     useEffect(() => {
         const loadMovieDetail = async () => {
@@ -450,21 +445,23 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             {showPlayer && currentEpisode && (
                 <Card className="overflow-hidden bg-black/50 backdrop-blur border-white/10">
                     <CardContent className="p-0">
-                        <SyncedHlsPlayer
-                            episode={currentWatchPartyEpisode}
-                            playback={{ episodeId: currentWatchPartyEpisode.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: 0, updatedBy: 'solo', action: 'pause' }}
-                            isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback
-                            initialTime={Number(searchParams.get('t') || records[slug]?.currentTime || 0)}
-                            onPlaybackUpdate={() => undefined}
-                            onProgress={(time, duration, reason) => {
-                                if (!Number.isFinite(duration) || duration <= 0) return
-                                const now = Date.now()
-                                if (reason === 'timeupdate' && now - lastSavedAtRef.current < 15_000) return
-                                lastSavedAtRef.current = now
-                                const progress: WatchProgress = { movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentWatchPartyEpisode.id, episodeKey: currentWatchPartyEpisode.episodeKey, sourceId: currentWatchPartyEpisode.sourceId, episodeName: currentWatchPartyEpisode.name, serverName: currentWatchPartyEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now }
-                                void saveProgress(progress)
-                            }}
-                        />
+                        <div className="aspect-video w-full bg-black">
+                            {currentEpisode.link_embed ? (
+                                <iframe
+                                    key={currentEpisode.link_embed}
+                                    src={currentEpisode.link_embed}
+                                    title={`${movie.name} - ${currentEpisode.name}`}
+                                    className="h-full w-full border-0"
+                                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                                    allowFullScreen
+                                    referrerPolicy="strict-origin-when-cross-origin"
+                                />
+                            ) : (
+                                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-300">
+                                    Tập này chưa có trình phát nhúng. Hãy chọn server hoặc tập khác.
+                                </div>
+                            )}
+                        </div>
                         <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20">
                             <h3 className="text-lg font-bold mb-2 text-white">
                                 Đang xem: {currentEpisode.name}

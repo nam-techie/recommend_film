@@ -6,8 +6,17 @@ import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyMessage
 import { estimateClockOffset, makeEpisodeKey } from '@/lib/watch-sync'
 
 const DEV_URL = 'http://localhost:4001'
-const apiUrl = () => process.env.NEXT_PUBLIC_WATCH_PARTY_API_URL || (process.env.NODE_ENV === 'development' ? DEV_URL : '')
-const socketUrl = () => process.env.NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL || apiUrl()
+const normalizeServiceUrl = (value: string) => {
+  const normalized = value.trim().replace(/^hhttps:\/\//i, 'https://').replace(/\/$/, '')
+  try {
+    const url = new URL(normalized)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? normalized : ''
+  } catch {
+    return ''
+  }
+}
+const apiUrl = () => normalizeServiceUrl(process.env.NEXT_PUBLIC_WATCH_PARTY_API_URL || (process.env.NODE_ENV === 'development' ? DEV_URL : ''))
+const socketUrl = () => normalizeServiceUrl(process.env.NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL || apiUrl())
 const sessionKey = (roomId: string) => `watch_party_session:${roomId.toUpperCase()}`
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -49,7 +58,6 @@ export const probeWatchPartyMedia = (source: Pick<WatchPartyEpisode, 'linkM3u8' 
 
 export function useWatchParty(roomId: string, session: WatchPartySession | null) {
   const socketRef = useRef<Socket | null>(null)
-  const voiceSignalListenersRef = useRef(new Set<(signal: { fromMemberId: string; description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => void>())
   const [room, setRoom] = useState<WatchPartyRoom | null>(null); const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null); const [clockOffset, setClockOffset] = useState(0)
   const [commandError, setCommandError] = useState<string | null>(null)
@@ -81,14 +89,12 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const onLeft = ({ memberId }: { memberId: string }) => { if (active) setRoom((current) => current?.members[memberId] ? { ...current, members: { ...current.members, [memberId]: { ...current.members[memberId], connected: false } } } : current) }
     const onChat = (message: WatchPartyMessage) => { if (active) setRoom((current) => current ? { ...current, messages: [...current.messages.filter((item) => item.id !== message.id).slice(-99), message] } : current) }
     const onReaction = (reaction: WatchPartyReaction) => { if (!active) return; setReactions((current) => [...current.slice(-11), reaction]); const timer = window.setTimeout(() => { reactionTimers.delete(timer); if (active) setReactions((current) => current.filter((item) => item.id !== reaction.id)) }, 3000); reactionTimers.add(timer) }
-    const onVoicePermission = ({ enabled }: { enabled: boolean }) => { if (active) setRoom((current) => current ? { ...current, voiceEnabled: enabled, members: enabled ? current.members : Object.fromEntries(Object.entries(current.members).map(([id, member]) => [id, { ...member, micEnabled: false, voiceJoined: false }])) } : current) }
-    const onVoiceMemberState = ({ memberId, micEnabled, voiceJoined }: { memberId: string; micEnabled: boolean; voiceJoined: boolean }) => { if (active) setRoom((current) => current?.members[memberId] ? { ...current, members: { ...current.members, [memberId]: { ...current.members[memberId], micEnabled, voiceJoined } } } : current) }
-    const onVoiceSignal = (signal: { fromMemberId: string; description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => { if (active) voiceSignalListenersRef.current.forEach((listener) => listener(signal)) }
+    const onVoicePermission = ({ enabled }: { enabled: boolean }) => { if (active) setRoom((current) => current ? { ...current, voiceEnabled: enabled } : current) }
     const onClosed = () => { if (active) setError('Phòng đã đóng.') }
     socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
     socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
     socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
-    socket.on('voice:permission_changed', onVoicePermission); socket.on('voice:member_state', onVoiceMemberState); socket.on('voice:signal', onVoiceSignal)
+    socket.on('voice:permission_changed', onVoicePermission)
     const heartbeat = window.setInterval(() => { socket.emit('heartbeat:user'); syncClock() }, 30_000)
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket.emit('room:resume'); syncClock() } }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -126,19 +132,11 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }
     socket.timeout(4000).emit('voice:permission', { enabled }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack))
   }), [])
-  const setMicState = useCallback((micEnabled: boolean) => new Promise<{ ok: boolean; code?: string }>((resolve) => {
-    const socket = socketRef.current
-    if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }
-    socket.timeout(4000).emit('voice:mic_state', { micEnabled }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack))
-  }), [])
-  const sendVoiceSignal = useCallback((targetMemberId: string, signal: { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => {
-    socketRef.current?.emit('voice:signal', { targetMemberId, ...signal })
-  }, [])
-  const subscribeVoiceSignal = useCallback((listener: (signal: { fromMemberId: string; description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) => void) => {
-    voiceSignalListenersRef.current.add(listener)
-    return () => { voiceSignalListenersRef.current.delete(listener) }
-  }, [])
+  const getVoiceCredentials = useCallback(() => {
+    if (!session?.roomToken) return Promise.reject(new Error('Phiên phòng đã hết hạn.'))
+    return request<{ serverUrl: string; participantToken: string }>(`/api/rooms/${roomId}/voice-token`, { method: 'POST', headers: { Authorization: `Bearer ${session.roomToken}` } })
+  }, [roomId, session?.roomToken])
   const leaveRoom = useCallback(() => { socketRef.current?.emit('room:leave'); clearWatchPartySession(roomId) }, [roomId])
   const memberId = session?.member.memberId
-  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, setMicState, sendVoiceSignal, subscribeVoiceSignal, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, setMicState, sendVoiceSignal, subscribeVoiceSignal, leaveRoom, memberId])
+  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, memberId])
 }
