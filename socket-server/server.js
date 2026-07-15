@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -223,12 +223,24 @@ function rateLimit(key, limit, windowMs) {
 
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+  const requestId = String(req.headers['rndr-id'] || req.headers['cf-ray'] || id('request'))
+  const requestStartedAt = Date.now()
+  if (url.pathname.startsWith('/api/') && url.pathname !== '/api/media/proxy') {
+    res.once('finish', () => log('http_request', {
+      requestId,
+      method: req.method,
+      path: url.pathname,
+      status: res.statusCode,
+      durationMs: Date.now() - requestStartedAt,
+      origin: origin || undefined,
+    }))
+  }
   if (origin && originAllowed(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.writeHead(204).end()
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
   const ip = req.socket.remoteAddress || 'unknown'
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
@@ -256,8 +268,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/media/probe') {
       const input = z.object({ linkM3u8: z.string().url().optional(), linkEmbed: z.string().url().optional() }).parse(await readBody(req))
       const { hlsReachable, contentType, errorCode } = input.linkM3u8 ? await probeHlsSource(input.linkM3u8) : { hlsReachable: false, contentType: undefined, errorCode: undefined }
+      const directAllowed = Boolean(input.linkM3u8 && mediaAllowed(input.linkM3u8))
       const fallbackAvailable = Boolean(input.linkEmbed)
-      return json(res, 200, { hlsReachable, contentType, errorCode, fallbackAvailable, capability: hlsReachable ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
+      return json(res, 200, { hlsReachable, directAllowed, contentType, errorCode, fallbackAvailable, capability: directAllowed ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
     }
     const voiceTokenMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/voice-token$/i)
     if (req.method === 'POST' && voiceTokenMatch) {
@@ -283,8 +296,8 @@ const server = http.createServer(async (req, res) => {
       const input = createRoomSchema.parse(await readBody(req)); let code = roomCode(); while (await store.getRoom(code)) code = roomCode()
       const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes.find((episode) => episode.linkM3u8)
       if (!initial?.linkM3u8) return json(res, 400, { code: 'HLS_REQUIRED', error: 'Xem chung cần ít nhất một nguồn HLS để đồng bộ chính xác.' })
-      const initialProbe = await probeHlsSource(initial.linkM3u8)
-      if (!initialProbe.hlsReachable) return json(res, 400, { code: initialProbe.errorCode || 'HLS_UNREACHABLE', error: initialProbe.errorCode === 'MEDIA_HOST_DENIED' ? 'Host HLS chưa được máy chủ cho phép.' : 'Máy chủ không tải được nguồn HLS đã chọn.' })
+      const deniedEpisode = findDeniedMediaEpisode(input.movie.episodes, MEDIA_ALLOWED_HOSTS)
+      if (deniedEpisode) return json(res, 400, { code: 'MEDIA_HOST_DENIED', error: 'Host HLS chưa được máy chủ cho phép.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
       const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },

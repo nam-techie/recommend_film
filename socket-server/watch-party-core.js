@@ -43,6 +43,10 @@ export function isAllowedMediaUrl(value, configuredHosts = []) {
   }
 }
 
+export function findDeniedMediaEpisode(episodes, configuredHosts = []) {
+  return (episodes || []).find((episode) => episode?.linkM3u8 && !isAllowedMediaUrl(episode.linkM3u8, configuredHosts)) || null
+}
+
 export function isAllowedClientOrigin(origin, configuredOrigins = []) {
   if (!origin) return true
   const normalized = String(origin).replace(/\/$/, '')

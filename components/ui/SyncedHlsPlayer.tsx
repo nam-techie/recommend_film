@@ -31,7 +31,7 @@ import {
   WatchPartyReaction,
   WatchPartyRoomStatus,
 } from '@/lib/watch-party-types'
-import { playableHlsUrl } from '@/lib/media-url'
+import { watchPartyHlsCandidates } from '@/lib/media-url'
 import { cn } from '@/lib/utils'
 
 type PlayerState = 'idle' | 'loading_manifest' | 'loading_media' | 'ready' | 'playing' | 'buffering' | 'autoplay_blocked' | 'fallback_embed' | 'fatal_error'
@@ -126,6 +126,7 @@ export function SyncedHlsPlayer({
   const [playerState, setPlayerState] = useState<PlayerState>('idle')
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceVersion, setSourceVersion] = useState(0)
+  const [deliveryAttempt, setDeliveryAttempt] = useState({ episodeId: '', index: 0 })
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -144,6 +145,8 @@ export function SyncedHlsPlayer({
     const elapsed = playback.isPlaying ? Math.max(0, Date.now() + clockOffset - playback.serverUpdatedAt) / 1000 : 0
     return Math.max(0, playback.currentTime + elapsed)
   }, [clockOffset, playback])
+  const hlsCandidates = useMemo(() => watchPartyHlsCandidates(episode?.linkM3u8), [episode?.linkM3u8])
+  const deliveryIndex = deliveryAttempt.episodeId === episode?.id ? deliveryAttempt.index : 0
 
   const clearInteractionTimers = useCallback(() => {
     if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current)
@@ -188,14 +191,18 @@ export function SyncedHlsPlayer({
     const hls = hlsRef.current
     hlsRef.current = null
     if (hls) hls.destroy()
-    if (allowIframeFallback && episode?.linkEmbed) {
+    if (episode?.id && deliveryIndex + 1 < hlsCandidates.length) {
+      setSourceError('Nguồn trực tiếp đang lỗi, đang thử tuyến dự phòng…')
+      setPlayerState('loading_manifest')
+      setDeliveryAttempt({ episodeId: episode.id, index: deliveryIndex + 1 })
+    } else if (allowIframeFallback && episode?.linkEmbed) {
       setSourceError('Nguồn HLS đang lỗi, đã chuyển sang trình phát dự phòng.')
       setPlayerState('fallback_embed')
     } else {
       setSourceError(message)
       setPlayerState('fatal_error')
     }
-  }, [allowIframeFallback, episode?.linkEmbed])
+  }, [allowIframeFallback, deliveryIndex, episode?.id, episode?.linkEmbed, hlsCandidates.length])
 
   useEffect(() => {
     destroySource()
@@ -215,9 +222,9 @@ export function SyncedHlsPlayer({
 
     const video = videoRef.current
     if (!video) return undefined
-    const hlsSource = playableHlsUrl(episode.linkM3u8)
+    const hlsSource = hlsCandidates[deliveryIndex]
     if (!hlsSource) {
-      setSourceError('Thiếu NEXT_PUBLIC_WATCH_PARTY_API_URL. Hãy trỏ biến này tới watch-party server đã deploy.')
+      setSourceError('Không tìm thấy tuyến phát HLS cho tập này.')
       setPlayerState('fatal_error')
       return undefined
     }
@@ -246,8 +253,8 @@ export function SyncedHlsPlayer({
 
     const timeoutId = window.setTimeout(() => {
       if (!disposed && ['loading_manifest', 'loading_media', 'idle'].includes(playerStateRef.current)) {
-        console.warn('HLS stream load timed out, automatically falling back to iframe embed.')
-        useFallbackOrFail('Nguồn HLS tải quá lâu. Đã chuyển sang trình phát dự phòng.')
+        console.warn('HLS stream load timed out, trying the next watch-party delivery route.')
+        useFallbackOrFail('Nguồn HLS tải quá lâu và không còn tuyến phát dự phòng.')
       }
     }, 15000)
 
@@ -290,7 +297,7 @@ export function SyncedHlsPlayer({
       video.removeEventListener('error', handleVideoError)
       destroySource()
     }
-  }, [allowIframeFallback, destroySource, episode?.id, episode?.linkEmbed, episode?.linkM3u8, initialTime, sourceVersion, useFallbackOrFail])
+  }, [allowIframeFallback, deliveryIndex, destroySource, episode?.id, episode?.linkEmbed, episode?.linkM3u8, hlsCandidates, initialTime, sourceVersion, useFallbackOrFail])
 
   useEffect(() => { if (videoRef.current) videoRef.current.volume = volume }, [volume])
 
@@ -494,7 +501,7 @@ export function SyncedHlsPlayer({
     </div>}
     {playerState === 'buffering' && <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-3 text-sm">Đang tải đoạn phim…</div>}
     {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
-    {playerState === 'fatal_error' && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/85 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => setSourceVersion((value) => value + 1)}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
+    {playerState === 'fatal_error' && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/85 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => { setDeliveryAttempt({ episodeId: episode?.id || '', index: 0 }); setSourceVersion((value) => value + 1) }}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
 
     {!standalone && showReactionTray && <div className="absolute bottom-[5.6rem] right-3 z-40 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-black/85 p-1.5 shadow-2xl backdrop-blur-sm sm:bottom-24 sm:right-4">
       {reactionOptions.map((emoji) => <button key={emoji} type="button" aria-label={`Gửi reaction ${emoji}`} disabled={!isConnected} onClick={() => { onSendReaction?.(emoji); setShowReactionTray(false); scheduleControls() }} className="flex h-10 w-10 items-center justify-center rounded-lg text-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 disabled:opacity-40 sm:h-11 sm:w-11">{emoji}</button>)}

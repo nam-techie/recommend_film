@@ -46,7 +46,7 @@ NEXT_PUBLIC_WATCH_PARTY_API_URL=https://<watch-party-service>.onrender.com
 NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://<watch-party-service>.onrender.com
 ```
 
-Trang xem riêng nhúng thẳng `link_embed`, không gọi Render, Redis hay HLS proxy. Luồng phòng xem chung là: trình duyệt → watch-party server → CDN HLS. API phim vẫn cung cấp metadata và URL nguồn; watch-party server chỉ proxy manifest/segment để tránh CDN bị browser chặn và để CORS ổn định.
+Trang xem riêng nhúng thẳng `link_embed`, không gọi Render, Redis hay HLS proxy. Phòng xem chung ưu tiên tải HLS trực tiếp từ CDN trong trình duyệt; nếu tuyến trực tiếp lỗi thì player mới thử HLS proxy của watch-party server. API phim vẫn cung cấp metadata và URL nguồn, còn Render chỉ là tuyến media dự phòng bên cạnh API/Socket.IO.
 
 Render dùng Runtime `Node`, Root Directory `socket-server`, Build Command `npm ci`, Start Command `npm start` và Health Check Path `/ready`.
 
