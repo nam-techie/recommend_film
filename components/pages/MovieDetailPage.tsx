@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { fetchMovieDetail, MovieDetail, getImageUrl } from '@/lib/api'
 import { buildWatchPartyEpisodes } from '@/hooks/useWatchParty'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CreateWatchPartyDialog } from '@/components/ui/CreateWatchPartyDialog'
 import { MovieSocialPanel } from '@/components/account/MovieSocialPanel'
+import { SyncedHlsPlayer } from '@/components/ui/SyncedHlsPlayer'
+import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { WatchPartyPlayback } from '@/lib/watch-party-types'
+import { cn } from '@/lib/utils'
 import { 
     Play, 
     Star, 
@@ -39,8 +43,36 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const [selectedServer, setSelectedServer] = useState(0)
     const [selectedEpisode, setSelectedEpisode] = useState(0)
     const [showPlayer, setShowPlayer] = useState(false)
+    const [autoNext, setAutoNext] = useState(true)
+    const [playerFullscreen, setPlayerFullscreen] = useState(false)
+    const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
+    const playerContainerRef = useRef<HTMLDivElement>(null)
+    const lastSavedAtRef = useRef(0)
+    const { saveProgress } = useWatchProgress()
     const router = useRouter()
     const searchParams = useSearchParams()
+    const watchPartyEpisodes = useMemo(() => buildWatchPartyEpisodes(movieDetail?.episodes || []), [movieDetail?.episodes])
+    const currentHlsEpisode = useMemo(() => watchPartyEpisodes.find((episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode), [selectedEpisode, selectedServer, watchPartyEpisodes])
+    const previousHlsEpisode = useMemo(() => watchPartyEpisodes.find((episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode - 1 && episode.linkM3u8), [selectedEpisode, selectedServer, watchPartyEpisodes])
+    const nextHlsEpisode = useMemo(() => watchPartyEpisodes.find((episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode + 1 && episode.linkM3u8), [selectedEpisode, selectedServer, watchPartyEpisodes])
+    const [soloPlayback, setSoloPlayback] = useState<WatchPartyPlayback>({ episodeId: '', currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: Date.now(), updatedBy: 'solo', action: 'pause' })
+
+    useEffect(() => {
+        if (!currentHlsEpisode) return
+        setSoloPlayback((current) => ({ ...current, episodeId: currentHlsEpisode.id, currentTime: 0, isPlaying: false, revision: current.revision + 1, serverUpdatedAt: Date.now(), action: 'episode_change' }))
+    }, [currentHlsEpisode?.id])
+
+    useEffect(() => {
+        const onFullscreenChange = () => setPlayerFullscreen(document.fullscreenElement === playerContainerRef.current || pseudoFullscreen)
+        document.addEventListener('fullscreenchange', onFullscreenChange)
+        return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }, [pseudoFullscreen])
+
+    useEffect(() => {
+        if (!showPlayer) return
+        const frame = window.requestAnimationFrame(() => playerContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+        return () => window.cancelAnimationFrame(frame)
+    }, [showPlayer, selectedEpisode, selectedServer])
 
     useEffect(() => {
         const loadMovieDetail = async () => {
@@ -91,6 +123,25 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
         setSelectedServer(serverIndex)
         setSelectedEpisode(episodeIndex)
         setShowPlayer(true)
+    }
+
+    const changeSoloEpisode = (episodeIndex: number) => {
+        setSelectedEpisode(episodeIndex)
+        setShowPlayer(true)
+    }
+
+    const togglePlayerFullscreen = async () => {
+        const container = playerContainerRef.current
+        if (!container) return
+        if (pseudoFullscreen) { setPseudoFullscreen(false); setPlayerFullscreen(false); return }
+        if (document.fullscreenElement === container) { await document.exitFullscreen(); return }
+        try {
+            if (!container.requestFullscreen) throw new Error('FULLSCREEN_UNAVAILABLE')
+            await container.requestFullscreen()
+        } catch {
+            setPseudoFullscreen(true)
+            setPlayerFullscreen(true)
+        }
     }
 
     if (loading) {
@@ -234,7 +285,6 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
     const { movie, episodes } = movieDetail
     const rating = movie.tmdb?.vote_average || 0
     const currentEpisode = episodes && episodes[selectedServer]?.server_data[selectedEpisode]
-    const watchPartyEpisodes = buildWatchPartyEpisodes(episodes || [])
     const currentWatchPartyEpisode = watchPartyEpisodes.find(
         (episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode
     ) || watchPartyEpisodes[0]
@@ -442,25 +492,38 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
             </div>
 
             {/* Video Player */}
-            {showPlayer && currentEpisode && (
+            {showPlayer && currentEpisode && currentHlsEpisode && (
                 <Card className="overflow-hidden bg-black/50 backdrop-blur border-white/10">
                     <CardContent className="p-0">
-                        <div className="aspect-video w-full bg-black">
-                            {currentEpisode.link_embed ? (
-                                <iframe
-                                    key={currentEpisode.link_embed}
-                                    src={currentEpisode.link_embed}
-                                    title={`${movie.name} - ${currentEpisode.name}`}
-                                    className="h-full w-full border-0"
-                                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                                    allowFullScreen
-                                    referrerPolicy="strict-origin-when-cross-origin"
-                                />
-                            ) : (
-                                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-300">
-                                    Tập này chưa có trình phát nhúng. Hãy chọn server hoặc tập khác.
-                                </div>
-                            )}
+                        <div ref={playerContainerRef} className={cn('relative w-full bg-black', (pseudoFullscreen || playerFullscreen) && 'watch-party-pseudo-fullscreen h-[100dvh]')}>
+                            <SyncedHlsPlayer
+                                episode={currentHlsEpisode}
+                                previousEpisode={previousHlsEpisode}
+                                nextEpisode={nextHlsEpisode}
+                                playback={soloPlayback}
+                                isHost
+                                isConnected
+                                clockOffset={0}
+                                reactions={[]}
+                                roomStatus="active"
+                                standalone
+                                allowIframeFallback
+                                autoNextEnabled={autoNext}
+                                isFullscreen={playerFullscreen}
+                                fillContainer={playerFullscreen || pseudoFullscreen}
+                                onToggleFullscreen={() => void togglePlayerFullscreen()}
+                                onToggleAutoNext={() => setAutoNext((value) => !value)}
+                                onPreviousEpisode={previousHlsEpisode ? () => changeSoloEpisode(previousHlsEpisode.episodeIndex) : undefined}
+                                onNextEpisode={nextHlsEpisode ? () => changeSoloEpisode(nextHlsEpisode.episodeIndex) : undefined}
+                                onPlaybackUpdate={(payload) => setSoloPlayback((current) => ({ ...current, ...payload, revision: current.revision + 1, serverUpdatedAt: Date.now(), updatedBy: 'solo' }))}
+                                onProgress={(time, duration, reason) => {
+                                    if (!Number.isFinite(duration) || duration <= 0) return
+                                    const now = Date.now()
+                                    if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return
+                                    lastSavedAtRef.current = now
+                                    void saveProgress({ movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentHlsEpisode.id, episodeName: currentHlsEpisode.name, serverName: currentHlsEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now, episodeKey: currentHlsEpisode.episodeKey, sourceId: currentHlsEpisode.sourceId })
+                                }}
+                            />
                         </div>
                         <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20">
                             <h3 className="text-lg font-bold mb-2 text-white">

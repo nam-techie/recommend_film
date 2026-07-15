@@ -67,13 +67,21 @@ const movieSchema = z.object({
 }).refine((movie) => new Set(movie.episodes.map((episode) => episode.id)).size === movie.episodes.length, 'Episode IDs must be unique')
 const createRoomSchema = z.object({
   roomName: z.string().trim().max(80).optional(), accessMode: z.enum(['public', 'link_only', 'password']).default('link_only'),
-  password: z.string().min(6).max(64).optional(), movie: movieSchema, initialEpisodeId: z.string().optional()
+  password: z.string().min(6).max(64).optional(), movie: movieSchema, initialEpisodeId: z.string().optional(),
+  playbackPolicy: z.object({ autoNext: z.boolean() }).optional()
 }).refine((input) => input.accessMode !== 'password' || Boolean(input.password), { message: 'Password is required', path: ['password'] })
 const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().min(1).max(5000), anonymous: z.boolean().optional().default(false) })
 const playbackSchema = z.object({
   episodeId: z.string().min(1).max(120), currentTime: z.number().finite().nonnegative(), isPlaying: z.boolean(),
   action: z.enum(['play', 'pause', 'seek', 'heartbeat']), clientEventId: z.string().min(8).max(100)
 })
+const episodeChangeSchema = z.object({
+  episodeId: z.string().min(1).max(120),
+  reason: z.enum(['episode_list', 'previous', 'next', 'auto_next']).optional().default('episode_list'),
+  shouldPlay: z.boolean().optional().default(false),
+  clientEventId: z.string().min(8).max(100).optional()
+})
+const policySchema = z.object({ autoNext: z.boolean(), clientEventId: z.string().min(8).max(100) })
 class MemoryStore {
   constructor() { this.rooms = new Map(); this.dedupe = new Map() }
   async ping() { return 'PONG' }
@@ -163,7 +171,8 @@ const publicRoom = (room) => ({
   playback: { currentTime: room.playback.currentTime, isPlaying: room.playback.isPlaying },
   hostName: room.members[room.hostMemberId]?.displayName || 'Host',
   userCount: Object.values(room.members).filter((member) => member.connected).length,
-  createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status
+  createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status,
+  playbackPolicy: room.playbackPolicy || { autoNext: true }
 })
 const clientMember = (member) => {
   const copy = structuredClone(member)
@@ -172,6 +181,7 @@ const clientMember = (member) => {
 }
 const clientRoom = (room) => {
   const copy = structuredClone(room)
+  copy.playbackPolicy ||= { autoNext: true }
   delete copy.passwordHash
   for (const member of Object.values(copy.members)) { delete member.uid; delete member.socketIds }
   return copy
@@ -307,7 +317,8 @@ const server = http.createServer(async (req, res) => {
       const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
-        members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
+        members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false,
+        playbackPolicy: input.playbackPolicy || { autoNext: true }, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
       await store.setRoom(room); log('room_created', { roomId: room.id, accessMode: room.accessMode, ownerUid: owner.uid })
       return json(res, 201, { roomId: room.id, roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
@@ -399,11 +410,27 @@ io.on('connection', async (socket) => {
     await store.setRoom(fresh); io.to(roomId).emit('playback:sync', fresh.playback); ack?.({ ok: true, revision: fresh.playback.revision, serverUpdatedAt: fresh.playback.serverUpdatedAt })
   })
   socket.on('episode:change', async (payload, ack) => {
-    const fresh = await store.getRoom(roomId); if (!fresh || fresh.hostMemberId !== memberId || fresh.status !== 'active') return ack?.({ ok: false, code: 'HOST_ONLY' })
-    const episode = fresh.movie.episodes.find((item) => item.id === payload?.episodeId); if (!episode) return ack?.({ ok: false, code: 'EPISODE_NOT_FOUND' })
+    const parsed = episodeChangeSchema.safeParse(payload); const fresh = await store.getRoom(roomId)
+    if (!parsed.success) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    if (!fresh || fresh.hostMemberId !== memberId || fresh.status !== 'active') return ack?.({ ok: false, code: 'HOST_ONLY' })
+    if (!(await store.allow(`episode:${memberId}`, 5, 2000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+    if (parsed.data.clientEventId && !(await store.dedupeEvent(roomId, parsed.data.clientEventId))) return ack?.({ ok: true, duplicate: true, revision: fresh.playback.revision })
+    const episode = fresh.movie.episodes.find((item) => item.id === parsed.data.episodeId); if (!episode) return ack?.({ ok: false, code: 'EPISODE_NOT_FOUND' })
     if (!episode.linkM3u8) return ack?.({ ok: false, code: 'HLS_REQUIRED' })
-    fresh.syncCapability = 'full'; fresh.playback = { episodeId: episode.id, currentTime: 0, isPlaying: false, revision: fresh.playback.revision + 1, serverUpdatedAt: Date.now(), updatedBy: memberId, action: 'episode_change' }
+    fresh.syncCapability = 'full'; fresh.playbackPolicy ||= { autoNext: true }
+    fresh.playback = { episodeId: episode.id, currentTime: 0, isPlaying: parsed.data.shouldPlay, revision: fresh.playback.revision + 1, serverUpdatedAt: Date.now(), updatedBy: memberId, action: 'episode_change' }
     await store.setRoom(fresh); io.to(roomId).emit('episode:sync', { room: clientRoom(fresh), playback: fresh.playback }); ack?.({ ok: true, revision: fresh.playback.revision })
+    log('episode_changed', { roomId, memberId, episodeId: episode.id, reason: parsed.data.reason, shouldPlay: parsed.data.shouldPlay })
+  })
+  socket.on('room:policy_update', async (payload, ack) => {
+    const parsed = policySchema.safeParse(payload); const fresh = await store.getRoom(roomId)
+    if (!parsed.success) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    if (!fresh || fresh.hostMemberId !== memberId || fresh.status !== 'active') return ack?.({ ok: false, code: 'HOST_ONLY' })
+    if (!(await store.dedupeEvent(roomId, parsed.data.clientEventId))) return ack?.({ ok: true, duplicate: true })
+    fresh.playbackPolicy = { autoNext: parsed.data.autoNext }
+    await store.setRoom(fresh)
+    io.to(roomId).emit('room:policy_changed', { playbackPolicy: fresh.playbackPolicy })
+    ack?.({ ok: true })
   })
   socket.on('chat:send', async (payload, ack) => {
     const fresh = await store.getRoom(roomId); const sender = fresh?.members[memberId]; const text = String(payload?.text || '').trim().replace(/\s+/g, ' ').slice(0, 200)

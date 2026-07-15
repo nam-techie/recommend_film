@@ -10,10 +10,13 @@ import {
   Film,
   Headphones,
   LockKeyhole,
+  Lightbulb,
+  LightbulbOff,
   LogOut,
   Mic,
   MicOff,
   MessageCircle,
+  MoreHorizontal,
   Play,
   Radio,
   Send,
@@ -171,9 +174,13 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [message, setMessage] = useState('')
   const [messageError, setMessageError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const [showChat, setShowChat] = useState(true)
+  const [showChat, setShowChat] = useState(false)
+  const [showRoomControls, setShowRoomControls] = useState(false)
+  const [showEpisodes, setShowEpisodes] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false)
+  const [isTheater, setIsTheater] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [reactionError, setReactionError] = useState<string | null>(null)
   const [voiceControlError, setVoiceControlError] = useState<string | null>(null)
@@ -213,6 +220,21 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, {})), [party.room?.movie.episodes])
   const members = useMemo(() => Object.values(party.room?.members || {}).sort((a, b) => Number(b.connected) - Number(a.connected) || Number(a.memberId !== party.room?.hostMemberId) - Number(b.memberId !== party.room?.hostMemberId) || a.displayName.localeCompare(b.displayName, 'vi')), [party.room?.hostMemberId, party.room?.members])
   const speakingMembers = useMemo(() => members.filter((member) => voice.speakingMemberIds.has(member.memberId)), [members, voice.speakingMemberIds])
+  const adjacentEpisodes = useMemo(() => {
+    const all = party.room?.movie.episodes || []
+    if (!activeEpisode) return { previous: undefined, next: undefined }
+    const findAt = (episodeIndex: number) => all.find((item) => item.serverIndex === activeEpisode.serverIndex && item.episodeIndex === episodeIndex && item.linkM3u8)
+      || all.find((item) => item.episodeIndex === episodeIndex && item.slug === all.find((candidate) => candidate.serverIndex === activeEpisode.serverIndex && candidate.episodeIndex === episodeIndex)?.slug && item.linkM3u8)
+    return { previous: activeEpisode.episodeIndex > 0 ? findAt(activeEpisode.episodeIndex - 1) : undefined, next: findAt(activeEpisode.episodeIndex + 1) }
+  }, [activeEpisode, party.room?.movie.episodes])
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1280px)')
+    const apply = () => setShowChat(query.matches)
+    apply()
+    query.addEventListener?.('change', apply)
+    return () => query.removeEventListener?.('change', apply)
+  }, [])
 
   useEffect(() => {
     if (!nearChatEnd || !showChat) return
@@ -231,10 +253,10 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, [nearChatEnd, party.room?.messages, session?.member.memberId, showChat])
 
   useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === theaterRef.current)
+    const onFullscreenChange = () => { if (!isPseudoFullscreen) setIsFullscreen(document.fullscreenElement === theaterRef.current) }
     document.addEventListener('fullscreenchange', onFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
-  }, [])
+  }, [isPseudoFullscreen])
 
   useEffect(() => {
     if (!activeEpisode) return
@@ -291,12 +313,19 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     })
   }, [])
 
-  const toggleFullscreen = useCallback(() => {
+  const toggleFullscreen = useCallback(async () => {
     const theater = theaterRef.current
     if (!theater) return
-    if (document.fullscreenElement === theater) void document.exitFullscreen()
-    else void theater.requestFullscreen?.()
-  }, [])
+    if (isPseudoFullscreen) { setIsPseudoFullscreen(false); setIsFullscreen(false); return }
+    if (document.fullscreenElement === theater) { await document.exitFullscreen(); return }
+    try {
+      if (!theater.requestFullscreen) throw new Error('FULLSCREEN_UNAVAILABLE')
+      await theater.requestFullscreen()
+    } catch {
+      setIsPseudoFullscreen(true)
+      setIsFullscreen(true)
+    }
+  }, [isPseudoFullscreen])
 
   const sendReaction = useCallback(async (emoji: string) => {
     setReactionError(null)
@@ -347,12 +376,13 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
   const room = party.room
   const privacyLabel = room.accessMode === 'public' ? 'Công khai' : room.accessMode === 'password' ? 'Có mật khẩu' : 'Chỉ người có link'
-  const chatPanelClass = isFullscreen
+  const focusedMode = isFullscreen || isPseudoFullscreen || isTheater
+  const chatPanelClass = focusedMode
     ? 'absolute inset-y-0 right-0 z-50 w-full border-l border-white/10 sm:w-[380px]'
-    : 'fixed inset-x-0 bottom-0 top-16 z-50 border-t border-white/10 md:absolute md:inset-y-0 md:left-auto md:right-0 md:top-0 md:w-[380px] md:border-l md:border-t-0 xl:static xl:z-auto xl:w-auto'
+    : 'fixed inset-x-0 bottom-0 z-50 h-[min(72dvh,42rem)] overflow-hidden rounded-t-3xl border-t border-white/10 shadow-2xl md:absolute md:inset-y-0 md:left-auto md:right-0 md:top-0 md:h-auto md:w-[380px] md:rounded-none md:border-l md:border-t-0 xl:static xl:z-auto xl:w-auto'
 
-  return <div className="min-h-screen bg-[#070912] text-white">
-    <header className="sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0e18]/95 px-3 py-2 backdrop-blur-md sm:px-4">
+  return <div className="viewport-height bg-[#070912] text-white">
+    <header className="safe-x sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0e18]/95 px-3 py-2 backdrop-blur-md sm:px-4">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <Button variant="ghost" size="icon" aria-label="Thoát phòng" title="Thoát phòng" onClick={() => { party.leaveRoom(); router.push('/watch-party') }} className="h-11 w-11 shrink-0 rounded-full text-slate-300 hover:bg-white/10 hover:text-white"><LogOut className="h-5 w-5" /></Button>
         <div className="min-w-0">
@@ -362,9 +392,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <div className="hidden items-center gap-2 rounded-full bg-white/[0.05] px-3 py-2 text-xs text-slate-300 lg:flex"><span className={cn('h-2 w-2 rounded-full', party.isConnected ? 'bg-emerald-400' : 'bg-red-400')} />{party.isConnected ? 'Đã kết nối' : 'Mất kết nối'}</div>
-        {party.isHost && <Button variant="ghost" size="sm" aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic'} onClick={() => void toggleVoicePermission()} className={cn('h-11 rounded-full px-3 text-slate-200 hover:bg-white/10', room.voiceEnabled && 'bg-emerald-500/10 text-emerald-200')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
-        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('h-11 w-11 rounded-full text-slate-200 hover:bg-white/10', voice.micEnabled && 'bg-emerald-500/15 text-emerald-200')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
-        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('h-11 w-11 rounded-full text-slate-200 hover:bg-white/10', voice.speakerEnabled && room.voiceEnabled && 'bg-sky-500/15 text-sky-100')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        {party.isHost && <Button variant="ghost" size="sm" aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic'} onClick={() => void toggleVoicePermission()} className={cn('hidden h-11 rounded-full px-3 text-slate-200 hover:bg-white/10 md:inline-flex', room.voiceEnabled && 'bg-emerald-500/10 text-emerald-200')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
+        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('hidden h-11 w-11 rounded-full text-slate-200 hover:bg-white/10 md:inline-flex', voice.micEnabled && 'bg-emerald-500/15 text-emerald-200')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('hidden h-11 w-11 rounded-full text-slate-200 hover:bg-white/10 md:inline-flex', voice.speakerEnabled && room.voiceEnabled && 'bg-sky-500/15 text-sky-100')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <div className="relative">
           <Button variant="ghost" size="sm" aria-label="Người tham gia" aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)} className="h-11 rounded-full px-3 text-slate-200 hover:bg-white/10"><Users className="h-4 w-4" /><span>{party.userCount}</span></Button>
           {showMembers && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-white/10 bg-[#111522] shadow-2xl">
@@ -373,9 +403,21 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
           </div>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => void copy()} className="hidden h-11 rounded-full px-3 text-slate-200 hover:bg-white/10 sm:inline-flex"><Copy className="h-4 w-4" />{copied ? 'Đã sao chép' : 'Mời'}</Button>
-        <Button variant="ghost" size="sm" aria-label={showChat ? 'Ẩn chat' : 'Hiện chat'} aria-expanded={showChat} onClick={toggleChat} className={cn('relative h-11 rounded-full px-3 text-slate-200 hover:bg-white/10', showChat && 'bg-white/[0.08]')}><MessageCircle className="h-4 w-4" /><span className="hidden sm:inline">Chat</span>{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
+        <Button variant="ghost" size="sm" aria-label={showChat ? 'Ẩn chat' : 'Hiện chat'} aria-expanded={showChat} onClick={toggleChat} className={cn('relative hidden h-11 rounded-full px-3 text-slate-200 hover:bg-white/10 md:inline-flex', showChat && 'bg-white/[0.08]')}><MessageCircle className="h-4 w-4" /><span>Chat</span>{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
+        <Button variant="ghost" size="icon" aria-label="Thêm điều khiển phòng" aria-expanded={showRoomControls} onClick={() => setShowRoomControls((value) => !value)} className="relative h-11 w-11 rounded-full text-slate-200 hover:bg-white/10 md:hidden"><MoreHorizontal className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-purple-400" />}</Button>
       </div>
     </header>
+
+    {showRoomControls && <div className="safe-x fixed inset-x-3 top-[4.5rem] z-50 rounded-2xl border border-white/10 bg-[#111522]/98 p-3 shadow-2xl backdrop-blur md:hidden">
+      <div className="grid grid-cols-4 gap-2">
+        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-emerald-500/15 text-emerald-200')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('h-12 w-full rounded-xl', voice.speakerEnabled && room.voiceEnabled && 'bg-sky-500/15 text-sky-100')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label="Mời bạn" onClick={() => void copy()} className="h-12 w-full rounded-xl"><Copy className="h-5 w-5" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Mở chat" onClick={() => { setShowRoomControls(false); toggleChat() }} className="relative h-12 w-full rounded-xl"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-1 top-1 rounded-full bg-purple-500 px-1.5 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
+      </div>
+      {party.isHost && <Button variant="ghost" size="sm" onClick={() => void toggleVoicePermission()} className="mt-2 h-11 w-full justify-start rounded-xl"><Radio className="h-4 w-4" />{room.voiceEnabled ? 'Tắt voice của cả phòng' : 'Cho phép voice trong phòng'}</Button>}
+      <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">{reactions.map((emoji) => <button key={emoji} type="button" onClick={() => void sendReaction(emoji)} className="touch-target rounded-xl text-xl transition hover:bg-white/10" aria-label={`Thả cảm xúc ${emoji}`}>{emoji}</button>)}</div>
+    </div>}
 
     {(voice.error || voiceControlError) && <div className="bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-100" role="status">{voice.error || voiceControlError}</div>}
 
@@ -384,9 +426,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     {room.status === 'host_reconnecting' && <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-100"><WifiOff className="h-4 w-4" />Đang chờ host kết nối lại. Phòng sẽ tự chuyển host sau 30 giây.</div>}
 
     <main className="mx-auto w-full max-w-[1920px]">
-      <div ref={theaterRef} className={cn('relative grid min-w-0 overflow-hidden bg-black', isFullscreen ? 'h-screen grid-cols-1' : showChat ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1')}>
-        <section className={cn('relative min-w-0 bg-black', isFullscreen && 'h-screen')}>
-          <SyncedHlsPlayer episode={activeEpisode} playback={room.playback} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={isFullscreen} chatOpen={showChat} unreadCount={unreadCount} fillContainer={isFullscreen} onToggleChat={toggleChat} onToggleFullscreen={toggleFullscreen} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
+      <div ref={theaterRef} className={cn('relative grid min-w-0 overflow-hidden bg-black', (isPseudoFullscreen || isTheater) && 'watch-party-pseudo-fullscreen', focusedMode ? 'h-[100dvh] grid-cols-1' : showChat ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1')}>
+        <section className={cn('relative min-w-0 bg-black', focusedMode && 'h-[100dvh]')}>
+          <SyncedHlsPlayer episode={activeEpisode} previousEpisode={adjacentEpisodes.previous} nextEpisode={adjacentEpisodes.next} playback={room.playback} autoNextEnabled={room.playbackPolicy?.autoNext ?? true} commandError={party.commandError} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={focusedMode} chatOpen={showChat} unreadCount={unreadCount} fillContainer={focusedMode} onToggleChat={toggleChat} onToggleFullscreen={() => void toggleFullscreen()} onPreviousEpisode={adjacentEpisodes.previous ? () => void party.changeEpisode(adjacentEpisodes.previous!, { reason: 'previous', shouldPlay: room.playback.isPlaying }) : undefined} onNextEpisode={adjacentEpisodes.next ? (reason = 'next') => void party.changeEpisode(adjacentEpisodes.next!, { reason, shouldPlay: reason === 'auto_next' ? true : room.playback.isPlaying }) : undefined} onToggleAutoNext={party.isHost ? () => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true)) : undefined} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
             if (!activeEpisode || !Number.isFinite(duration) || duration <= 0) return
             const now = Date.now()
             const progress: WatchProgress = { movieSlug: room.movie.slug, movieTitle: room.movie.title, poster: room.movie.poster, episodeId: activeEpisode.id, episodeName: activeEpisode.name, serverName: activeEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'watch_party', roomId: room.id, updatedAt: now }
@@ -395,33 +437,41 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
             lastSavedAtRef.current = now
             void saveProgress(progress)
           }} />
+          {isTheater && <Button variant="secondary" size="sm" onClick={() => setIsTheater(false)} className="absolute right-3 top-3 z-[70] rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/80"><LightbulbOff className="h-4 w-4" />Bật đèn</Button>}
         </section>
         {showChat && <aside className={chatPanelClass}>
           <ChatPanel messages={room.messages} currentMemberId={session.member.memberId} userCount={party.userCount} isConnected={party.isConnected} sending={sending} message={message} messageError={messageError} nearChatEnd={nearChatEnd} chatListRef={chatListRef} endRef={endRef} onClose={toggleChat} onMessageChange={setMessage} onSubmit={(event) => void submitMessage(event)} onNearEndChange={(value) => { setNearChatEnd(value); if (value) setUnreadCount(0) }} />
         </aside>}
       </div>
 
-      <section ref={episodePanelRef} className="border-t border-white/10 bg-[#0b0e18] px-3 py-5 sm:px-5 sm:py-6">
+      {!focusedMode && <div className="safe-x flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#090c14] px-3 py-3 sm:px-5">
+        <Button variant="ghost" size="sm" disabled={!party.isHost} title={party.isHost ? 'Tự chuyển sang tập kế tiếp khi tập hiện tại kết thúc' : 'Chỉ host có thể đổi cài đặt này'} onClick={() => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true))} className={cn('rounded-full', (room.playbackPolicy?.autoNext ?? true) && 'bg-purple-500/15 text-purple-200')}><Play className="h-4 w-4" />Tự chuyển tập: {(room.playbackPolicy?.autoNext ?? true) ? 'Bật' : 'Tắt'}</Button>
+        <Button variant="ghost" size="sm" onClick={() => setIsTheater(true)} className="rounded-full"><Lightbulb className="h-4 w-4" />Rạp phim</Button>
+        <Button variant="ghost" size="sm" onClick={() => setShowEpisodes((value) => !value)} className="rounded-full md:hidden"><Film className="h-4 w-4" />Danh sách tập</Button>
+        <Button variant="ghost" size="sm" onClick={toggleChat} className="relative ml-auto rounded-full xl:hidden"><MessageCircle className="h-4 w-4" />Chat{unreadCount > 0 && <span className="rounded-full bg-purple-500 px-1.5 text-[10px]">{Math.min(unreadCount, 99)}</span>}</Button>
+      </div>}
+
+      {!focusedMode && <section ref={episodePanelRef} className="border-t border-white/10 bg-[#0b0e18] px-3 py-5 sm:px-5 sm:py-6">
         <div className="mx-auto max-w-[1500px]">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div><h2 className="text-lg font-semibold">Tập phim</h2><p className="mt-1 text-xs text-slate-400">{party.isHost ? 'Bạn đang chọn tập cho cả phòng.' : 'Host đang chọn tập cho cả phòng.'}</p></div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400"><span>Mã {room.id}</span><span>·</span><span>{privacyLabel}</span><span>·</span><span>{activeEpisode?.serverName}</span></div>
           </div>
-          <div className="space-y-2">{episodeGroups.map(([serverName, episodes]) => {
+          <div className={cn('space-y-2', !showEpisodes && 'hidden md:block')}>{episodeGroups.map(([serverName, episodes]) => {
             const expanded = expandedServer === serverName
             return <div key={serverName} className="overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.025]">
               <button type="button" aria-expanded={expanded} onClick={() => setExpandedServer(expanded ? '' : serverName)} className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400"><span className="text-sm font-medium text-slate-200">{serverName}</span><span className="flex items-center gap-2 text-xs text-slate-500">{episodes.length} tập<ChevronDown className={cn('h-4 w-4 transition-transform duration-200', expanded && 'rotate-180')} /></span></button>
-              {expanded && <div className="grid grid-cols-3 gap-2 border-t border-white/[0.06] p-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 xl:grid-cols-12">{episodes.map((episode) => {
+              {expanded && <div className="grid grid-cols-2 gap-2 border-t border-white/[0.06] p-3 min-[360px]:grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 xl:grid-cols-12">{episodes.map((episode) => {
                 const active = episode.id === activeEpisode?.id
                 const unavailable = episode.capability === 'unavailable' || !episode.linkM3u8
-                return <button key={episode.id} type="button" data-active={active} disabled={!party.isHost || !party.isConnected || unavailable} title={unavailable ? 'Nguồn tập này hiện không khả dụng' : !party.isHost ? 'Host đang chọn tập' : episode.name} onClick={() => party.changeEpisode(episode)} className={cn('flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-40', active ? 'border-purple-400 bg-purple-500/25 text-purple-100' : 'border-white/10 bg-black/20 text-slate-300 hover:border-white/25 hover:bg-white/[0.05]')}>
+                return <button key={episode.id} type="button" data-active={active} disabled={!party.isHost || !party.isConnected || unavailable} title={unavailable ? 'Nguồn tập này hiện không khả dụng' : !party.isHost ? 'Host đang chọn tập' : episode.name} onClick={() => { void party.changeEpisode(episode, { reason: 'episode_list', shouldPlay: room.playback.isPlaying }); setShowEpisodes(false) }} className={cn('flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-40', active ? 'border-purple-400 bg-purple-500/25 text-purple-100' : 'border-white/10 bg-black/20 text-slate-300 hover:border-white/25 hover:bg-white/[0.05]')}>
                   {active && <Play className="h-3.5 w-3.5 shrink-0 fill-current" />}<span className="truncate">{episode.name}</span>
                 </button>
               })}</div>}
             </div>
           })}</div>
         </div>
-      </section>
+      </section>}
     </main>
   </div>
 }

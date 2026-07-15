@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyMessage, WatchPartyReaction, WatchPartyRoom, WatchPartyRoomPreview, WatchPartySession } from '@/lib/watch-party-types'
+import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyEpisodeChangeReason, WatchPartyMessage, WatchPartyReaction, WatchPartyRoom, WatchPartyRoomPreview, WatchPartySession } from '@/lib/watch-party-types'
 import { estimateClockOffset, makeEpisodeKey } from '@/lib/watch-sync'
 
 const DEV_URL = 'http://localhost:4001'
@@ -90,11 +90,13 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const onChat = (message: WatchPartyMessage) => { if (active) setRoom((current) => current ? { ...current, messages: [...current.messages.filter((item) => item.id !== message.id).slice(-99), message] } : current) }
     const onReaction = (reaction: WatchPartyReaction) => { if (!active) return; setReactions((current) => [...current.slice(-11), reaction]); const timer = window.setTimeout(() => { reactionTimers.delete(timer); if (active) setReactions((current) => current.filter((item) => item.id !== reaction.id)) }, 3000); reactionTimers.add(timer) }
     const onVoicePermission = ({ enabled }: { enabled: boolean }) => { if (active) setRoom((current) => current ? { ...current, voiceEnabled: enabled } : current) }
+    const onPolicy = ({ playbackPolicy }: Pick<WatchPartyRoom, 'playbackPolicy'>) => { if (active) setRoom((current) => current ? { ...current, playbackPolicy } : current) }
     const onClosed = () => { if (active) setError('Phòng đã đóng.') }
     socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
     socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
     socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
     socket.on('voice:permission_changed', onVoicePermission)
+    socket.on('room:policy_changed', onPolicy)
     const heartbeat = window.setInterval(() => { socket.emit('heartbeat:user'); syncClock() }, 30_000)
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket.emit('room:resume'); syncClock() } }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -114,11 +116,24 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
       console.info(JSON.stringify({ event: 'watch_party_playback_ack', clientEventId, action: payload.action, ok: !code, code, revision: ack?.revision }))
     })
   }, [])
-  const changeEpisode = useCallback((episode: WatchPartyEpisode) => {
+  const changeEpisode = useCallback((episode: WatchPartyEpisode, options?: { reason?: WatchPartyEpisodeChangeReason; shouldPlay?: boolean }) => new Promise<{ ok: boolean; code?: string; revision?: number }>((resolve) => {
     const socket = socketRef.current
-    if (!socket?.connected) { setCommandError('DISCONNECTED'); return }
-    socket.timeout(4000).emit('episode:change', { episodeId: episode.id }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => setCommandError(timeoutError ? 'TIMEOUT' : ack?.ok ? null : ack?.code || 'REJECTED'))
-  }, [])
+    if (!socket?.connected) { setCommandError('DISCONNECTED'); resolve({ ok: false, code: 'DISCONNECTED' }); return }
+    socket.timeout(4000).emit('episode:change', { episodeId: episode.id, reason: options?.reason || 'episode_list', shouldPlay: Boolean(options?.shouldPlay), clientEventId: crypto.randomUUID() }, (timeoutError: Error | null, ack: { ok: boolean; code?: string; revision?: number }) => {
+      const result = timeoutError ? { ok: false, code: 'TIMEOUT' } : ack
+      setCommandError(result?.ok ? null : result?.code || 'REJECTED')
+      resolve(result || { ok: false, code: 'REJECTED' })
+    })
+  }), [])
+  const updatePlaybackPolicy = useCallback((autoNext: boolean) => new Promise<{ ok: boolean; code?: string }>((resolve) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { setCommandError('DISCONNECTED'); resolve({ ok: false, code: 'DISCONNECTED' }); return }
+    socket.timeout(4000).emit('room:policy_update', { autoNext, clientEventId: crypto.randomUUID() }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => {
+      const result = timeoutError ? { ok: false, code: 'TIMEOUT' } : ack
+      setCommandError(result?.ok ? null : result?.code || 'REJECTED')
+      resolve(result || { ok: false, code: 'REJECTED' })
+    })
+  }), [])
   const sendMessage = useCallback((text: string) => new Promise<{ ok: boolean; code?: string }>((resolve) => { const socket = socketRef.current; if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return } socket.timeout(5000).emit('chat:send', { text }, (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack)) }), [])
   const sendReaction = useCallback((emoji: string) => new Promise<{ ok: boolean; code?: string }>((resolve) => {
     const socket = socketRef.current
@@ -138,5 +153,5 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
   }, [roomId, session?.roomToken])
   const leaveRoom = useCallback(() => { socketRef.current?.emit('room:leave'); clearWatchPartySession(roomId) }, [roomId])
   const memberId = session?.member.memberId
-  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, memberId])
+  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, memberId])
 }
