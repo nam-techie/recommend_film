@@ -285,8 +285,13 @@ const server = http.createServer(async (req, res) => {
       if (!room || !member) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng hoặc thành viên không còn tồn tại.' })
       if (!room.voiceEnabled) return json(res, 403, { code: 'VOICE_DISABLED', error: 'Host chưa bật voice cho phòng.' })
       if (!(await store.allow(`voice-token:${member.memberId}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn yêu cầu kết nối voice quá nhanh.' })
-      const participantToken = await createVoiceToken(room, member)
-      return json(res, 200, { serverUrl: LIVEKIT_URL, participantToken })
+      try {
+        const participantToken = await createVoiceToken(room, member)
+        return json(res, 200, { serverUrl: LIVEKIT_URL, participantToken })
+      } catch (error) {
+        log('voice_token_error', { roomId, memberId: member.memberId, error: error instanceof Error ? error.message : String(error) })
+        return json(res, 502, { code: 'VOICE_TOKEN_FAILED', error: 'Không thể tạo quyền truy cập LiveKit.' })
+      }
     }
     if (req.method === 'POST' && url.pathname === '/api/rooms') {
       const authToken = bearer(req)

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { AccessToken, TrackSource } from 'livekit-server-sdk'
 import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
@@ -61,8 +62,15 @@ test('LiveKit grant is scoped to microphone publishing and room subscription', (
     canSubscribe: true,
     canPublish: true,
     canPublishData: false,
-    canPublishSources: ['microphone']
+    canPublishSources: [TrackSource.MICROPHONE]
   })
+})
+
+test('LiveKit voice grant can be serialized into a participant JWT', async () => {
+  const token = new AccessToken('test-api-key', 'test-api-secret-at-least-32-characters', { identity: 'member_test', name: 'Test Member', ttl: '10m' })
+  token.addGrant(buildVoiceGrant('ABC123'))
+  const jwt = await token.toJwt()
+  assert.equal(jwt.split('.').length, 3)
 })
 
 test('CORS allows configured web origins and local development without allowing arbitrary sites', () => {

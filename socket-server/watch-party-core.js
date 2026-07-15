@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { TrackSource } from 'livekit-server-sdk'
 
 const scrypt = (value, salt) => new Promise((resolve, reject) => crypto.scrypt(value, salt, 64, (error, key) => error ? reject(error) : resolve(key)))
 
@@ -71,5 +72,5 @@ export function applyVoicePermission(room, enabled) {
 }
 
 export function buildVoiceGrant(roomId) {
-  return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: ['microphone'] }
+  return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: [TrackSource.MICROPHONE] }
 }
