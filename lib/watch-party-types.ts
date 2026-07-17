@@ -30,6 +30,16 @@ export interface WatchPartyPlayback {
   serverUpdatedAt: number; updatedBy: string
   action: 'play' | 'pause' | 'seek' | 'heartbeat' | 'episode_change'
 }
+export interface WatchPartyPlaybackPolicy {
+  autoNext: boolean
+}
+export type WatchPartyEpisodeChangeReason = 'episode_list' | 'previous' | 'next' | 'auto_next'
+export interface WatchPartyEpisodeChangeIntent {
+  episodeId: string
+  reason: WatchPartyEpisodeChangeReason
+  shouldPlay: boolean
+  clientEventId: string
+}
 export interface WatchPartyMessage {
   id: string; type: 'user' | 'system'; memberId?: string; displayName?: string
   text: string; timestamp: number; videoTime?: number
@@ -42,6 +52,7 @@ export interface WatchPartyRoom {
   ownerUid: string; ownerDisplayName: string; ownerAvatar?: string
   movie: { slug: string; title: string; originalTitle?: string; poster?: string; episodes: WatchPartyEpisode[] }
   playback: WatchPartyPlayback; members: Record<string, WatchPartyMember>; messages: WatchPartyMessage[]
+  playbackPolicy: WatchPartyPlaybackPolicy
   hostMemberId: string; controlMode: 'host_only'; createdAt: number; expiresAt: number
   status: WatchPartyRoomStatus; emptySince?: number | null; voiceEnabled: boolean
 }
@@ -49,6 +60,7 @@ export interface WatchPartyRoomPreview {
   id: string; roomName: string; accessMode: WatchPartyAccessMode; requiresPassword: boolean; syncCapability: WatchPartySyncCapability
   movie: { slug: string; title: string; poster?: string }; episode?: WatchPartyEpisode
   playback: { currentTime: number; isPlaying: boolean }; hostName: string; userCount: number
+  playbackPolicy?: WatchPartyPlaybackPolicy
   createdAt: number; expiresAt: number; status: WatchPartyRoomStatus
 }
 export interface WatchPartySession {
@@ -56,7 +68,7 @@ export interface WatchPartySession {
 }
 export interface CreateRoomPayload {
   roomName?: string; accessMode: WatchPartyAccessMode; password?: string
-  movie: WatchPartyRoom['movie']; initialEpisodeId?: string
+  movie: WatchPartyRoom['movie']; initialEpisodeId?: string; playbackPolicy?: WatchPartyPlaybackPolicy
 }
 export interface PlaybackIntent {
   episodeId: string; currentTime: number; isPlaying: boolean
