@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CreateWatchPartyDialog } from '@/components/ui/CreateWatchPartyDialog'
 import { MovieSocialPanel } from '@/components/account/MovieSocialPanel'
+import { MovieLibraryActions } from '@/components/account/MovieLibraryActions'
 import { SyncedHlsPlayer } from '@/components/ui/SyncedHlsPlayer'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 import { WatchPartyPlayback } from '@/lib/watch-party-types'
@@ -532,6 +533,7 @@ export function MovieDetailPage({ slug }: MovieDetailPageProps) {
                             <p className="text-sm text-gray-300">
                                 Server: Server Phuong Nam ({episodes[selectedServer]?.server_name.includes('Vietsub') ? 'Vietsub' : 'Lồng Tiếng'})
                             </p>
+                            <div className="mt-4"><MovieLibraryActions movie={{ slug: movie.slug, title: movie.name, poster: getImageUrl(movie.poster_url), year: movie.year }} /></div>
                         </div>
                     </CardContent>
                 </Card>

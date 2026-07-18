@@ -35,6 +35,8 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SyncedHlsPlayer } from '@/components/ui/SyncedHlsPlayer'
 import {
   clearWatchPartySession,
+  closeOwnedWatchParty,
+  getActiveWatchParty,
   getWatchPartyPreview,
   joinWatchParty,
   listWatchParties,
@@ -42,6 +44,7 @@ import {
   useWatchParty,
 } from '@/hooks/useWatchParty'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { useAccount } from '@/hooks/useAccount'
 import { useWatchPartyVoice } from '@/hooks/useWatchPartyVoice'
 import { createAnonymousName } from '@/lib/anonymous-name'
 import {
@@ -152,6 +155,7 @@ const ChatPanel = memo(function ChatPanel({
 export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?: string }) {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
+  const account = useAccount()
   const { saveProgress } = useWatchProgress()
   const endRef = useRef<HTMLDivElement>(null)
   const chatListRef = useRef<HTMLDivElement>(null)
@@ -176,6 +180,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [sending, setSending] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [showRoomControls, setShowRoomControls] = useState(false)
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [showFriendInvite, setShowFriendInvite] = useState(false)
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [showEpisodes, setShowEpisodes] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -189,6 +196,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [expandedServer, setExpandedServer] = useState('')
   const [publicRooms, setPublicRooms] = useState<WatchPartyRoomPreview[]>([])
   const [roomsLoading, setRoomsLoading] = useState(!roomId)
+  const [activeOwnedRoom, setActiveOwnedRoom] = useState<WatchPartyRoomPreview | null>(null)
 
   useEffect(() => {
     if (authLoading || user) return
@@ -208,6 +216,13 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     if (roomId || authLoading || !user) return undefined
     let active = true
     void listWatchParties().then((result) => { if (active) setPublicRooms(result.rooms) }).catch(() => { if (active) setPublicRooms([]) }).finally(() => { if (active) setRoomsLoading(false) })
+    return () => { active = false }
+  }, [authLoading, roomId, user])
+
+  useEffect(() => {
+    if (roomId || authLoading || !user) return
+    let active = true
+    void user.getIdToken().then(getActiveWatchParty).then((result) => { if (active) setActiveOwnedRoom(result.room) }).catch(() => undefined)
     return () => { active = false }
   }, [authLoading, roomId, user])
 
@@ -351,6 +366,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       <Card className="border-white/10 bg-black/40"><CardContent className="space-y-5 p-6"><h2 className="text-2xl font-bold text-white">Tham gia bằng link hoặc mã phòng</h2><div className="flex gap-2"><Input value={joinInput} onChange={(event) => setJoinInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && router.push(`/watch-party/${normalizeRoom(joinInput)}`)} placeholder="Ví dụ: ABC123" /><Button disabled={!joinInput.trim()} onClick={() => router.push(`/watch-party/${normalizeRoom(joinInput)}`)}>Vào phòng</Button></div></CardContent></Card>
       <Card className="border-white/10 bg-black/40"><CardContent className="space-y-4 p-6"><Film className="h-9 w-9 text-purple-400" /><h2 className="text-xl font-bold text-white">Tạo phòng mới</h2><p className="text-sm text-gray-400">Mở trang phim, chọn đúng tập rồi bấm “Xem chung”. Host cần đăng nhập Google.</p><Button asChild variant="outline"><Link href="/">Khám phá phim</Link></Button></CardContent></Card>
     </div>
+    {activeOwnedRoom && <section className="mx-auto mt-10 max-w-5xl"><h2 className="mb-3 text-xl font-bold text-white">Phòng của tôi</h2><div className="flex flex-col gap-4 rounded-2xl border border-purple-400/25 bg-purple-500/[0.08] p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-semibold text-white">{activeOwnedRoom.roomName}</p><p className="mt-1 truncate text-sm text-slate-400">{activeOwnedRoom.movie.title} · {activeOwnedRoom.userCount} người đang xem</p><p className="mt-1 text-xs text-slate-500">Mã phòng {activeOwnedRoom.id}</p></div><div className="flex gap-2"><Button asChild><Link href={`/watch-party/${activeOwnedRoom.id}`}>Vào lại phòng</Link></Button><Button variant="destructive" onClick={async () => { const token = await user.getIdToken(); await closeOwnedWatchParty(activeOwnedRoom.id, token); setActiveOwnedRoom(null) }}>Kết thúc</Button></div></div></section>}
     <section className="mx-auto mt-12 max-w-5xl"><h2 className="mb-4 text-xl font-bold text-white">Phòng công khai đang hoạt động</h2>{roomsLoading ? <p className="text-gray-400">Đang tải danh sách phòng…</p> : publicRooms.length === 0 ? <p className="rounded-lg border border-white/10 bg-black/30 p-6 text-center text-gray-400">Chưa có phòng công khai nào.</p> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{publicRooms.map((item) => <Link key={item.id} href={`/watch-party/${item.id}`} className="rounded-xl border border-white/10 bg-black/40 p-4 transition hover:border-purple-500/60"><div className="mb-3 flex gap-3">{item.movie.poster && <img src={item.movie.poster} alt="" className="h-20 w-14 rounded object-cover" />}<div><h3 className="font-semibold text-white">{item.roomName}</h3><p className="mt-1 line-clamp-1 text-sm text-gray-400">{item.movie.title} · {item.episode?.name}</p></div></div><p className="text-xs text-gray-500">Host {item.hostName} · {item.userCount} người · {item.playback.isPlaying ? 'Đang phát' : 'Tạm dừng'}</p></Link>)}</div>}</section>
   </div>
 
@@ -384,7 +400,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   return <div className="viewport-height bg-[#070912] text-white">
     <header className="safe-x sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0e18]/95 px-3 py-2 backdrop-blur-md sm:px-4">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <Button variant="ghost" size="icon" aria-label="Thoát phòng" title="Thoát phòng" onClick={() => { party.leaveRoom(); router.push('/watch-party') }} className="h-11 w-11 shrink-0 rounded-full text-slate-300 hover:bg-white/10 hover:text-white"><LogOut className="h-5 w-5" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Thoát phòng" title="Thoát phòng" onClick={() => setShowLeaveDialog(true)} className="h-11 w-11 shrink-0 rounded-full text-slate-300 hover:bg-white/10 hover:text-white"><LogOut className="h-5 w-5" /></Button>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2"><h1 className="truncate text-sm font-semibold sm:text-base">{room.movie.title}</h1>{party.isHost && <span className="hidden rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-purple-200 sm:inline">HOST</span>}</div>
           <p className="truncate text-xs text-slate-400">{activeEpisode?.name} <span className="hidden sm:inline">· {room.roomName}</span></p>
@@ -408,6 +424,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       </div>
     </header>
 
+    {showLeaveDialog && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="leave-room-title"><div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111522] p-5 shadow-2xl"><h2 id="leave-room-title" className="text-lg font-semibold">{party.isHost ? 'Rời hay kết thúc phòng?' : 'Rời phòng?'}</h2><p className="mt-2 text-sm leading-relaxed text-slate-400">{party.isHost ? 'Nếu chỉ rời, quyền host sẽ được chuyển cho thành viên khác. Kết thúc phòng sẽ đưa tất cả mọi người ra ngoài.' : 'Phòng sẽ tiếp tục hoạt động. Nếu không còn ai, phòng tự xóa sau 5 phút.'}</p><div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setShowLeaveDialog(false)}>Ở lại</Button><Button variant="outline" onClick={() => { party.leaveRoom(); router.push('/watch-party') }}>{party.isHost ? 'Rời và chuyển host' : 'Rời phòng'}</Button>{party.isHost && <Button variant="destructive" onClick={async () => { const result = await party.closeRoom(); if (result.ok) router.push('/watch-party') }}>Kết thúc phòng</Button>}</div></div></div>}
+    {showFriendInvite && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="dialog" aria-modal="true"><div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111522] p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">Mời bạn bè xem chung</h2><p className="mt-1 text-sm text-slate-400">Lời mời sẽ mở trực tiếp phòng {room.id}.</p></div><Button size="icon" variant="ghost" aria-label="Đóng" onClick={() => setShowFriendInvite(false)}><X className="h-4 w-4" /></Button></div><div className="mt-4 max-h-80 space-y-2 overflow-y-auto">{Object.keys(account.friends).length ? Object.values(account.friends).map((friend) => <div key={friend.uid} className="flex items-center gap-3 rounded-xl border border-white/10 p-3"><MemberAvatar member={{ displayName: friend.displayName, avatar: friend.avatar, connected: true }} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{friend.displayName}</p><p className="text-xs text-slate-500">@{friend.username}</p></div><Button size="sm" onClick={async () => { try { await account.inviteFriend(friend, room.id, room.movie.slug); setInviteNotice(`Đã mời ${friend.displayName}.`) } catch (error) { setInviteNotice(error instanceof Error ? error.message : 'Không gửi được lời mời.') } }}>Mời</Button></div>) : <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">Bạn chưa có bạn bè. Hãy kết bạn từ hồ sơ người dùng trước.</p>}</div>{inviteNotice && <p className="mt-3 text-xs text-purple-200">{inviteNotice}</p>}</div></div>}
+
     {showRoomControls && <div className="safe-x fixed inset-x-3 top-[4.5rem] z-50 rounded-2xl border border-white/10 bg-[#111522]/98 p-3 shadow-2xl backdrop-blur md:hidden">
       <div className="grid grid-cols-4 gap-2">
         <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-emerald-500/15 text-emerald-200')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
@@ -424,6 +443,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     {voice.audioPlaybackBlocked && room.voiceEnabled && <div className="flex items-center justify-center gap-3 bg-sky-500/10 px-4 py-2 text-center text-xs text-sky-100" role="status"><span>Trình duyệt đang chặn âm thanh phòng.</span><Button size="sm" variant="outline" className="h-8 border-sky-300/30 bg-sky-500/10" onClick={() => void voice.startAudio()}>Bật âm thanh phòng</Button></div>}
 
     {room.status === 'host_reconnecting' && <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-100"><WifiOff className="h-4 w-4" />Đang chờ host kết nối lại. Phòng sẽ tự chuyển host sau 30 giây.</div>}
+    {party.expiryWarningAt && <div className="bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-100">Phòng sẽ kết thúc lúc {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(party.expiryWarningAt)}. Hãy hoàn tất tập đang xem.</div>}
 
     <main className="mx-auto w-full max-w-[1920px]">
       <div ref={theaterRef} className={cn('relative grid min-w-0 overflow-hidden bg-black', (isPseudoFullscreen || isTheater) && 'watch-party-pseudo-fullscreen', focusedMode ? 'h-[100dvh] grid-cols-1' : showChat ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1')}>
@@ -447,6 +467,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       {!focusedMode && <div className="safe-x flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#090c14] px-3 py-3 sm:px-5">
         <Button variant="ghost" size="sm" disabled={!party.isHost} title={party.isHost ? 'Tự chuyển sang tập kế tiếp khi tập hiện tại kết thúc' : 'Chỉ host có thể đổi cài đặt này'} onClick={() => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true))} className={cn('rounded-full', (room.playbackPolicy?.autoNext ?? true) && 'bg-purple-500/15 text-purple-200')}><Play className="h-4 w-4" />Tự chuyển tập: {(room.playbackPolicy?.autoNext ?? true) ? 'Bật' : 'Tắt'}</Button>
         <Button variant="ghost" size="sm" onClick={() => setIsTheater(true)} className="rounded-full"><Lightbulb className="h-4 w-4" />Rạp phim</Button>
+        <Button variant="ghost" size="sm" onClick={() => { setInviteNotice(null); setShowFriendInvite(true) }} className="rounded-full"><Users className="h-4 w-4" />Mời bạn bè</Button>
         <Button variant="ghost" size="sm" onClick={() => setShowEpisodes((value) => !value)} className="rounded-full md:hidden"><Film className="h-4 w-4" />Danh sách tập</Button>
         <Button variant="ghost" size="sm" onClick={toggleChat} className="relative ml-auto rounded-full xl:hidden"><MessageCircle className="h-4 w-4" />Chat{unreadCount > 0 && <span className="rounded-full bg-purple-500 px-1.5 text-[10px]">{Math.min(unreadCount, 99)}</span>}</Button>
       </div>}

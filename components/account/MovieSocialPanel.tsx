@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bookmark, Loader2, MessageSquareText, Star } from 'lucide-react'
+import { Bookmark, Check, Heart, Loader2, MessageSquareText, Star } from 'lucide-react'
 import { onValue, ref } from 'firebase/database'
 import { useAccount } from '@/hooks/useAccount'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { AuthDialog } from '@/components/auth/AuthDialog'
 import { SocialReviewCard } from '@/components/account/SocialReviewCard'
 import { Button } from '@/components/ui/button'
-import { SocialReview, WatchlistStatus } from '@/lib/account-types'
+import { SocialReview } from '@/lib/account-types'
 import { saveReview, writeActivity } from '@/lib/account-service'
 import { database } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
@@ -37,7 +37,8 @@ export function MovieSocialPanel({ movie }: { movie: { slug: string; title: stri
     if (own) { setRating(own.rating); setContent(own.content); setSpoiler(own.spoiler) }
   }, [reviews, user?.uid])
 
-  const status = account.watchlist[movie.slug]?.status
+  const libraryItem = account.watchlist[movie.slug]
+  const libraryMovie = { movieSlug: movie.slug, title: movie.title, poster: movie.poster, year: movie.year }
   const save = async () => {
     if (!account.profile || account.degraded || content.trim().length < 10) return
     setSaving(true)
@@ -56,7 +57,7 @@ export function MovieSocialPanel({ movie }: { movie: { slug: string; title: stri
   return <section className="mt-10 space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><p className="text-sm text-purple-300">Cộng đồng</p><h2 className="mt-1 text-2xl font-bold text-white">Danh sách và đánh giá</h2><p className="mt-1 text-sm text-slate-400">Lưu phim hoặc chia sẻ cảm nhận với người xem khác.</p></div>
-      {user ? <select disabled={account.degraded} value={status || ''} onChange={(event) => void account.setMovieStatus({ movieSlug: movie.slug, title: movie.title, poster: movie.poster, year: movie.year }, (event.target.value || null) as WatchlistStatus | null)} className="h-11 rounded-xl border border-white/10 bg-[#0b0f1a] px-3 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"><option value="">Không lưu</option><option value="planned">Muốn xem</option><option value="watching">Đang xem</option><option value="completed">Đã xem</option><option value="favorite">Yêu thích</option></select> : <AuthDialog><Button variant="outline"><Bookmark className="mr-2 h-4 w-4" />Lưu phim</Button></AuthDialog>}
+      {user ? <div className="flex flex-wrap gap-2"><Button variant={libraryItem?.watchLater ? 'default' : 'outline'} disabled={account.degraded} onClick={() => void account.updateMovieLibrary(libraryMovie, { watchLater: !libraryItem?.watchLater })}><Bookmark className="h-4 w-4" />{libraryItem?.watchLater ? 'Đã thêm Xem sau' : 'Xem sau'}</Button><Button variant={libraryItem?.favorite ? 'default' : 'outline'} disabled={account.degraded} onClick={() => void account.updateMovieLibrary(libraryMovie, { favorite: !libraryItem?.favorite })} className={libraryItem?.favorite ? 'bg-rose-600 hover:bg-rose-500' : ''}><Heart className={cn('h-4 w-4', libraryItem?.favorite && 'fill-current')} />Yêu thích</Button><Button variant={libraryItem?.watchStatus === 'completed' ? 'default' : 'outline'} disabled={account.degraded} onClick={() => void account.updateMovieLibrary(libraryMovie, { watchStatus: libraryItem?.watchStatus === 'completed' ? null : 'completed' })}><Check className="h-4 w-4" />{libraryItem?.watchStatus === 'completed' ? 'Đã xem' : 'Đánh dấu đã xem'}</Button></div> : <AuthDialog><Button variant="outline"><Bookmark className="mr-2 h-4 w-4" />Lưu phim</Button></AuthDialog>}
     </div>
 
     {user && account.profile && !account.degraded ? <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">

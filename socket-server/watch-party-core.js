@@ -66,6 +66,32 @@ export function chooseHostSuccessor(members, currentHostMemberId) {
     .sort((a, b) => a.joinedAt - b.joinedAt || a.memberId.localeCompare(b.memberId))[0] || null
 }
 
+export function connectedMemberCount(room) {
+  return Object.values(room?.members || {}).filter((member) => member.connected).length
+}
+
+export function markRoomOccupied(room) {
+  room.emptySince = null
+  room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), emptySince: null, deleteAt: null }
+  if (room.status === 'empty_grace') room.status = 'active'
+  return room
+}
+
+export function markRoomEmpty(room, now, emptyTtlMs) {
+  room.emptySince = now
+  room.status = 'empty_grace'
+  room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), emptySince: now, deleteAt: now + emptyTtlMs }
+  return room
+}
+
+export function shouldCloseEmptyRoom(room, now) {
+  return Boolean(room?.lifecycle?.deleteAt && room.lifecycle.deleteAt <= now)
+}
+
+export function isPublicRoomDiscoverable(room) {
+  return Boolean(room?.accessMode === 'public' && room.status !== 'closed' && room.status !== 'closing' && connectedMemberCount(room) > 0)
+}
+
 export function applyVoicePermission(room, enabled) {
   room.voiceEnabled = Boolean(enabled)
   return room

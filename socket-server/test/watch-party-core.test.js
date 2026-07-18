@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -46,6 +46,25 @@ test('host successor is the earliest connected member with stable tie break', ()
     old: { memberId: 'old', joinedAt: 2, connected: false }
   }
   assert.equal(chooseHostSuccessor(members, 'host')?.memberId, 'a')
+})
+
+test('empty room lifecycle hides public rooms immediately and closes after grace period', () => {
+  const room = { accessMode: 'public', status: 'active', expiresAt: 50_000, members: { host: { connected: false } } }
+  markRoomEmpty(room, 1_000, 300_000)
+  assert.equal(room.status, 'empty_grace')
+  assert.equal(room.lifecycle.deleteAt, 301_000)
+  assert.equal(isPublicRoomDiscoverable(room), false)
+  assert.equal(shouldCloseEmptyRoom(room, 300_999), false)
+  assert.equal(shouldCloseEmptyRoom(room, 301_000), true)
+})
+
+test('rejoining during grace restores room visibility and cancels deletion', () => {
+  const room = { accessMode: 'public', status: 'empty_grace', expiresAt: 50_000, members: { host: { connected: true } }, lifecycle: { hardExpiresAt: 50_000, emptySince: 1_000, deleteAt: 301_000 } }
+  markRoomOccupied(room)
+  assert.equal(room.status, 'active')
+  assert.equal(room.lifecycle.deleteAt, null)
+  assert.equal(connectedMemberCount(room), 1)
+  assert.equal(isPublicRoomDiscoverable(room), true)
 })
 
 test('voice permission remains authoritative room state without duplicating media state', () => {

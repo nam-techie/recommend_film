@@ -46,6 +46,46 @@
         "$followerUid": { ".write": "auth != null && (auth.uid === $followerUid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
       }
     },
+    "friendRequests": {
+      "$recipientUid": {
+        ".read": "auth != null && auth.uid === $recipientUid",
+        "$senderUid": {
+          ".write": "auth != null && ((auth.uid === $senderUid && (!data.exists() || !newData.exists())) || auth.uid === $recipientUid)",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $senderUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "sentFriendRequests": {
+      "$senderUid": {
+        ".read": "auth != null && auth.uid === $senderUid",
+        "$recipientUid": {
+          ".write": "auth != null && (auth.uid === $senderUid || (!newData.exists() && auth.uid === $recipientUid))",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $recipientUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "friendships": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$friendUid": {
+          ".write": "auth != null && (auth.uid === $uid || auth.uid === $friendUid) && (!newData.exists() || root.child('friendRequests').child($uid).child($friendUid).exists() || root.child('friendRequests').child($friendUid).child($uid).exists())",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $friendUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "blocks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$blockedUid": { ".write": "auth != null && auth.uid === $uid", ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "presence": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['online','lastSeen']) && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber()"
+      }
+    },
     "reviews": {
       ".read": true,
       "$movieSlug": {
