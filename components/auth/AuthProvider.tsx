@@ -13,6 +13,8 @@ export function firebaseAuthError(error: unknown) {
     'auth/unauthorized-domain': 'Ứng dụng không được cấp quyền đăng nhập từ địa chỉ này.',
     'auth/popup-closed-by-user': 'Bạn đã đóng cửa sổ đăng nhập Google.',
     'auth/popup-blocked': 'Trình duyệt đang chặn cửa sổ đăng nhập. Hãy cho phép popup và thử lại.',
+    'auth/cancelled-popup-request': 'Yêu cầu đăng nhập Google trước đó đã bị hủy. Hãy thử lại.',
+    'auth/account-exists-with-different-credential': 'Email này đã đăng ký bằng phương thức khác. Hãy đăng nhập bằng email/mật khẩu trước.',
     'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
     'auth/invalid-login-credentials': 'Email hoặc mật khẩu không đúng.',
     'auth/email-already-in-use': 'Email này đã được đăng ký.',
@@ -56,9 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const requireAuth = useCallback(() => { if (!auth) throw new Error('Thiếu cấu hình NEXT_PUBLIC_FIREBASE_* trong file .env.'); return auth }, [])
-  const signInWithGoogle = useCallback(async () => { try { return (await signInWithPopup(requireAuth(), new GoogleAuthProvider())).user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const signInWithEmail = useCallback(async (email: string, password: string) => { try { return (await signInWithEmailAndPassword(requireAuth(), email.trim(), password)).user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const registerWithEmail = useCallback(async (name: string, email: string, password: string) => { try { const result = await createUserWithEmailAndPassword(requireAuth(), email.trim(), password); if (name.trim()) await updateProfile(result.user, { displayName: name.trim().slice(0, 40) }); await sendEmailVerification(result.user).catch(() => undefined); return result.user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
+  const signInWithGoogle = useCallback(async () => { try { const provider = new GoogleAuthProvider(); provider.setCustomParameters({ prompt: 'select_account' }); const signedInUser = (await signInWithPopup(requireAuth(), provider)).user; await ensureAccountProfile(signedInUser); return signedInUser } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
+  const signInWithEmail = useCallback(async (email: string, password: string) => { try { const signedInUser = (await signInWithEmailAndPassword(requireAuth(), email.trim(), password)).user; await ensureAccountProfile(signedInUser); return signedInUser } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
+  const registerWithEmail = useCallback(async (name: string, email: string, password: string) => { try { const result = await createUserWithEmailAndPassword(requireAuth(), email.trim(), password); const displayName = name.trim().slice(0, 40); if (displayName) await updateProfile(result.user, { displayName }); await ensureAccountProfile(result.user, displayName); await sendEmailVerification(result.user).catch(() => undefined); return result.user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
   const resetPassword = useCallback(async (email: string) => { try { await sendPasswordResetEmail(requireAuth(), email.trim()) } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
   const sendVerification = useCallback(async () => { if (!user) throw new Error('Bạn chưa đăng nhập.'); try { await sendEmailVerification(user) } catch (error) { throw firebaseAuthError(error) } }, [user])
   const updateIdentity = useCallback(async (displayName: string, photoURL?: string | null) => { if (!user) throw new Error('Bạn chưa đăng nhập.'); try { await updateProfile(user, { displayName: displayName.trim().slice(0, 40), ...(photoURL !== undefined ? { photoURL: photoURL || null } : {}) }); await reload(user); setAuthVersion((value) => value + 1) } catch (error) { throw firebaseAuthError(error) } }, [user])

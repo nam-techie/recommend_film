@@ -8,6 +8,8 @@ import { useAccount } from '@/hooks/useAccount'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
+import { FriendSearchPanel } from '@/components/account/FriendSearchPanel'
+import { EmailNotificationSetting } from '@/components/account/EmailNotificationSetting'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -102,7 +104,7 @@ export function AccountPage() {
   </main>
 }
 
-function Header({ title, text }: { title: string; text: string }) { return <header><h1 className="text-2xl font-bold sm:text-3xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{text}</p></header> }
+function Header({ title, text }: { title: string; text: string }) { return <><header><h1 className="text-2xl font-bold sm:text-3xl">{title}</h1><p className="mt-2 text-sm text-slate-400">{text}</p></header>{title === 'Bạn bè' && <FriendSearchPanel />}{title === 'Quyền riêng tư' && <EmailNotificationSetting />}</> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div> }
 function Empty({ icon: Icon, title, text }: { icon: typeof UserRound; title: string; text: string }) { return <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-12 text-center"><Icon className="mx-auto h-8 w-8 text-slate-600" /><p className="mt-3 text-sm font-medium text-slate-300">{title}</p><p className="mt-1 text-xs text-slate-500">{text}</p></div> }
 function MailStatus({ verified }: { verified: boolean }) { return <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', verified ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300')}>{verified ? <Check className="h-5 w-5" /> : <Settings className="h-5 w-5" />}</span> }

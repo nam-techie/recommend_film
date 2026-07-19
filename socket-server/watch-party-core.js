@@ -100,3 +100,11 @@ export function applyVoicePermission(room, enabled) {
 export function buildVoiceGrant(roomId) {
   return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: [TrackSource.MICROPHONE] }
 }
+
+export function directConversationId(firstUid, secondUid) {
+  return `dm_${[String(firstUid), String(secondUid)].sort().join('_')}`
+}
+
+export function findEligibleInvitingMember(room, uid) {
+  return Object.values(room?.members || {}).find((member) => member.uid === uid && !member.isAnonymous) || null
+}

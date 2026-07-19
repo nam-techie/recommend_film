@@ -79,11 +79,65 @@
         "$blockedUid": { ".write": "auth != null && auth.uid === $uid", ".validate": "!newData.exists() || newData.val() === true" }
       }
     },
-    "presence": {
+    "presenceConnections": {
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())",
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['online','lastSeen']) && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber()"
+        "$connectionId": { ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "presenceLastSeen": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "!newData.exists() || newData.isNumber()"
+      }
+    },
+    "directConversations": {
+      "$conversationId": {
+        ".read": "auth != null && ((data.child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(data.child('memberB').val()).exists() && !root.child('blocks').child(auth.uid).child(data.child('memberB').val()).exists() && !root.child('blocks').child(data.child('memberB').val()).child(auth.uid).exists()) || (data.child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(data.child('memberA').val()).exists() && !root.child('blocks').child(auth.uid).child(data.child('memberA').val()).exists() && !root.child('blocks').child(data.child('memberA').val()).child(auth.uid).exists()))",
+        ".write": "auth != null && ((newData.child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(newData.child('memberB').val()).exists() && !root.child('blocks').child(auth.uid).child(newData.child('memberB').val()).exists() && !root.child('blocks').child(newData.child('memberB').val()).child(auth.uid).exists()) || (newData.child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(newData.child('memberA').val()).exists() && !root.child('blocks').child(auth.uid).child(newData.child('memberA').val()).exists() && !root.child('blocks').child(newData.child('memberA').val()).child(auth.uid).exists()))",
+        ".validate": "newData.hasChildren(['id','memberA','memberB','memberUids','lastMessage','lastMessageType','lastSenderUid','lastMessageAt','createdAt','updatedAt']) && newData.child('id').val() === $conversationId && newData.child('memberA').isString() && newData.child('memberB').isString() && newData.child('memberA').val() !== newData.child('memberB').val() && (!data.exists() || (newData.child('memberA').val() === data.child('memberA').val() && newData.child('memberB').val() === data.child('memberB').val() && newData.child('createdAt').val() === data.child('createdAt').val())) && newData.child('memberUids').child(newData.child('memberA').val()).val() === true && newData.child('memberUids').child(newData.child('memberB').val()).val() === true && newData.child('lastMessage').isString() && newData.child('lastMessage').val().length <= 1000 && (newData.child('lastMessageType').val() === 'text' || newData.child('lastMessageType').val() === 'watch_party_invite' || newData.child('lastMessageType').val() === 'system') && newData.child('lastMessageAt').isNumber() && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber()"
+      }
+    },
+    "directMessages": {
+      "$conversationId": {
+        ".read": "auth != null && ((root.child('directConversations').child($conversationId).child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists() && !root.child('blocks').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists()) || (root.child('directConversations').child($conversationId).child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists() && !root.child('blocks').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists()))",
+        "$messageId": {
+          ".write": "auth != null && !data.exists() && newData.child('senderUid').val() === auth.uid && ((root.child('directConversations').child($conversationId).child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists() && !root.child('blocks').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists() && !root.child('blocks').child(root.child('directConversations').child($conversationId).child('memberB').val()).child(auth.uid).exists()) || (root.child('directConversations').child($conversationId).child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists() && !root.child('blocks').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists() && !root.child('blocks').child(root.child('directConversations').child($conversationId).child('memberA').val()).child(auth.uid).exists()))",
+          ".validate": "newData.hasChildren(['id','conversationId','senderUid','senderName','type','text','createdAt']) && newData.child('id').val() === $messageId && newData.child('conversationId').val() === $conversationId && newData.child('type').val() === 'text' && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 1000 && newData.child('createdAt').isNumber()"
+        }
+      }
+    },
+    "userConversations": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$conversationId": {
+          ".validate": "!newData.exists() || (newData.child('conversationId').val() === $conversationId && newData.child('otherUid').isString() && newData.child('lastReadAt').isNumber() && newData.child('muted').isBoolean() && newData.child('updatedAt').isNumber()) || (!newData.child('conversationId').exists() && !newData.child('otherUid').exists() && !newData.child('lastReadAt').exists() && !newData.child('muted').exists() && newData.child('updatedAt').isNumber())",
+          "conversationId": { ".validate": "newData.isString() && newData.val() === $conversationId" },
+          "otherUid": { ".validate": "newData.isString()" },
+          "lastReadAt": { ".validate": "newData.isNumber()" },
+          "muted": { ".validate": "newData.isBoolean()" },
+          "updatedAt": { ".write": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())", ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+    "directTyping": {
+      "$conversationId": {
+        ".read": "auth != null && ((root.child('directConversations').child($conversationId).child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists()) || (root.child('directConversations').child($conversationId).child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists()))",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && ((root.child('directConversations').child($conversationId).child('memberA').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberB').val()).exists()) || (root.child('directConversations').child($conversationId).child('memberB').val() === auth.uid && root.child('friendships').child(auth.uid).child(root.child('directConversations').child($conversationId).child('memberA').val()).exists()))",
+          ".validate": "!newData.exists() || (newData.child('typing').val() === true && newData.child('updatedAt').isNumber())"
+        }
+      }
+    },
+    "watchPartyInvites": {
+      ".indexOn": ["recipientUid", "roomId", "expiresAt"],
+      "$inviteId": {
+        ".read": "auth != null && (data.child('inviterUid').val() === auth.uid || data.child('recipientUid').val() === auth.uid)",
+        ".write": false
       }
     },
     "reviews": {

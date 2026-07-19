@@ -5,7 +5,8 @@ import { onDisconnect, onValue, ref, serverTimestamp, set, update } from 'fireba
 import { useAuth } from '@/components/auth/AuthProvider'
 import { AccountNotification, AccountSettings, DEFAULT_PRIVACY, FriendPresence, FriendRequest, FriendshipRecord, LibraryWatchStatus, PublicProfile, WatchlistMovie, WatchlistStatus } from '@/lib/account-types'
 import { database } from '@/lib/firebase'
-import { cancelFriendRequest, ensureAccountProfile, normalizeLibraryItem, profileFromAuthUser, removeFriend, removeWatchlistMovie, respondFriendRequest, saveSettings, sendFriendRequest, sendWatchPartyInvite, setUserBlocked, setWatchlistMovie, updateMovieLibrary as saveMovieLibrary, writeActivity } from '@/lib/account-service'
+import { cancelFriendRequest, ensureAccountProfile, normalizeLibraryItem, profileFromAuthUser, removeFriend, removeWatchlistMovie, respondFriendRequest, saveSettings, sendFriendRequest, setUserBlocked, setWatchlistMovie, updateMovieLibrary as saveMovieLibrary, writeActivity } from '@/lib/account-service'
+import { inviteFriendToRoom } from '@/lib/social-api'
 
 function accountLoadError(error: unknown) {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
@@ -15,7 +16,7 @@ function accountLoadError(error: unknown) {
 }
 
 export function useAccount() {
-  const { user } = useAuth()
+  const { user, getIdToken } = useAuth()
   const [profile, setProfile] = useState<PublicProfile | null>(null)
   const [settings, setSettings] = useState<AccountSettings>({ privacy: DEFAULT_PRIVACY, emailNotifications: true, updatedAt: 0 })
   const [watchlist, setWatchlist] = useState<Record<string, WatchlistMovie>>({})
@@ -75,15 +76,29 @@ export function useAccount() {
 
   useEffect(() => {
     if (!user || !database) return
-    const presenceRef = ref(database, `presence/${user.uid}`)
-    void set(presenceRef, { online: true, lastSeen: Date.now() })
-    void onDisconnect(presenceRef).set({ online: false, lastSeen: serverTimestamp() })
-    return () => { void set(presenceRef, { online: false, lastSeen: Date.now() }) }
+    let connectionRef: ReturnType<typeof ref> | null = null
+    const unsubscribe = onValue(ref(database, '.info/connected'), (snapshot) => {
+      if (snapshot.val() !== true) return
+      connectionRef = ref(database!, `presenceConnections/${user.uid}/${crypto.randomUUID()}`)
+      const lastSeenRef = ref(database!, `presenceLastSeen/${user.uid}`)
+      void onDisconnect(connectionRef).remove()
+        .then(() => onDisconnect(lastSeenRef).set(serverTimestamp()))
+        .then(() => set(connectionRef!, true))
+        .catch(() => undefined)
+    })
+    return () => {
+      unsubscribe()
+      if (connectionRef) void set(connectionRef, null).catch(() => undefined)
+      void set(ref(database!, `presenceLastSeen/${user.uid}`), Date.now()).catch(() => undefined)
+    }
   }, [user])
 
   useEffect(() => {
     if (!database) return
-    const unsubscribers = Object.keys(friends).map((friendUid) => onValue(ref(database!, `presence/${friendUid}`), (snapshot) => setFriendPresence((current) => ({ ...current, [friendUid]: snapshot.val() || { online: false, lastSeen: 0 } })), () => undefined))
+    const unsubscribers = Object.keys(friends).flatMap((friendUid) => [
+      onValue(ref(database!, `presenceConnections/${friendUid}`), (snapshot) => setFriendPresence((current) => ({ ...current, [friendUid]: { online: snapshot.exists(), lastSeen: current[friendUid]?.lastSeen || 0 } })), () => undefined),
+      onValue(ref(database!, `presenceLastSeen/${friendUid}`), (snapshot) => setFriendPresence((current) => ({ ...current, [friendUid]: { online: current[friendUid]?.online || false, lastSeen: Number(snapshot.val() || 0) } })), () => undefined),
+    ])
     setFriendPresence((current) => Object.fromEntries(Object.entries(current).filter(([uid]) => Boolean(friends[uid]))))
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [friends])
@@ -103,7 +118,7 @@ export function useAccount() {
   const answerFriend = useCallback(async (request: FriendRequest, accept: boolean) => { if (!profile) return; await respondFriendRequest(profile, request, accept) }, [profile])
   const unfriend = useCallback(async (friendUid: string) => { if (!user) return; await removeFriend(user.uid, friendUid) }, [user])
   const blockUser = useCallback(async (targetUid: string, blocked = true) => { if (!user) return; await setUserBlocked(user.uid, targetUid, blocked) }, [user])
-  const inviteFriend = useCallback(async (friend: FriendshipRecord, roomId: string, movieSlug?: string) => { if (!profile) return; await sendWatchPartyInvite(profile, friend, roomId, movieSlug) }, [profile])
+  const inviteFriend = useCallback(async (friend: FriendshipRecord, roomId: string, _movieSlug?: string) => { const token = await getIdToken(); if (!token) throw new Error('Bạn cần đăng nhập để mời bạn bè.'); const result = await inviteFriendToRoom(roomId, friend.uid, token); if (result.emailStatus === 'failed') throw new Error('Đã gửi trong ứng dụng, nhưng email chưa gửi được.'); return result }, [getIdToken])
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications])
   const retry = useCallback(() => setRetryVersion((value) => value + 1), [])
 

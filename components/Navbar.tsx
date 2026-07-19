@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Bell, Bookmark, ChevronDown, Film, Globe, Grid3X3, History, Home, LogOut, Menu, Search, Settings, Sparkles, Tv, UserRound, X } from 'lucide-react'
+import { Bell, Bookmark, ChevronDown, Film, Globe, Grid3X3, History, Home, LogOut, Menu, MessageCircle, Search, Settings, Sparkles, Tv, UserRound, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -9,11 +9,13 @@ import { useAuth } from '@/components/auth/AuthProvider'
 import { AuthDialog } from '@/components/auth/AuthDialog'
 import { useAccount } from '@/hooks/useAccount'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
+import { FriendMessenger } from '@/components/account/FriendMessenger'
 
 const Navbar = () => {
     const pathname = usePathname()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [accountOpen, setAccountOpen] = useState(false)
+    const [messengerOpen, setMessengerOpen] = useState(false)
     const accountMenuRef = useRef<HTMLDivElement>(null)
     const { user, loading: authLoading, logout } = useAuth()
     const account = useAccount()
@@ -82,7 +84,7 @@ const Navbar = () => {
                     {/* Right side controls */}
                     <div className="flex items-center space-x-3">
                         {!authLoading && (user ? (
-                            <div ref={accountMenuRef} className="relative">
+                            <><Button variant="ghost" size="icon" aria-label="Mở bạn bè và tin nhắn" onClick={() => setMessengerOpen(true)} className="relative h-11 w-11 rounded-full"><MessageCircle className="h-5 w-5" />{Object.keys(account.friendRequests).length > 0 && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-purple-400" />}</Button><div ref={accountMenuRef} className="relative">
                                 <Button variant="outline" size="sm" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen((value) => !value)} className="h-11 gap-2 rounded-full px-2 sm:px-3">
                                     <AccountAvatar name={account.profile?.displayName || user.displayName || user.email || 'Tài khoản'} src={account.profile?.avatar || user.photoURL} className="h-7 w-7 text-[9px]" />
                                     <span className="hidden max-w-28 truncate sm:inline">{account.profile?.displayName || user.displayName || 'Tài khoản'}</span>
@@ -95,7 +97,7 @@ const Navbar = () => {
                                     <Link href="/account" className="flex min-h-10 items-center gap-3 rounded-xl border-t border-white/10 px-3 pt-2 text-sm text-slate-300 hover:text-white"><Bell className="h-4 w-4" />Thông báo{account.unreadCount > 0 && <span className="ml-auto rounded-full bg-purple-500 px-2 py-0.5 text-[10px] font-bold">{account.unreadCount}</span>}</Link>
                                     <button type="button" role="menuitem" onClick={() => void logout()} className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Đăng xuất</button>
                                 </div>}
-                            </div>
+                            </div><FriendMessenger open={messengerOpen} onOpenChange={setMessengerOpen} /></>
                         ) : (
                             <AuthDialog><Button size="sm">Đăng nhập</Button></AuthDialog>
                         ))}

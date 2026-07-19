@@ -50,12 +50,22 @@ export function profileFromAuthUser(user: User): PublicProfile {
   }
 }
 
-export async function ensureAccountProfile(user: User) {
+export async function ensureAccountProfile(user: User, preferredDisplayName?: string) {
   const db = requireDatabase()
   const snapshot = await get(ref(db, `publicProfiles/${user.uid}`))
-  if (snapshot.exists()) return snapshot.val() as PublicProfile
+  if (snapshot.exists()) {
+    const existing = snapshot.val() as PublicProfile
+    const nextDisplayName = preferredDisplayName?.trim().slice(0, 40)
+    if (nextDisplayName && existing.displayName !== nextDisplayName && Date.now() - existing.createdAt < 60_000) {
+      const updated = { ...existing, displayName: nextDisplayName, updatedAt: Date.now() }
+      await set(ref(db, `publicProfiles/${user.uid}`), updated)
+      return updated
+    }
+    return existing
+  }
   const now = Date.now()
   const profile = profileFromAuthUser(user)
+  if (preferredDisplayName?.trim()) profile.displayName = preferredDisplayName.trim().slice(0, 40)
   const reservation = await runTransaction(ref(db, `usernames/${profile.username}`), (current) => current || user.uid, { applyLocally: false })
   if (!reservation.committed || reservation.snapshot.val() !== user.uid) {
     profile.username = `member_${user.uid.slice(0, 10).toLowerCase()}`
@@ -237,13 +247,6 @@ export async function setUserBlocked(actorUid: string, targetUid: string, blocke
   })
 }
 
-export async function sendWatchPartyInvite(actor: PublicProfile, target: FriendshipRecord, roomId: string, movieSlug?: string) {
-  const db = requireDatabase(); const targetProfile = await get(ref(db, `publicProfiles/${target.uid}`))
-  if (targetProfile.exists() && targetProfile.val().allowWatchPartyInvites === false) throw new Error('Người bạn này đang tắt lời mời xem chung.')
-  const notificationRef = push(ref(db, `notifications/${target.uid}`))
-  await set(notificationRef, { id: notificationRef.key!, type: 'watch_party_invite', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, roomId, movieSlug: movieSlug || null, read: false, createdAt: Date.now() })
-}
-
 export async function toggleReviewLike(actor: PublicProfile, review: SocialReview, liked: boolean) {
   const db = requireDatabase(); await set(ref(db, `reviewLikes/${review.movieSlug}/${review.authorUid}/${actor.uid}`), liked || null)
   if (liked && actor.uid !== review.authorUid) {
@@ -280,6 +283,9 @@ export async function deleteAccountData(profile: PublicProfile) {
     [`friendRequests/${profile.uid}`]: null,
     [`sentFriendRequests/${profile.uid}`]: null,
     [`blocks/${profile.uid}`]: null,
+    [`presenceConnections/${profile.uid}`]: null,
+    [`presenceLastSeen/${profile.uid}`]: null,
+    [`userConversations/${profile.uid}`]: null,
   }
   Object.keys(followingSnapshot.val() || {}).forEach((targetUid) => { updates[`followers/${targetUid}/${profile.uid}`] = null })
   Object.keys(followersSnapshot.val() || {}).forEach((followerUid) => { updates[`following/${followerUid}/${profile.uid}`] = null })

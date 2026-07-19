@@ -7,8 +7,10 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
+import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import nodemailer from 'nodemailer'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, directConversationId, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -28,6 +30,16 @@ const MEDIA_ALLOWED_HOSTS = (process.env.MEDIA_ALLOWED_HOSTS || '')
 const LIVEKIT_URL = process.env.LIVEKIT_URL || ''
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || ''
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || ''
+const APP_BASE_URL = (process.env.APP_BASE_URL || CLIENT_ORIGINS[0] || 'http://localhost:3000').replace(/\/$/, '')
+const MAIL_HOST = process.env.MAIL_HOST || 'smtp.gmail.com'
+const MAIL_PORT = Number(process.env.MAIL_PORT || 587)
+const MAIL_SECURE = String(process.env.MAIL_SECURE || 'false').toLowerCase() === 'true'
+const MAIL_USERNAME = process.env.MAIL_USERNAME || ''
+const MAIL_PASSWORD = process.env.MAIL_PASSWORD || ''
+const MAIL_FROM = process.env.MAIL_FROM || MAIL_USERNAME
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'CineMind'
+const mailConfigured = Boolean(MAIL_USERNAME && MAIL_PASSWORD && MAIL_FROM)
+const mailTransporter = mailConfigured ? nodemailer.createTransport({ host: MAIL_HOST, port: MAIL_PORT, secure: MAIL_SECURE, auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD } }) : null
 const voiceConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
 const livekitRooms = voiceConfigured ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) : null
 
@@ -36,13 +48,16 @@ if (IS_PRODUCTION && !REDIS_URL) throw new Error('REDIS_URL is required in produ
 if (IS_PRODUCTION && CLIENT_ORIGINS.length === 0) throw new Error('CLIENT_ORIGINS is required in production')
 
 let adminAuth = null
+let adminDb = null
 try {
   const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
   const serviceAccount = rawServiceAccount ? JSON.parse(rawServiceAccount) : null
   const projectId = serviceAccount?.project_id || process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  const databaseURL = process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL
   if (serviceAccount || projectId) {
-    const app = getApps()[0] || initializeApp(serviceAccount ? { credential: cert(serviceAccount) } : { projectId })
+    const app = getApps()[0] || initializeApp({ ...(serviceAccount ? { credential: cert(serviceAccount) } : { projectId }), ...(databaseURL ? { databaseURL } : {}) })
     adminAuth = getAuth(app)
+    if (databaseURL) adminDb = getDatabase(app)
   }
 } catch (error) {
   console.error('Firebase Admin initialization failed:', error instanceof Error ? error.message : String(error))
@@ -84,6 +99,8 @@ const episodeChangeSchema = z.object({
   clientEventId: z.string().min(8).max(100).optional()
 })
 const policySchema = z.object({ autoNext: z.boolean(), clientEventId: z.string().min(8).max(100) })
+const emailLookupSchema = z.object({ email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()) })
+const roomInviteSchema = z.object({ friendUid: z.string().trim().min(1).max(128) })
 class MemoryStore {
   constructor() { this.rooms = new Map(); this.dedupe = new Map(); this.ownerRooms = new Map() }
   async ping() { return 'PONG' }
@@ -157,6 +174,7 @@ const deleteVoiceRoom = async (roomId, attempt = 1) => {
   }
 }
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
+const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character])
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
 const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
 const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
@@ -244,6 +262,14 @@ async function closeRoom(roomId, reason = 'host_closed') {
   const room = await store.getRoom(roomId)
   if (!room) return false
   room.status = 'closing'
+  if (adminDb) {
+    try {
+      const inviteSnapshot = await adminDb.ref('watchPartyInvites').orderByChild('roomId').equalTo(roomId).get()
+      const inviteUpdates = {}
+      inviteSnapshot.forEach((child) => { if (child.val()?.status === 'pending') { inviteUpdates[`${child.key}/status`] = reason === 'hard_expired' ? 'expired' : 'cancelled'; inviteUpdates[`${child.key}/updatedAt`] = Date.now() } })
+      if (Object.keys(inviteUpdates).length) await adminDb.ref('watchPartyInvites').update(inviteUpdates)
+    } catch (error) { log('invite_status_cleanup_failed', { roomId, error: error instanceof Error ? error.message : String(error) }) }
+  }
   room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), closedAt: Date.now(), closeReason: reason }
   io.to(room.id).emit('room:closed', { code: reason.toUpperCase(), reason })
   await store.deleteRoom(room.id)
@@ -278,7 +304,7 @@ const server = http.createServer(async (req, res) => {
   const ip = req.socket.remoteAddress || 'unknown'
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
-    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured }) }
+    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured, mailConfigured, socialDatabaseConfigured: Boolean(adminDb) }) }
     if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
       const sourceUrl = url.searchParams.get('url') || ''
       if (!mediaAllowed(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
@@ -305,6 +331,74 @@ const server = http.createServer(async (req, res) => {
       const directAllowed = Boolean(input.linkM3u8 && mediaAllowed(input.linkM3u8))
       const fallbackAvailable = Boolean(input.linkEmbed)
       return json(res, 200, { hlsReachable, directAllowed, contentType, errorCode, fallbackAvailable, capability: directAllowed ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
+    }
+    if (req.method === 'POST' && url.pathname === '/api/friends/lookup-email') {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập để tìm bằng email.' })
+      const actor = await verifyFirebaseToken(authToken)
+      if (!adminDb) return json(res, 503, { code: 'SOCIAL_DATABASE_NOT_CONFIGURED', error: 'Dịch vụ tìm bạn chưa được cấu hình.' })
+      if (!(await store.allow(`email-lookup:${actor.uid}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn tìm bằng email quá nhiều lần. Hãy thử lại sau một phút.' })
+      const { email } = emailLookupSchema.parse(await readBody(req))
+      try {
+        const account = await adminAuth.getUserByEmail(email)
+        const profileSnapshot = await adminDb.ref(`publicProfiles/${account.uid}`).get()
+        if (!profileSnapshot.exists()) return json(res, 200, { found: false })
+        const profile = profileSnapshot.val()
+        return json(res, 200, { found: true, profile: { uid: profile.uid, username: profile.username, displayName: profile.displayName, avatar: profile.avatar || undefined, favoriteGenres: profile.favoriteGenres || [], createdAt: profile.createdAt, updatedAt: profile.updatedAt, isPublic: Boolean(profile.isPublic), showRecentMovies: Boolean(profile.showRecentMovies), showWatchlist: Boolean(profile.showWatchlist), showActivity: Boolean(profile.showActivity), allowWatchPartyInvites: profile.allowWatchPartyInvites !== false } })
+      } catch (error) {
+        if (String(error?.code || '').includes('user-not-found')) return json(res, 200, { found: false })
+        throw error
+      }
+    }
+    const inviteMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/i)
+    if (req.method === 'POST' && inviteMatch) {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập để mời bạn bè.' })
+      const actor = await verifyFirebaseToken(authToken)
+      if (!adminDb) return json(res, 503, { code: 'SOCIAL_DATABASE_NOT_CONFIGURED', error: 'Dịch vụ lời mời chưa được cấu hình.' })
+      const roomId = inviteMatch[1].toUpperCase(); const room = await store.getRoom(roomId)
+      if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
+      const actorMember = findEligibleInvitingMember(room, actor.uid)
+      if (!actorMember) return json(res, 403, { code: 'ROOM_MEMBER_REQUIRED', error: 'Bạn cần tham gia phòng bằng tài khoản để gửi lời mời.' })
+      const { friendUid } = roomInviteSchema.parse(await readBody(req))
+      if (friendUid === actor.uid) return json(res, 400, { code: 'INVALID_TARGET', error: 'Bạn không thể tự mời chính mình.' })
+      if (!(await store.allow(`room-invite:${actor.uid}:${friendUid}:${roomId}`, 1, 60_000))) return json(res, 429, { code: 'DUPLICATE_INVITE', error: 'Bạn vừa mời người này. Hãy đợi một phút trước khi gửi lại.' })
+      const [actorFriendship, targetFriendship, actorBlock, targetBlock, actorProfileSnapshot, targetProfileSnapshot, targetSettingsSnapshot] = await Promise.all([
+        adminDb.ref(`friendships/${actor.uid}/${friendUid}`).get(), adminDb.ref(`friendships/${friendUid}/${actor.uid}`).get(), adminDb.ref(`blocks/${actor.uid}/${friendUid}`).get(), adminDb.ref(`blocks/${friendUid}/${actor.uid}`).get(), adminDb.ref(`publicProfiles/${actor.uid}`).get(), adminDb.ref(`publicProfiles/${friendUid}`).get(), adminDb.ref(`users/${friendUid}/settings`).get(),
+      ])
+      if (!actorFriendship.exists() || !targetFriendship.exists() || actorBlock.exists() || targetBlock.exists()) return json(res, 403, { code: 'FRIENDSHIP_REQUIRED', error: 'Bạn chỉ có thể mời bạn bè chưa chặn nhau.' })
+      const actorProfile = actorProfileSnapshot.val() || {}; const targetProfile = targetProfileSnapshot.val() || {}; const targetSettings = targetSettingsSnapshot.val() || {}
+      if (targetProfile.allowWatchPartyInvites === false) return json(res, 403, { code: 'INVITES_DISABLED', error: 'Người bạn này đang tắt lời mời xem chung.' })
+      const now = Date.now(); const inviteId = id('invite'); const messageId = id('message'); const notificationId = id('notification'); const conversationId = directConversationId(actor.uid, friendUid)
+      const movieTitle = room.movie.title; const inviteText = `${actorProfile.displayName || actorMember.displayName} mời bạn xem chung`;
+      const [existingConversation, actorConversationState, targetConversationState] = await Promise.all([adminDb.ref(`directConversations/${conversationId}`).get(), adminDb.ref(`userConversations/${actor.uid}/${conversationId}`).get(), adminDb.ref(`userConversations/${friendUid}/${conversationId}`).get()])
+      const updates = {
+        [`watchPartyInvites/${inviteId}`]: { id: inviteId, roomId, inviterUid: actor.uid, recipientUid: friendUid, movieSlug: room.movie.slug, movieTitle, status: 'pending', createdAt: now, expiresAt: room.expiresAt },
+        [`notifications/${friendUid}/${notificationId}`]: { id: notificationId, type: 'watch_party_invite', actorUid: actor.uid, actorName: actorProfile.displayName || actorMember.displayName, actorUsername: actorProfile.username || '', actorAvatar: actorProfile.avatar || null, roomId, movieSlug: room.movie.slug, read: false, createdAt: now },
+        [`directMessages/${conversationId}/${messageId}`]: { id: messageId, conversationId, senderUid: actor.uid, senderName: actorProfile.displayName || actorMember.displayName, type: 'watch_party_invite', text: inviteText, roomId, movieSlug: room.movie.slug, movieTitle, createdAt: now },
+        [`directConversations/${conversationId}/lastMessage`]: inviteText,
+        [`directConversations/${conversationId}/lastMessageType`]: 'watch_party_invite',
+        [`directConversations/${conversationId}/lastSenderUid`]: actor.uid,
+        [`directConversations/${conversationId}/lastMessageAt`]: now,
+        [`directConversations/${conversationId}/updatedAt`]: now,
+      }
+      if (!existingConversation.exists()) {
+        const [memberA, memberB] = [actor.uid, friendUid].sort()
+        updates[`directConversations/${conversationId}/id`] = conversationId; updates[`directConversations/${conversationId}/memberA`] = memberA; updates[`directConversations/${conversationId}/memberB`] = memberB; updates[`directConversations/${conversationId}/memberUids`] = { [actor.uid]: true, [friendUid]: true }; updates[`directConversations/${conversationId}/createdAt`] = now
+      }
+      updates[actorConversationState.exists() ? `userConversations/${actor.uid}/${conversationId}/updatedAt` : `userConversations/${actor.uid}/${conversationId}`] = actorConversationState.exists() ? now : { conversationId, otherUid: friendUid, lastReadAt: now, muted: false, updatedAt: now }
+      updates[targetConversationState.exists() ? `userConversations/${friendUid}/${conversationId}/updatedAt` : `userConversations/${friendUid}/${conversationId}`] = targetConversationState.exists() ? now : { conversationId, otherUid: actor.uid, lastReadAt: 0, muted: false, updatedAt: now }
+      await adminDb.ref().update(updates)
+      let emailStatus = 'skipped'
+      if (mailTransporter && targetSettings.emailNotifications !== false) {
+        try {
+          const targetAccount = await adminAuth.getUser(friendUid)
+          if (targetAccount.email && targetAccount.emailVerified) {
+            const joinUrl = `${APP_BASE_URL}/watch-party/${roomId}`; const safeActor = escapeHtml(actorProfile.displayName || actorMember.displayName); const safeMovie = escapeHtml(movieTitle)
+            await mailTransporter.sendMail({ from: `"${MAIL_FROM_NAME}" <${MAIL_FROM}>`, to: targetAccount.email, subject: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle}`, text: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle} trên CineMind. Mã phòng: ${roomId}. Tham gia: ${joinUrl}`, html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827"><h2>${safeActor} mời bạn xem chung</h2><p>Hai bạn có một buổi xem <strong>${safeMovie}</strong> đang chờ trên CineMind.</p><p>Mã phòng: <strong>${roomId}</strong></p><p><a href="${joinUrl}" style="display:inline-block;padding:12px 18px;background:#7c3aed;color:white;text-decoration:none;border-radius:10px">Tham gia xem chung</a></p><p style="color:#6b7280;font-size:13px">Phòng hết hạn lúc ${new Date(room.expiresAt).toISOString()}.</p></div>` })
+            emailStatus = 'sent'
+          }
+        } catch (error) { emailStatus = 'failed'; log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, error: error instanceof Error ? error.message : String(error) }) }
+      }
+      return json(res, 200, { inviteId, inAppStatus: 'sent', emailStatus })
     }
     const voiceTokenMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/voice-token$/i)
     if (req.method === 'POST' && voiceTokenMatch) {
@@ -378,6 +472,14 @@ const server = http.createServer(async (req, res) => {
       const account = await verifyFirebaseToken(input.firebaseIdToken)
       const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
+      if (adminDb) {
+        try {
+          const inviteSnapshot = await adminDb.ref('watchPartyInvites').orderByChild('recipientUid').equalTo(account.uid).get()
+          const inviteUpdates = {}
+          inviteSnapshot.forEach((child) => { const invite = child.val(); if (invite?.roomId === roomId && invite?.status === 'pending') { inviteUpdates[`${child.key}/status`] = 'accepted'; inviteUpdates[`${child.key}/acceptedAt`] = now; inviteUpdates[`${child.key}/updatedAt`] = now } })
+          if (Object.keys(inviteUpdates).length) await adminDb.ref('watchPartyInvites').update(inviteUpdates)
+        } catch (error) { log('invite_accept_update_failed', { roomId, recipientUid: account.uid, error: error instanceof Error ? error.message : String(error) }) }
+      }
       return json(res, 201, { roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
     const reclaimMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/reclaim-host$/i)
@@ -431,7 +533,8 @@ async function transferHost(roomId) {
   const room = await store.getRoom(roomId); if (!room || room.status !== 'host_reconnecting') return
   const successor = chooseHostSuccessor(room.members, room.hostMemberId)
   if (!successor) return
-  const previous = room.hostMemberId; room.members[previous].role = 'viewer'; successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.playback.revision += 1
+  const previous = room.hostMemberId; room.members[previous].role = 'viewer'; successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.hostReconnectDeadline = null; room.playback.revision += 1
+  clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
   await store.setRoom(room); io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: room.hostMemberId, room: clientRoom(room) }); log('host_transferred', { roomId, hostMemberId: room.hostMemberId })
 }
 
@@ -519,7 +622,7 @@ io.on('connection', async (socket) => {
     }
     await store.setRoom(fresh); io.emit('room:list_changed')
   }
-  socket.on('room:leave', async () => { await disconnectMember(); socket.disconnect(true) })
+  socket.on('room:leave', async (ack) => { await disconnectMember(); await transferHost(roomId); ack?.({ ok: true }); socket.disconnect(true) })
   socket.on('disconnect', disconnectMember)
 })
 

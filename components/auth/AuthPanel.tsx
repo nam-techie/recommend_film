@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { FcGoogle } from 'react-icons/fc'
 
 type AuthMode = 'login' | 'register' | 'forgot'
 
@@ -21,7 +22,8 @@ export function AuthPanel({ initialMode = 'login', compact = false, onAuthentica
   const [showPassword, setShowPassword] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [busyAction, setBusyAction] = useState<'google' | 'form' | null>(null)
+  const busy = busyAction !== null
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -32,16 +34,16 @@ export function AuthPanel({ initialMode = 'login', compact = false, onAuthentica
   ], [confirmation, password])
   const registerValid = name.trim().length >= 2 && /\S+@\S+\.\S+/.test(email) && passwordChecks.every((item) => item.ok) && termsAccepted
 
-  const run = async (action: () => Promise<unknown>) => {
-    setBusy(true); setError(null); setNotice(null)
+  const run = async (action: () => Promise<unknown>, actionType: 'google' | 'form' = 'form') => {
+    setBusyAction(actionType); setError(null); setNotice(null)
     try { await action(); onAuthenticated?.() }
     catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Không thể xác thực tài khoản.') }
-    finally { setBusy(false) }
+    finally { setBusyAction(null) }
   }
 
   const submit = async () => {
     if (mode === 'forgot') {
-      await run(async () => { await resetPassword(email); setNotice('Nếu email này có tài khoản, hướng dẫn đặt lại mật khẩu đã được gửi.'); setBusy(false) })
+      await run(async () => { await resetPassword(email); setNotice('Nếu email này có tài khoản, hướng dẫn đặt lại mật khẩu đã được gửi.') })
       return
     }
     if (mode === 'login') { await run(() => signInWithEmail(email, password)); return }
@@ -63,7 +65,7 @@ export function AuthPanel({ initialMode = 'login', compact = false, onAuthentica
     {mode === 'forgot' && <button type="button" onClick={() => switchMode('login')} className="mb-5 inline-flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200"><ArrowLeft className="h-4 w-4" />Quay lại đăng nhập</button>}
 
     {!configured && <p role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">Dịch vụ tài khoản chưa được cấu hình.</p>}
-    {mode !== 'forgot' && <><Button type="button" variant="outline" disabled={busy || !configured} onClick={() => void run(signInWithGoogle)} className="h-12 w-full border-white/15 bg-white text-slate-900 hover:bg-slate-100"><span className="mr-2 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-black text-blue-600">G</span>Tiếp tục với Google</Button><div className="my-5 flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-white/10" />hoặc dùng email<span className="h-px flex-1 bg-white/10" /></div></>}
+    {mode !== 'forgot' && <><Button type="button" variant="outline" disabled={busy || !configured} onClick={() => void run(signInWithGoogle, 'google')} className="h-12 w-full border-white/15 bg-white font-semibold text-slate-900 shadow-sm hover:bg-slate-100">{busyAction === 'google' ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <FcGoogle className="mr-2 h-5 w-5" />}Tiếp tục với Google</Button><div className="my-5 flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-white/10" />hoặc dùng email<span className="h-px flex-1 bg-white/10" /></div></>}
 
     <form className="space-y-4" noValidate onSubmit={(event) => { event.preventDefault(); void submit() }}>
       {mode === 'register' && <div className="space-y-2"><Label htmlFor="account-name">Tên hiển thị</Label><div className="relative"><UserPlus className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><Input id="account-name" value={name} onChange={(event) => setName(event.target.value.slice(0, 40))} autoComplete="name" placeholder="Tên mọi người sẽ thấy" className="h-12 pl-10" /></div></div>}
@@ -72,7 +74,7 @@ export function AuthPanel({ initialMode = 'login', compact = false, onAuthentica
       {mode === 'register' && <><div className="space-y-2"><Label htmlFor="account-confirmation">Xác nhận mật khẩu</Label><Input id="account-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type={showPassword ? 'text' : 'password'} autoComplete="new-password" className="h-12" /></div><div className="grid gap-1.5 text-xs">{passwordChecks.map((item) => <span key={item.label} className={cn('flex items-center gap-2', item.ok ? 'text-emerald-300' : 'text-slate-500')}><Check className="h-3.5 w-3.5" />{item.label}</span>)}</div><label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs text-slate-300"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-purple-500" /><span>Tôi đồng ý với <Link href="/terms" className="text-purple-300 hover:underline">Điều khoản</Link> và <Link href="/privacy" className="text-purple-300 hover:underline">Chính sách riêng tư</Link>.</span></label></>}
       {error && <p role="alert" className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
       {notice && <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{notice}</p>}
-      <Button type="submit" disabled={busy || !configured || !email || (mode === 'login' && password.length < 6) || (mode === 'register' && !registerValid)} className="h-12 w-full bg-purple-600 hover:bg-purple-500">{busy ? <Loader2 className="h-5 w-5 animate-spin" /> : mode === 'login' ? <><LogIn className="mr-2 h-4 w-4" />Đăng nhập</> : mode === 'register' ? <><UserPlus className="mr-2 h-4 w-4" />Tạo tài khoản</> : <><Mail className="mr-2 h-4 w-4" />Gửi hướng dẫn</>}</Button>
+      <Button type="submit" disabled={busy || !configured || !email || (mode === 'login' && password.length < 6) || (mode === 'register' && !registerValid)} className="h-12 w-full bg-purple-600 hover:bg-purple-500">{busyAction === 'form' ? <Loader2 className="h-5 w-5 animate-spin" /> : mode === 'login' ? <><LogIn className="mr-2 h-4 w-4" />Đăng nhập</> : mode === 'register' ? <><UserPlus className="mr-2 h-4 w-4" />Tạo tài khoản</> : <><Mail className="mr-2 h-4 w-4" />Gửi hướng dẫn</>}</Button>
     </form>
   </div>
 }
