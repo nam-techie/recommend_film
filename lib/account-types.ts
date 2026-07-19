@@ -119,6 +119,16 @@ export interface FriendPresence {
   lastSeen: number
 }
 
+export interface AccountSession {
+  id: string
+  startedAt: number
+  endedAt?: number
+  device: 'desktop' | 'mobile' | 'tablet'
+  browser: string
+  timezone: string
+  locale: string
+}
+
 export interface WatchPartyInviteResult {
   inviteId: string
   inAppStatus: 'sent'

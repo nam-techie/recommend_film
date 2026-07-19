@@ -1,351 +1,91 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Play, Info, Star, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Movie, fetchNewMovies, getImageUrl, fetchMovieDetail } from '@/lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
+import { ChevronLeft, ChevronRight, Info, Play, Star } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { getImageUrl, type Movie } from '@/lib/api'
 
-interface HeroMovie extends Movie {
-  displayRating?: number
-}
+export function HeroSection({ movies }: { movies: Movie[] }) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [paused, setPaused] = useState(false)
 
-export function HeroSection() {
-    const [movies, setMovies] = useState<HeroMovie[]>([])
-    const [currentIndex, setCurrentIndex] = useState(0)
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
-    const [isTransitioning, setIsTransitioning] = useState(false)
+  const changeSlide = useCallback((index: number) => {
+    if (!movies.length) return
+    setCurrentIndex((index + movies.length) % movies.length)
+  }, [movies.length])
 
-    // Load movies from API
-    const loadMovies = useCallback(async () => {
-        try {
-            setLoading(true)
-            setError(null)
-            
-            // Load first 3 pages to get variety of movies
-            const [page1, page2, page3] = await Promise.all([
-                fetchNewMovies(1),
-                fetchNewMovies(2),
-                fetchNewMovies(3)
-            ])
-            
-            const allMovies = [
-                ...(page1.items || []),
-                ...(page2.items || []),
-                ...(page3.items || [])
-            ]
-            
-            // Get top 12 movies for optimization
-            const topMovies = allMovies.slice(0, 12)
-            
-            // Get movie details for content
-            const moviesWithContent = await Promise.all(
-                topMovies.map(async (movie) => {
-                    try {
-                        const detail = await fetchMovieDetail(movie.slug)
-                        return {
-                            ...movie,
-                            content: detail.movie.content,
-                            displayRating: detail.movie.tmdb?.vote_average || (Math.random() * 3 + 6)
-                        }
-                    } catch {
-                        return null
-                    }
-                })
-            )
-            
-            // Filter movies with content
-            const featuredMovies: HeroMovie[] = moviesWithContent
-                .filter((m) => !!m && typeof m.content === 'string' && !!m.poster_url && !!m.thumb_url && !!m.name)
-                .map((m) => ({ ...(m as HeroMovie), content: String(m!.content) }))
-            
-            setMovies(featuredMovies)
-            
-        } catch (err) {
-            console.error('Error loading hero movies:', err)
-            setError('Không thể tải dữ liệu phim')
-        } finally {
-            setLoading(false)
-        }
-    }, [])
+  useEffect(() => {
+    if (paused || movies.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setCurrentIndex((value) => (value + 1) % movies.length)
+    }, 8000)
+    return () => window.clearInterval(timer)
+  }, [movies.length, paused])
 
-    // Handle slide change with smooth transition
-    const changeSlide = useCallback((newIndex: number) => {
-        if (isTransitioning || newIndex === currentIndex) return
-        
-        setIsTransitioning(true)
-        setCurrentIndex(newIndex)
-        
-        setTimeout(() => {
-            setIsTransitioning(false)
-        }, 1000)
-    }, [currentIndex, isTransitioning])
+  if (!movies.length) {
+    return <div className="hero-shell flex items-center justify-center bg-slate-950 text-slate-400">Chưa có phim nổi bật.</div>
+  }
 
-    // Auto-slide functionality
-    useEffect(() => {
-        if (movies.length === 0) return
-        
-        const interval = setInterval(() => {
-            changeSlide((currentIndex + 1) % movies.length)
-        }, 8000)
-        
-        return () => clearInterval(interval)
-    }, [movies.length, currentIndex, changeSlide])
+  const movie = movies[currentIndex]
+  const rating = movie.tmdb?.vote_average || 0
 
-    // Load movies on mount
-    useEffect(() => {
-        loadMovies()
-    }, [loadMovies])
+  return (
+    <section
+      className="hero-shell group"
+      aria-label="Phim nổi bật"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
+      <Image
+        key={movie.slug}
+        src={getImageUrl(movie.thumb_url || movie.poster_url)}
+        alt=""
+        fill
+        priority={currentIndex === 0}
+        quality={78}
+        sizes="100vw"
+        className="object-cover object-center motion-safe:animate-hero-fade"
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#080911] via-[#080911]/75 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#080911] via-transparent to-black/25" />
 
-    const currentMovie = movies[currentIndex]
-
-    const getMovieBackdrop = (movie: HeroMovie) => {
-        return getImageUrl(movie.thumb_url || movie.poster_url)
-    }
-
-    const getMovieGenres = (movie: HeroMovie) => {
-        if (movie.category && movie.category.length > 0) {
-            return movie.category.slice(0, 3).map(cat => cat.name)
-        }
-        return ['Phim mới']
-    }
-
-    const getRatingColor = (rating: number) => {
-        if (rating >= 8) return 'from-green-500 to-emerald-500'
-        if (rating >= 7) return 'from-yellow-500 to-orange-500'
-        if (rating >= 6) return 'from-orange-500 to-red-500'
-        return 'from-red-500 to-pink-500'
-    }
-
-    const getTypeLabel = (type: string) => {
-        switch (type) {
-            case 'single': return 'Phim lẻ'
-            case 'series': return 'Phim bộ'
-            case 'hoathinh': return 'Hoạt hình'
-            default: return 'Phim'
-        }
-    }
-
-    if (loading) {
-        return (
-            <div className="relative h-[50vh] sm:h-[60vh] lg:h-[80vh] min-h-[500px] overflow-hidden rounded-xl lg:rounded-2xl">
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 animate-pulse">
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-white text-lg sm:text-xl animate-pulse">Đang tải phim nổi bật...</div>
-                    </div>
-                </div>
-            </div>
-        )
-    }
-
-    if (error || !currentMovie) {
-        return (
-            <div className="relative h-[50vh] sm:h-[60vh] lg:h-[80vh] min-h-[500px] overflow-hidden rounded-xl lg:rounded-2xl bg-gradient-to-br from-red-900 to-red-800">
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-white text-center px-4">
-                        <p className="text-lg sm:text-xl mb-4">{error || 'Không có dữ liệu phim'}</p>
-                        <Button onClick={loadMovies} variant="outline" className="text-white border-white hover:bg-white/10">
-                            Thử lại
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        )
-    }
-
-    return (
-        <div className="relative h-[50vh] sm:h-[60vh] lg:h-[80vh] min-h-[500px] overflow-hidden rounded-none sm:rounded-xl lg:rounded-2xl group">
-            {/* Background Images with Smooth Transition */}
-            <div className="absolute inset-0">
-                {movies.map((movie, index) => (
-                    <div
-                        key={movie._id}
-                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                            index === currentIndex 
-                                ? 'opacity-100 scale-100' 
-                                : 'opacity-0 scale-105'
-                        }`}
-                    >
-                        <div 
-                            className="w-full h-full bg-cover bg-center bg-no-repeat"
-                            style={{ 
-                                backgroundImage: `url(${getMovieBackdrop(movie)})`,
-                                filter: index === currentIndex ? 'none' : 'blur(2px)'
-                            }}
-                        />
-                    </div>
-                ))}
-            </div>
-            
-            {/* Enhanced Gradient Overlays */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/60 to-black/30" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/20" />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
-            
-            {/* Navigation Arrows */}
-            <button
-                onClick={() => changeSlide((currentIndex - 1 + movies.length) % movies.length)}
-                disabled={isTransitioning}
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 transition-all duration-300 opacity-0 group-hover:opacity-100 disabled:opacity-50"
-            >
-                <ChevronLeft className="h-6 w-6" />
-            </button>
-            
-            <button
-                onClick={() => changeSlide((currentIndex + 1) % movies.length)}
-                disabled={isTransitioning}
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 transition-all duration-300 opacity-0 group-hover:opacity-100 disabled:opacity-50"
-            >
-                <ChevronRight className="h-6 w-6" />
-            </button>
-            
-            {/* Content with Smooth Animation */}
-            <div className="relative h-full flex items-center z-20">
-                <div className="container mx-auto px-4 sm:px-6">
-                    <div className={`max-w-2xl lg:max-w-3xl space-y-4 lg:space-y-6 transition-all duration-1000 ${
-                        isTransitioning ? 'opacity-0 transform translate-y-8' : 'opacity-100 transform translate-y-0'
-                    }`}>
-                        {/* Movie Rating & Info Row */}
-                        <div className="flex flex-wrap items-center gap-3 lg:gap-4 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                            <Badge className={`bg-gradient-to-r ${getRatingColor(currentMovie.displayRating || 0)} text-white border-0 font-bold px-4 py-2 text-sm shadow-lg`}>
-                                <Star className="h-4 w-4 mr-2 fill-current" />
-                                {currentMovie.displayRating?.toFixed(1)}
-                            </Badge>
-                            <Badge variant="default" className="bg-primary/90 hover:bg-primary text-white border-none shadow-lg shadow-primary/20 px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm font-semibold tracking-wide">
-                                {currentMovie.year}
-                            </Badge>
-                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm">
-                                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                                {currentMovie.time || 'Đang cập nhật'}
-                            </Badge>
-                            <Badge variant="outline" className="text-white border-white/50 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-1 sm:py-2 text-[10px] sm:text-sm">
-                                {getTypeLabel(currentMovie.type)}
-                            </Badge>
-                        </div>
-
-                        {/* Movie Title */}
-                        <div className="space-y-2 sm:space-y-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-                            <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-7xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/60 leading-tight line-clamp-2 drop-shadow-xl pb-1">
-                                {currentMovie.name}
-                            </h1>
-                            {currentMovie.origin_name && currentMovie.origin_name !== currentMovie.name && (
-                                <p className="text-sm sm:text-xl lg:text-3xl text-white/80 font-light line-clamp-1 drop-shadow-lg">
-                                    {currentMovie.origin_name}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Genres */}
-                        <div className="flex flex-wrap gap-1.5 sm:gap-2 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
-                            {getMovieGenres(currentMovie).map((genre) => (
-                                <Badge key={genre} variant="outline" className="text-white border-white/40 bg-black/30 backdrop-blur-sm px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs">
-                                    {genre}
-                                </Badge>
-                            ))}
-                        </div>
-
-                        {/* Description */}
-                        {currentMovie.content && (
-                            <p className="text-xs sm:text-base lg:text-lg text-white/90 leading-relaxed line-clamp-2 sm:line-clamp-3 max-w-2xl drop-shadow-lg animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
-                                {currentMovie.content}
-                            </p>
-                        )}
-
-                        <div className="flex items-center gap-2 sm:gap-4 pt-2 sm:pt-4 animate-fade-in-up" style={{ animationDelay: '1s' }}>
-                            <Link href={`/movie/${currentMovie.slug}`}>
-                                <Button 
-                                    size="lg"
-                                    className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-bold px-4 sm:px-8 py-2 sm:py-4 h-9 sm:h-12 text-[11px] sm:text-sm lg:text-lg rounded-full shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-105 active:scale-95 transform border border-white/10"
-                                >
-                                    <Play className="h-4 w-4 sm:h-6 sm:w-6 mr-1.5 sm:mr-3 fill-current" />
-                                    Xem ngay
-                                </Button>
-                            </Link>
-                            
-                            <Link href={`/movie/${currentMovie.slug}`}>
-                                <Button 
-                                    size="lg"
-                                    variant="outline"
-                                    className="text-white border-white/50 hover:bg-white/20 backdrop-blur-sm rounded-full px-4 sm:px-8 py-2 sm:py-4 h-9 sm:h-12 text-[11px] sm:text-sm lg:text-lg transition-all duration-300 hover:scale-105 active:scale-95 transform"
-                                >
-                                    <Info className="h-4 w-4 sm:h-6 w-6 mr-1.5 sm:mr-3" />
-                                    Chi tiết
-                                </Button>
-                            </Link>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Enhanced Slide Indicators */}
-            <div className="absolute bottom-6 left-6 z-30">
-                <div className="flex space-x-3">
-                    {movies.map((_, index) => (
-                        <button
-                            key={index}
-                            onClick={() => changeSlide(index)}
-                            disabled={isTransitioning}
-                            className={`transition-all duration-500 rounded-full ${
-                                index === currentIndex 
-                                    ? 'bg-white w-12 h-3 shadow-lg' 
-                                    : 'bg-white/40 hover:bg-white/60 w-3 h-3'
-                            } disabled:opacity-50`}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* Breakthrough Cinematic Thumbnail Navigator */}
-            <div className="absolute bottom-6 right-6 hidden xl:flex items-end gap-3 z-30 p-3 bg-black/20 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl">
-                {movies.map((movie, index) => {
-                    // Hiển thị phần tử hiện tại và 4 phần tử tiếp theo (hoay vòng)
-                    const isVisible = (index - currentIndex + movies.length) % movies.length <= 4;
-                    if (!isVisible) return null;
-
-                    const isActive = index === currentIndex;
-
-                    return (
-                        <button
-                            key={movie._id}
-                            onClick={() => changeSlide(index)}
-                            disabled={isTransitioning}
-                            className={`group relative overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] rounded-xl cursor-pointer ${
-                                isActive 
-                                    ? 'w-56 h-32 border border-primary/50 shadow-[0_0_30px_-5px_rgba(200,0,223,0.4)]' 
-                                    : 'w-24 h-16 border border-white/20 hover:border-white/50 opacity-60 hover:opacity-100 hover:w-28 hover:h-20'
-                            } disabled:opacity-50`}
-                        >
-                            <img
-                                src={getImageUrl(movie.thumb_url || movie.poster_url)}
-                                alt={movie.name}
-                                className={`absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`}
-                            />
-                            {isActive ? (
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-3">
-                                   <p className="text-white text-sm font-bold truncate drop-shadow-md">{movie.name}</p>
-                                   <div className="flex items-center gap-2 mt-1.5">
-                                      <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-                                          <div className="h-full bg-gradient-to-r from-primary to-secondary w-1/2 rounded-full animate-pulse" />
-                                      </div>
-                                      <span className="text-[10px] uppercase tracking-wider text-primary font-bold">Đang xem</span>
-                                   </div>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 transition-colors duration-300" />
-                                    {/* Tooltip-like title that appears on hover for inactive thumbnails */}
-                                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                        <p className="text-[10px] text-white font-medium truncate">{movie.name}</p>
-                                    </div>
-                                </>
-                            )}
-                        </button>
-                    )
-                })}
-            </div>
+      <div className="relative z-10 flex h-full items-end px-4 pb-14 pt-28 sm:px-8 sm:pb-16 lg:items-center lg:px-12 xl:px-20">
+        <div className="max-w-3xl">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-white sm:text-sm">
+            {rating > 0 && <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 px-2 py-1 text-black"><Star className="h-3.5 w-3.5 fill-current" />{rating.toFixed(1)}</span>}
+            <span className="rounded-md border border-white/35 bg-black/25 px-2 py-1">{movie.quality || 'HD'}</span>
+            <span className="rounded-md border border-white/35 bg-black/25 px-2 py-1">{movie.year}</span>
+            <span className="rounded-md border border-white/35 bg-black/25 px-2 py-1">{movie.episode_current || movie.time}</span>
+          </div>
+          <h1 className="max-w-3xl text-3xl font-black leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl xl:text-7xl">{movie.name}</h1>
+          {movie.origin_name && movie.origin_name !== movie.name && <p className="mt-2 text-sm text-slate-300 sm:text-lg">{movie.origin_name}</p>}
+          {movie.content && <p className="mt-4 line-clamp-3 max-w-2xl text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">{movie.content.replace(/<[^>]*>/g, '')}</p>}
+          <div className="mt-5 flex gap-3">
+            <Button asChild size="lg" className="rounded-full bg-gradient-to-r from-fuchsia-600 to-purple-600 px-6 text-white shadow-lg shadow-fuchsia-950/30 hover:opacity-90">
+              <Link href={`/movie/${movie.slug}?watch=1`}><Play className="h-5 w-5 fill-current" /> Xem ngay</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="rounded-full border-white/25 bg-black/25 px-6 text-white hover:bg-white/10">
+              <Link href={`/movie/${movie.slug}`}><Info className="h-5 w-5" /> Chi tiết</Link>
+            </Button>
+          </div>
         </div>
-    )
+      </div>
+
+      {movies.length > 1 && (
+        <>
+          <button type="button" onClick={() => changeSlide(currentIndex - 1)} aria-label="Phim nổi bật trước" className="hero-arrow left-3 sm:left-6"><ChevronLeft className="h-5 w-5" /></button>
+          <button type="button" onClick={() => changeSlide(currentIndex + 1)} aria-label="Phim nổi bật tiếp theo" className="hero-arrow right-3 sm:right-6"><ChevronRight className="h-5 w-5" /></button>
+          <div className="absolute bottom-5 left-4 z-20 flex gap-2 sm:left-8 lg:left-12 xl:left-20">
+            {movies.map((item, index) => (
+              <button key={item.slug} type="button" onClick={() => changeSlide(index)} aria-label={`Xem ${item.name}`} aria-current={index === currentIndex} className={`h-1.5 rounded-full transition-[width,background-color] ${index === currentIndex ? 'w-9 bg-fuchsia-400' : 'w-3 bg-white/35 hover:bg-white/70'}`} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
 }

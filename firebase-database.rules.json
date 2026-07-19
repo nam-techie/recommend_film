@@ -93,6 +93,15 @@
         ".validate": "!newData.exists() || newData.isNumber()"
       }
     },
+    "accountSessions": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$sessionId": {
+          ".validate": "!newData.exists() || (newData.child('id').val() === $sessionId && newData.child('startedAt').isNumber() && newData.child('device').isString() && newData.child('browser').isString() && newData.child('timezone').isString() && newData.child('locale').isString())"
+        }
+      }
+    },
     "watchPartyInvites": {
       ".indexOn": ["recipientUid", "roomId", "expiresAt"],
       "$inviteId": {
@@ -105,7 +114,7 @@
       "$movieSlug": {
         "$authorUid": {
           ".write": "auth != null && auth.uid === $authorUid",
-          ".validate": "newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 3 && newData.child('content').val().length <= 1200"
+          ".validate": "!newData.exists() || (newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 3 && newData.child('content').val().length <= 1200)"
         }
       }
     },

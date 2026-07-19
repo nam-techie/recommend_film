@@ -20,6 +20,31 @@ const cleanUsername = (value: string) => value.normalize('NFD').replace(/[\u0300
 export const normalizeUsername = (value: string) => cleanUsername(value)
 export const usernameIsValid = (value: string) => /^[a-z0-9_]{3,24}$/.test(value)
 
+function withoutUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutUndefined) as T
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, withoutUndefined(entry)]),
+    ) as T
+  }
+  return value
+}
+
+export function normalizePublicProfile(profile: PublicProfile): PublicProfile {
+  return {
+    ...profile,
+    favoriteGenres: Array.isArray(profile.favoriteGenres) ? profile.favoriteGenres : [],
+    bio: typeof profile.bio === 'string' ? profile.bio : '',
+    isPublic: profile.isPublic !== false,
+    showRecentMovies: profile.showRecentMovies === true,
+    showWatchlist: profile.showWatchlist !== false,
+    showActivity: profile.showActivity !== false,
+    allowWatchPartyInvites: profile.allowWatchPartyInvites !== false,
+  }
+}
+
 function requireDatabase() {
   if (!database) throw new Error('Dịch vụ tài khoản chưa được cấu hình.')
   return database
@@ -54,7 +79,7 @@ export async function ensureAccountProfile(user: User, preferredDisplayName?: st
   const db = requireDatabase()
   const snapshot = await get(ref(db, `publicProfiles/${user.uid}`))
   if (snapshot.exists()) {
-    const existing = snapshot.val() as PublicProfile
+    const existing = normalizePublicProfile(snapshot.val() as PublicProfile)
     const nextDisplayName = preferredDisplayName?.trim().slice(0, 40)
     if (nextDisplayName && existing.displayName !== nextDisplayName && Date.now() - existing.createdAt < 60_000) {
       const updated = { ...existing, displayName: nextDisplayName, updatedAt: Date.now() }
@@ -100,7 +125,7 @@ export async function savePublicProfile(user: User, previous: PublicProfile, nex
     username,
     displayName: next.displayName.trim().slice(0, 40),
     bio: next.bio?.trim().slice(0, 180) || '',
-    favoriteGenres: next.favoriteGenres.slice(0, 8),
+    favoriteGenres: (Array.isArray(next.favoriteGenres) ? next.favoriteGenres : []).slice(0, 8),
     updatedAt: Date.now(),
   }
   const updates: Record<string, unknown> = {
@@ -117,7 +142,7 @@ export async function getProfileByUsername(username: string) {
   const uidSnapshot = await get(ref(db, `usernames/${normalizeUsername(username)}`))
   if (!uidSnapshot.exists()) return null
   const profileSnapshot = await get(ref(db, `publicProfiles/${uidSnapshot.val()}`))
-  return profileSnapshot.exists() ? profileSnapshot.val() as PublicProfile : null
+  return profileSnapshot.exists() ? normalizePublicProfile(profileSnapshot.val() as PublicProfile) : null
 }
 
 export async function saveSettings(uid: string, settings: AccountSettings) {
@@ -168,7 +193,7 @@ export async function removeWatchlistMovie(uid: string, movieSlug: string) {
 
 export async function writeActivity(uid: string, activity: Omit<SocialActivity, 'id' | 'createdAt'>) {
   const db = requireDatabase(); const activityRef = push(ref(db, `activities/${uid}`)); const id = activityRef.key!
-  await set(activityRef, { ...activity, id, createdAt: Date.now() })
+  await set(activityRef, withoutUndefined({ ...activity, id, createdAt: Date.now() }))
 }
 
 export async function saveReview(profile: PublicProfile, input: Pick<SocialReview, 'movieSlug' | 'movieTitle' | 'poster' | 'rating' | 'content' | 'spoiler'>) {
@@ -189,6 +214,20 @@ export async function saveReview(profile: PublicProfile, input: Pick<SocialRevie
   }
   await set(reviewRef, review)
   return review
+}
+
+export async function deleteReview(uid: string, movieSlug: string) {
+  const db = requireDatabase()
+  await update(ref(db), {
+    [`reviews/${movieSlug}/${uid}`]: null,
+    [`reviewLikes/${movieSlug}/${uid}`]: null,
+    [`reviewReplies/${movieSlug}/${uid}`]: null,
+  })
+}
+
+export async function deleteReviewReply(actorUid: string, review: SocialReview, reply: ReviewReply) {
+  if (actorUid !== reply.authorUid && actorUid !== review.authorUid) throw new Error('Bạn không có quyền xóa bình luận này.')
+  await remove(ref(requireDatabase(), `reviewReplies/${review.movieSlug}/${review.authorUid}/${reply.id}`))
 }
 
 export async function toggleFollow(actor: PublicProfile, target: PublicProfile, following: boolean) {

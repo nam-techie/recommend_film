@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -46,6 +46,41 @@ test('host successor is the earliest connected member with stable tie break', ()
     old: { memberId: 'old', joinedAt: 2, connected: false }
   }
   assert.equal(chooseHostSuccessor(members, 'host')?.memberId, 'a')
+})
+
+test('an empty room becomes hostless and the first connected member can claim host', () => {
+  const room = {
+    status: 'empty_grace',
+    hostMemberId: 'old-host',
+    playback: { revision: 4 },
+    members: {
+      'old-host': { memberId: 'old-host', role: 'host', connected: false },
+      first: { memberId: 'first', role: 'viewer', connected: true },
+    },
+  }
+  assert.equal(clearRoomHost(room), 'old-host')
+  assert.equal(room.hostMemberId, '')
+  assert.equal(room.members['old-host'].role, 'viewer')
+  assert.equal(claimVacantHost(room, 'first'), true)
+  assert.equal(room.hostMemberId, 'first')
+  assert.equal(room.members.first.role, 'host')
+  assert.equal(room.status, 'active')
+  assert.equal(room.playback.revision, 5)
+})
+
+test('a connected host cannot be replaced by a later member', () => {
+  const room = {
+    status: 'active',
+    hostMemberId: 'host',
+    playback: { revision: 1 },
+    members: {
+      host: { memberId: 'host', role: 'host', connected: true },
+      guest: { memberId: 'guest', role: 'viewer', connected: true },
+    },
+  }
+  assert.equal(claimVacantHost(room, 'guest'), false)
+  assert.equal(room.hostMemberId, 'host')
+  assert.equal(room.playback.revision, 1)
 })
 
 test('empty room lifecycle hides public rooms immediately and closes after grace period', () => {

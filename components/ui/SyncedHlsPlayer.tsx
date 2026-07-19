@@ -182,15 +182,15 @@ export function SyncedHlsPlayer({
     setControlsVisible(true)
     if (controlsTimerRef.current) window.clearTimeout(controlsTimerRef.current)
     controlsTimerRef.current = null
-    if (!standalone && isPlaying && !isScrubbing && !showReactionTray && !showSettings && playerState === 'playing') {
-      controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2500)
+    if (isPlaying && !isScrubbing && !showReactionTray && !showSettings) {
+      controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 3000)
     }
-  }, [isPlaying, isScrubbing, playerState, showReactionTray, showSettings, standalone])
+  }, [isPlaying, isScrubbing, showReactionTray, showSettings])
 
   useEffect(() => {
-    if (!isPlaying || isScrubbing || playerState !== 'playing') setControlsVisible(true)
+    if (!isPlaying || isScrubbing || showReactionTray || showSettings) setControlsVisible(true)
     scheduleControls()
-  }, [isPlaying, isScrubbing, playerState, scheduleControls])
+  }, [isPlaying, isScrubbing, scheduleControls, showReactionTray, showSettings])
 
   const destroySource = useCallback(() => {
     retryTimersRef.current.forEach((timer) => window.clearTimeout(timer))
@@ -447,7 +447,6 @@ export function SyncedHlsPlayer({
   }, [onToggleFullscreen])
 
   useEffect(() => {
-    if (standalone) return undefined
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
@@ -462,7 +461,7 @@ export function SyncedHlsPlayer({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [commitSeek, currentTime, isHost, scheduleControls, showGestureFeedback, standalone, toggleFullscreen, toggleMute, togglePlayback])
+  }, [commitSeek, currentTime, isHost, scheduleControls, showGestureFeedback, toggleFullscreen, toggleMute, togglePlayback])
 
   const handleSurfaceClick = () => {
     scheduleControls()
@@ -498,20 +497,24 @@ export function SyncedHlsPlayer({
   </div>
 
   const connectionText = !isConnected ? 'Mất kết nối' : roomStatus === 'host_reconnecting' ? 'Host đang kết nối lại' : playerState === 'buffering' ? 'Đang tải dữ liệu' : playerState === 'playing' || playerState === 'ready' ? 'Đã đồng bộ' : 'Đang bắt kịp'
-  const controlsAreVisible = standalone || controlsVisible || !isPlaying
+  const controlsAreVisible = controlsVisible || !isPlaying
   const iconButtonClass = 'h-11 w-11 rounded-full border-white/20 bg-black/45 text-white shadow-none hover:bg-white/20 hover:text-white'
 
   return <div
     ref={rootRef}
-    className={cn('group relative w-full overflow-hidden bg-black text-white', fillContainer ? 'h-full min-h-0' : 'aspect-video h-full')}
-    onPointerMove={standalone ? undefined : scheduleControls}
-    onPointerDown={standalone ? undefined : scheduleControls}
-    onMouseLeave={() => { if (!standalone && isPlaying) scheduleControls() }}
+    className={cn('group relative w-full overflow-hidden bg-black text-white', fillContainer ? 'h-full min-h-0' : 'aspect-video h-full', !controlsAreVisible && 'cursor-none')}
+    onPointerMove={scheduleControls}
+    onPointerDown={scheduleControls}
+    onFocusCapture={scheduleControls}
+    onMouseLeave={() => { if (isPlaying) scheduleControls() }}
   >
       <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="metadata"
       onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (!standalone) void applyRoomPlayback() } }}
       onWaiting={() => setPlayerState('buffering')}
-      onCanPlay={() => setPlayerState((state) => state === 'autoplay_blocked' ? state : 'ready')}
+      onCanPlay={(event) => {
+        const nextState = event.currentTarget.paused ? 'ready' : 'playing'
+        setPlayerState((state) => state === 'autoplay_blocked' ? state : nextState)
+      }}
       onTimeUpdate={(event) => { const video = event.currentTarget; if (!isScrubbing) setCurrentTime(video.currentTime); onProgress?.(video.currentTime, video.duration, 'timeupdate'); if (!isHost && Math.abs(targetTime - video.currentTime) < 0.2) video.playbackRate = 1 }}
       onPlay={() => { setIsPlaying(true); setPlayerState('playing'); emitNative('play') }}
       onPause={() => { setIsPlaying(false); onProgress?.(currentTime, duration, 'pause'); emitNative('pause') }}
@@ -524,7 +527,7 @@ export function SyncedHlsPlayer({
       }}
       onSeeked={(event) => { const time = event.currentTarget.currentTime; setCurrentTime(time); onProgress?.(time, duration, 'seek'); if (suppressSeekEventRef.current) { suppressSeekEventRef.current = false; return } emitNative('seek') }} />
 
-    <button type="button" aria-label={isHost ? 'Nhấn để phát hoặc tạm dừng; nhấn đúp hai bên để tua 10 giây' : 'Hiện điều khiển video'} className="absolute inset-0 z-10 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400" onClick={handleSurfaceClick} onDoubleClick={handleSurfaceDoubleClick} />
+    <button type="button" aria-label={isHost ? 'Nhấn để phát hoặc tạm dừng; nhấn đúp hai bên để tua 10 giây' : 'Hiện điều khiển video'} className={cn('absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400', controlsAreVisible ? 'cursor-default' : 'cursor-none')} onClick={handleSurfaceClick} onDoubleClick={handleSurfaceDoubleClick} />
 
     {!standalone && <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden" aria-live="polite">
       {reactions.map((reaction, index) => <div key={reaction.id} className="watch-party-reaction absolute flex -translate-x-1/2 flex-col items-center" style={{ left: `${16 + (index * 17) % 68}%`, bottom: `${23 + (index * 9) % 33}%` }}>

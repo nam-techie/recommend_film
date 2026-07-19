@@ -159,16 +159,22 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     if (!session?.roomToken) return Promise.reject(new Error('Phiên phòng đã hết hạn.'))
     return request<{ serverUrl: string; participantToken: string }>(`/api/rooms/${roomId}/voice-token`, { method: 'POST', headers: { Authorization: `Bearer ${session.roomToken}` } })
   }, [roomId, session?.roomToken])
-  const leaveRoom = useCallback(() => {
+  const leaveRoom = useCallback(() => new Promise<{ ok: boolean; code?: string }>((resolve) => {
     const socket = socketRef.current
-    clearWatchPartySession(roomId)
-    setRoom(null)
-    setIsConnected(false)
-    setError(null)
-    socketRef.current = null
-    if (socket?.connected) socket.emit('room:leave')
-    socket?.disconnect()
-  }, [roomId])
+    const finish = (result: { ok: boolean; code?: string }) => {
+      clearWatchPartySession(roomId)
+      setRoom(null)
+      setIsConnected(false)
+      setError(null)
+      socketRef.current = null
+      socket?.disconnect()
+      resolve(result)
+    }
+    if (!socket?.connected) { finish({ ok: true }); return }
+    socket.timeout(2500).emit('room:leave', (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => {
+      finish(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack || { ok: true })
+    })
+  }), [roomId])
   const closeRoom = useCallback(() => new Promise<{ ok: boolean; code?: string }>((resolve) => {
     const socket = socketRef.current
     if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }

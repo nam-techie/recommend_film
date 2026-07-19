@@ -10,7 +10,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import nodemailer from 'nodemailer'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -195,7 +195,7 @@ const publicRoom = (room) => ({
   movie: { slug: room.movie.slug, title: room.movie.title, poster: room.movie.poster },
   episode: room.movie.episodes.find((episode) => episode.id === room.playback.episodeId),
   playback: { currentTime: room.playback.currentTime, isPlaying: room.playback.isPlaying },
-  hostName: room.members[room.hostMemberId]?.displayName || 'Host',
+  hostName: room.members[room.hostMemberId]?.displayName || 'Đang chờ host',
   userCount: Object.values(room.members).filter((member) => member.connected).length,
   createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status,
   deleteAt: room.lifecycle?.deleteAt || null,
@@ -477,7 +477,9 @@ const server = http.createServer(async (req, res) => {
       if (room.ownerUid !== owner.uid) return json(res, 403, { code: 'NOT_OWNER', error: 'Tài khoản này không phải chủ phòng.' })
       const member = Object.values(room.members).find((item) => item.uid === owner.uid)
       if (!member) return json(res, 409, { code: 'OWNER_NOT_JOINED', error: 'Hãy tham gia phòng trước khi lấy lại quyền host.' })
-      room.members[room.hostMemberId].role = 'viewer'; member.role = 'host'; room.hostMemberId = member.memberId; room.status = 'active'; room.playback.revision += 1
+      const currentHost = room.members[room.hostMemberId]
+      if (currentHost) currentHost.role = 'viewer'
+      member.role = 'host'; room.hostMemberId = member.memberId; room.status = 'active'; room.playback.revision += 1
       await store.setRoom(room); io.to(room.id).emit('host:changed', { hostMemberId: member.memberId, room: clientRoom(room) })
       return json(res, 200, { ok: true, roomToken: signToken(room, member) })
     }
@@ -517,19 +519,31 @@ io.use(async (socket, next) => {
 const hostTimers = new Map()
 async function saveAndBroadcast(room, event = 'room:snapshot') { await store.setRoom(room); io.to(room.id).emit(event, clientRoom(room)); io.emit('room:list_changed') }
 async function transferHost(roomId) {
-  const room = await store.getRoom(roomId); if (!room || room.status !== 'host_reconnecting') return
+  const room = await store.getRoom(roomId); if (!room || !['host_reconnecting', 'empty_grace'].includes(room.status)) return
   const successor = chooseHostSuccessor(room.members, room.hostMemberId)
-  if (!successor) return
-  const previous = room.hostMemberId; room.members[previous].role = 'viewer'; successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.hostReconnectDeadline = null; room.playback.revision += 1
+  if (!successor) {
+    const previous = clearRoomHost(room)
+    clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
+    await store.setRoom(room)
+    io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: '', room: clientRoom(room) })
+    log('room_became_hostless', { roomId })
+    return
+  }
+  const previous = clearRoomHost(room); successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.hostReconnectDeadline = null; room.playback.revision += 1
   clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
   await store.setRoom(room); io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: room.hostMemberId, room: clientRoom(room) }); log('host_transferred', { roomId, hostMemberId: room.hostMemberId })
 }
 
 io.on('connection', async (socket) => {
   const { roomId, memberId } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
+  const wasEmptyRoom = room.status === 'empty_grace' || connectedMemberCount(room) === 0
   const member = room.members[memberId]; member.connected = true; member.lastSeenAt = Date.now(); member.socketIds = [...new Set([...member.socketIds, socket.id])]; markRoomOccupied(room)
+  const currentHost = room.members[room.hostMemberId]
+  const claimedHost = (!room.hostMemberId || (wasEmptyRoom && !currentHost?.connected)) && claimVacantHost(room, memberId)
+  if (claimedHost) { clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId) }
   if (memberId === room.hostMemberId && room.status === 'host_reconnecting') { room.status = 'active'; room.hostReconnectDeadline = null; clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId); log('host_resumed', { roomId }) }
   socket.join(roomId); socket.join(`${roomId}:${memberId}`); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', clientMember(member)); io.emit('room:list_changed')
+  if (claimedHost) { io.to(roomId).emit('host:changed', { previousHostMemberId: '', hostMemberId: memberId, room: clientRoom(room) }); log('host_claimed', { roomId, hostMemberId: memberId }) }
 
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
   socket.on('sync:request', async (payload, ack) => { const fresh = await store.getRoom(roomId); const response = { serverTime: Date.now(), clientSentAt: payload?.clientSentAt, playback: fresh?.playback }; ack?.(response); socket.emit('sync:pong', response) })
@@ -594,7 +608,8 @@ io.on('connection', async (socket) => {
   socket.on('room:close', async (ack) => {
     const fresh = await store.getRoom(roomId)
     if (!fresh || (fresh.hostMemberId !== memberId && fresh.ownerUid !== fresh.members[memberId]?.uid)) return ack?.({ ok: false, code: 'HOST_ONLY' })
-    await closeRoom(roomId, 'host_closed'); ack?.({ ok: true }); socket.disconnect(true)
+    ack?.({ ok: true })
+    setTimeout(() => { void closeRoom(roomId, 'host_closed') }, 0)
   })
 
   const disconnectMember = async () => {
@@ -609,7 +624,7 @@ io.on('connection', async (socket) => {
     }
     await store.setRoom(fresh); io.emit('room:list_changed')
   }
-  socket.on('room:leave', async (ack) => { await disconnectMember(); await transferHost(roomId); ack?.({ ok: true }); socket.disconnect(true) })
+  socket.on('room:leave', async (ack) => { await disconnectMember(); await transferHost(roomId); ack?.({ ok: true }); setTimeout(() => socket.disconnect(true), 0) })
   socket.on('disconnect', disconnectMember)
 })
 

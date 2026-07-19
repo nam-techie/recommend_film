@@ -70,6 +70,31 @@ export function connectedMemberCount(room) {
   return Object.values(room?.members || {}).filter((member) => member.connected).length
 }
 
+export function clearRoomHost(room) {
+  const previousHostMemberId = room.hostMemberId || ''
+  const previousHost = room.members?.[previousHostMemberId]
+  if (previousHost) previousHost.role = 'viewer'
+  room.hostMemberId = ''
+  room.hostReconnectDeadline = null
+  return previousHostMemberId
+}
+
+export function claimVacantHost(room, memberId) {
+  const member = room?.members?.[memberId]
+  if (!member?.connected) return false
+  const currentHost = room.members?.[room.hostMemberId]
+  if (currentHost?.connected && currentHost.memberId !== memberId) return false
+  for (const candidate of Object.values(room.members || {})) {
+    if (candidate.memberId !== memberId && candidate.role === 'host') candidate.role = 'viewer'
+  }
+  member.role = 'host'
+  room.hostMemberId = memberId
+  room.hostReconnectDeadline = null
+  room.status = 'active'
+  room.playback.revision += 1
+  return true
+}
+
 export function markRoomOccupied(room) {
   room.emptySince = null
   room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), emptySince: null, deleteAt: null }

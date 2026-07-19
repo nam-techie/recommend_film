@@ -1,59 +1,30 @@
-import React from 'react'
-import { Movie } from '@/lib/api'
-import { MovieGrid } from '../ui/MovieGrid'
-import { Button } from '../ui/button'
-import { ChevronRight } from 'lucide-react'
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
+import { MovieCard } from '@/components/ui/MovieCard'
+import type { Movie } from '@/lib/api'
 
 interface MovieSectionProps {
-    title: string
-    viewAllHref?: string
-    movies: Movie[]
-    aspectRatio?: 'portrait' | 'landscape'
-    cardWidth?: 'sm' | 'md' | 'lg'
-    showInfo?: boolean
-    className?: string
+  title: string
+  subtitle?: string
+  href?: string
+  movies: Movie[]
 }
 
-export function MovieSection({
-    title,
-    viewAllHref,
-    movies,
-    aspectRatio = 'portrait',
-    cardWidth = 'md',
-    showInfo = true,
-    className = ''
-}: MovieSectionProps) {
-    if (!movies.length) return null
+export function MovieSection({ title, subtitle, href, movies }: MovieSectionProps) {
+  if (!movies.length) return null
 
-    return (
-        <section className={`space-y-6 ${className}`}>
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <h2 className="text-2xl font-bold tracking-tight text-white">
-                        {title}
-                    </h2>
-                </div>
-                
-                {viewAllHref && (
-                    <Link href={viewAllHref}>
-                        <Button 
-                            variant="ghost" 
-                            className="text-white/70 hover:text-white"
-                        >
-                            Xem tất cả
-                            <ChevronRight className="ml-2 h-4 w-4" />
-                        </Button>
-                    </Link>
-                )}
-            </div>
-
-            <MovieGrid
-                movies={movies}
-                aspectRatio={aspectRatio}
-                cardWidth={cardWidth}
-                showInfo={showInfo}
-            />
-        </section>
-    )
-} 
+  return (
+    <section className="deferred-section">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        </div>
+        {href && <Link href={href} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-400 hover:text-white">Xem tất cả <ArrowRight className="h-4 w-4" /></Link>}
+      </div>
+      <div className="movie-rail">
+        {movies.map((movie) => <MovieCard key={movie._id || movie.slug} movie={movie} />)}
+      </div>
+    </section>
+  )
+}

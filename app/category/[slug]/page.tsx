@@ -1,7 +1,8 @@
 import { Metadata } from 'next'
-import { CategoryDetailPage } from '@/components/pages/CategoryDetailPage'
-import { getCategoryInfo, getAllCategories } from '@/lib/api'
 import { notFound } from 'next/navigation'
+import { CatalogPage } from '@/components/pages/CatalogPage'
+import { parseCatalogQuery } from '@/lib/catalog'
+import { fetchMoviesByCategorySlug, getAllCategories, getCategoryInfo } from '@/lib/api'
 
 interface PageProps {
   params: { slug: string }
@@ -98,20 +99,11 @@ export async function generateStaticParams() {
 }
 
 export default async function CategoryPage({ params, searchParams }: PageProps) {
-  const { slug } = params
-  const page = Number(searchParams.page) || 1
-  
-  // Validate category exists
-  const category = getCategoryInfo(slug)
-  
-  if (!category) {
-    notFound()
-  }
-
-  return (
-    <CategoryDetailPage 
-      categorySlug={slug} 
-      initialPage={page}
-    />
-  )
-} 
+  const query = parseCatalogQuery(searchParams)
+  const category = getCategoryInfo(params.slug)
+  if (!category) notFound()
+  const response = await fetchMoviesByCategorySlug(params.slug, query.page, query.limit)
+  const items = response.data?.items || []
+  const pagination = response.data?.params?.pagination
+  return <CatalogPage title={category.name} description={category.description} movies={items} query={query} totalItems={pagination?.totalItems || items.length} totalPages={pagination?.totalPages || 1} />
+}
