@@ -1,5 +1,5 @@
 export type WatchPartySyncCapability = 'full' | 'limited'
-export type WatchPartyRoomStatus = 'active' | 'host_reconnecting' | 'closed'
+export type WatchPartyRoomStatus = 'active' | 'host_reconnecting' | 'empty_grace' | 'closing' | 'closed'
 export type WatchPartyAccessMode = 'public' | 'link_only' | 'password'
 
 export interface WatchPartyEpisode {
@@ -33,6 +33,14 @@ export interface WatchPartyPlayback {
 export interface WatchPartyPlaybackPolicy {
   autoNext: boolean
 }
+export interface WatchPartyLifecycle {
+  emptySince?: number | null
+  deleteAt?: number | null
+  hardExpiresAt: number
+  closedAt?: number
+  expiryWarningSentAt?: number
+  closeReason?: 'host_closed' | 'empty_timeout' | 'hard_expired' | 'replaced'
+}
 export type WatchPartyEpisodeChangeReason = 'episode_list' | 'previous' | 'next' | 'auto_next'
 export interface WatchPartyEpisodeChangeIntent {
   episodeId: string
@@ -54,14 +62,14 @@ export interface WatchPartyRoom {
   playback: WatchPartyPlayback; members: Record<string, WatchPartyMember>; messages: WatchPartyMessage[]
   playbackPolicy: WatchPartyPlaybackPolicy
   hostMemberId: string; controlMode: 'host_only'; createdAt: number; expiresAt: number
-  status: WatchPartyRoomStatus; emptySince?: number | null; voiceEnabled: boolean
+  status: WatchPartyRoomStatus; emptySince?: number | null; lifecycle: WatchPartyLifecycle; voiceEnabled: boolean
 }
 export interface WatchPartyRoomPreview {
   id: string; roomName: string; accessMode: WatchPartyAccessMode; requiresPassword: boolean; syncCapability: WatchPartySyncCapability
   movie: { slug: string; title: string; poster?: string }; episode?: WatchPartyEpisode
   playback: { currentTime: number; isPlaying: boolean }; hostName: string; userCount: number
   playbackPolicy?: WatchPartyPlaybackPolicy
-  createdAt: number; expiresAt: number; status: WatchPartyRoomStatus
+  createdAt: number; expiresAt: number; status: WatchPartyRoomStatus; deleteAt?: number | null
 }
 export interface WatchPartySession {
   roomToken: string; member: WatchPartyMember; roomId: string; expiresAt: number
@@ -69,6 +77,7 @@ export interface WatchPartySession {
 export interface CreateRoomPayload {
   roomName?: string; accessMode: WatchPartyAccessMode; password?: string
   movie: WatchPartyRoom['movie']; initialEpisodeId?: string; playbackPolicy?: WatchPartyPlaybackPolicy
+  replaceActiveRoom?: boolean; expectedActiveRoomId?: string
 }
 export interface PlaybackIntent {
   episodeId: string; currentTime: number; isPlaying: boolean

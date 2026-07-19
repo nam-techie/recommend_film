@@ -1,4 +1,5 @@
 export type WatchlistStatus = 'planned' | 'watching' | 'completed' | 'favorite'
+export type LibraryWatchStatus = 'watching' | 'completed' | null
 
 export interface PublicProfile {
   uid: string
@@ -37,6 +38,9 @@ export interface WatchlistMovie {
   poster?: string
   year?: number
   status: WatchlistStatus
+  favorite?: boolean
+  watchLater?: boolean
+  watchStatus?: LibraryWatchStatus
   addedAt: number
   updatedAt: number
 }
@@ -86,7 +90,7 @@ export interface SocialActivity {
 
 export interface AccountNotification {
   id: string
-  type: 'follow' | 'review_like' | 'review_reply' | 'watch_party_invite'
+  type: 'follow' | 'friend_request' | 'friend_accepted' | 'review_like' | 'review_reply' | 'watch_party_invite'
   actorUid: string
   actorName: string
   actorUsername?: string
@@ -96,6 +100,39 @@ export interface AccountNotification {
   roomId?: string
   read: boolean
   createdAt: number
+}
+
+export interface FriendshipRecord {
+  uid: string
+  displayName: string
+  username: string
+  avatar?: string
+  createdAt: number
+}
+
+export interface FriendRequest extends FriendshipRecord {
+  direction?: 'incoming' | 'outgoing'
+}
+
+export interface FriendPresence {
+  online: boolean
+  lastSeen: number
+}
+
+export interface AccountSession {
+  id: string
+  startedAt: number
+  endedAt?: number
+  device: 'desktop' | 'mobile' | 'tablet'
+  browser: string
+  timezone: string
+  locale: string
+}
+
+export interface WatchPartyInviteResult {
+  inviteId: string
+  inAppStatus: 'sent'
+  emailStatus: 'sent' | 'skipped' | 'failed'
 }
 
 export const DEFAULT_PRIVACY: AccountPrivacy = {

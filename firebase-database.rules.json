@@ -46,12 +46,75 @@
         "$followerUid": { ".write": "auth != null && (auth.uid === $followerUid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
       }
     },
+    "friendRequests": {
+      "$recipientUid": {
+        ".read": "auth != null && auth.uid === $recipientUid",
+        "$senderUid": {
+          ".write": "auth != null && ((auth.uid === $senderUid && (!data.exists() || !newData.exists())) || auth.uid === $recipientUid)",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $senderUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "sentFriendRequests": {
+      "$senderUid": {
+        ".read": "auth != null && auth.uid === $senderUid",
+        "$recipientUid": {
+          ".write": "auth != null && (auth.uid === $senderUid || (!newData.exists() && auth.uid === $recipientUid))",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $recipientUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "friendships": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$friendUid": {
+          ".write": "auth != null && (auth.uid === $uid || auth.uid === $friendUid) && (!newData.exists() || root.child('friendRequests').child($uid).child($friendUid).exists() || root.child('friendRequests').child($friendUid).child($uid).exists())",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $friendUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "blocks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$blockedUid": { ".write": "auth != null && auth.uid === $uid", ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "presenceConnections": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid",
+        "$connectionId": { ".validate": "!newData.exists() || newData.val() === true" }
+      }
+    },
+    "presenceLastSeen": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('friendships').child($uid).child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "!newData.exists() || newData.isNumber()"
+      }
+    },
+    "accountSessions": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$sessionId": {
+          ".validate": "!newData.exists() || (newData.child('id').val() === $sessionId && newData.child('startedAt').isNumber() && newData.child('device').isString() && newData.child('browser').isString() && newData.child('timezone').isString() && newData.child('locale').isString())"
+        }
+      }
+    },
+    "watchPartyInvites": {
+      ".indexOn": ["recipientUid", "roomId", "expiresAt"],
+      "$inviteId": {
+        ".read": "auth != null && (data.child('inviterUid').val() === auth.uid || data.child('recipientUid').val() === auth.uid)",
+        ".write": false
+      }
+    },
     "reviews": {
       ".read": true,
       "$movieSlug": {
         "$authorUid": {
           ".write": "auth != null && auth.uid === $authorUid",
-          ".validate": "newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 10 && newData.child('content').val().length <= 1200"
+          ".validate": "!newData.exists() || (newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 3 && newData.child('content').val().length <= 1200)"
         }
       }
     },

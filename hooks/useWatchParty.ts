@@ -19,13 +19,16 @@ const apiUrl = () => normalizeServiceUrl(process.env.NEXT_PUBLIC_WATCH_PARTY_API
 const socketUrl = () => normalizeServiceUrl(process.env.NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL || apiUrl())
 const sessionKey = (roomId: string) => `watch_party_session:${roomId.toUpperCase()}`
 
+export class WatchPartyApiError extends Error {
+  constructor(message: string, public code: string, public details?: Record<string, unknown>) { super(message); this.name = 'WatchPartyApiError' }
+}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = apiUrl(); if (!base) throw new Error('Dịch vụ Xem Chung chưa được cấu hình.')
   let response: Response
   try { response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } }) }
   catch { throw new Error('Không kết nối được máy chủ Xem Chung. Hãy kiểm tra socket server.') }
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.error || 'Không thể kết nối dịch vụ Xem Chung.')
+  if (!response.ok) throw new WatchPartyApiError(data.error || 'Không thể kết nối dịch vụ Xem Chung.', data.code || 'REQUEST_FAILED', data)
   return data
 }
 
@@ -54,6 +57,8 @@ export async function joinWatchParty(roomId: string, displayName: string, passwo
 }
 export const getWatchPartyPreview = (roomId: string) => request<WatchPartyRoomPreview>(`/api/rooms/${roomId}/preview`)
 export const listWatchParties = (search = '') => request<{ rooms: WatchPartyRoomPreview[] }>(`/api/rooms?limit=24&search=${encodeURIComponent(search)}`)
+export const getActiveWatchParty = (firebaseIdToken: string) => request<{ room: WatchPartyRoomPreview | null }>('/api/users/me/active-room', { headers: { Authorization: `Bearer ${firebaseIdToken}` } })
+export const closeOwnedWatchParty = (roomId: string, firebaseIdToken: string) => request<{ ok: true }>(`/api/rooms/${roomId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${firebaseIdToken}` } })
 export const probeWatchPartyMedia = (source: Pick<WatchPartyEpisode, 'linkM3u8' | 'linkEmbed'>) => request<{ hlsReachable: boolean; contentType?: string; fallbackAvailable: boolean; capability: WatchPartyEpisode['capability'] }>('/api/media/probe', { method: 'POST', body: JSON.stringify(source) })
 
 export function useWatchParty(roomId: string, session: WatchPartySession | null) {
@@ -61,6 +66,7 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
   const [room, setRoom] = useState<WatchPartyRoom | null>(null); const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null); const [clockOffset, setClockOffset] = useState(0)
   const [commandError, setCommandError] = useState<string | null>(null)
+  const [expiryWarningAt, setExpiryWarningAt] = useState<number | null>(null)
   const [reactions, setReactions] = useState<WatchPartyReaction[]>([])
 
   useEffect(() => {
@@ -91,12 +97,14 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const onReaction = (reaction: WatchPartyReaction) => { if (!active) return; setReactions((current) => [...current.slice(-11), reaction]); const timer = window.setTimeout(() => { reactionTimers.delete(timer); if (active) setReactions((current) => current.filter((item) => item.id !== reaction.id)) }, 3000); reactionTimers.add(timer) }
     const onVoicePermission = ({ enabled }: { enabled: boolean }) => { if (active) setRoom((current) => current ? { ...current, voiceEnabled: enabled } : current) }
     const onPolicy = ({ playbackPolicy }: Pick<WatchPartyRoom, 'playbackPolicy'>) => { if (active) setRoom((current) => current ? { ...current, playbackPolicy } : current) }
-    const onClosed = () => { if (active) setError('Phòng đã đóng.') }
+    const onExpiryWarning = ({ expiresAt }: { expiresAt: number }) => { if (active) setExpiryWarningAt(expiresAt) }
+    const onClosed = ({ reason }: { reason?: string } = {}) => { if (active) { clearWatchPartySession(roomId); setRoom(null); setError(reason === 'empty_timeout' ? 'Phòng đã tự đóng vì không có người xem trong 5 phút.' : reason === 'hard_expired' ? 'Phòng đã hết thời gian hoạt động tối đa.' : 'Phòng đã được host kết thúc.') } }
     socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
     socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
     socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
     socket.on('voice:permission_changed', onVoicePermission)
     socket.on('room:policy_changed', onPolicy)
+    socket.on('room:expiry_warning', onExpiryWarning)
     const heartbeat = window.setInterval(() => { socket.emit('heartbeat:user'); syncClock() }, 30_000)
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket.emit('room:resume'); syncClock() } }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -151,7 +159,27 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     if (!session?.roomToken) return Promise.reject(new Error('Phiên phòng đã hết hạn.'))
     return request<{ serverUrl: string; participantToken: string }>(`/api/rooms/${roomId}/voice-token`, { method: 'POST', headers: { Authorization: `Bearer ${session.roomToken}` } })
   }, [roomId, session?.roomToken])
-  const leaveRoom = useCallback(() => { socketRef.current?.emit('room:leave'); clearWatchPartySession(roomId) }, [roomId])
+  const leaveRoom = useCallback(() => new Promise<{ ok: boolean; code?: string }>((resolve) => {
+    const socket = socketRef.current
+    const finish = (result: { ok: boolean; code?: string }) => {
+      clearWatchPartySession(roomId)
+      setRoom(null)
+      setIsConnected(false)
+      setError(null)
+      socketRef.current = null
+      socket?.disconnect()
+      resolve(result)
+    }
+    if (!socket?.connected) { finish({ ok: true }); return }
+    socket.timeout(2500).emit('room:leave', (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => {
+      finish(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack || { ok: true })
+    })
+  }), [roomId])
+  const closeRoom = useCallback(() => new Promise<{ ok: boolean; code?: string }>((resolve) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }
+    socket.timeout(5000).emit('room:close', (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => { if (!timeoutError && ack?.ok) clearWatchPartySession(roomId); resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack) })
+  }), [roomId])
   const memberId = session?.member.memberId
-  return useMemo(() => ({ room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, memberId])
+  return useMemo(() => ({ room, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, memberId])
 }

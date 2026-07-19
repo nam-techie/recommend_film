@@ -1,7 +1,8 @@
 import { Metadata } from 'next'
-import { CountryDetailPage } from '@/components/pages/CountryDetailPage'
-import { fetchCountries } from '@/lib/api'
 import { notFound } from 'next/navigation'
+import { CatalogPage } from '@/components/pages/CatalogPage'
+import { parseCatalogQuery } from '@/lib/catalog'
+import { fetchCountries, fetchGenres, fetchMoviesByCountry } from '@/lib/api'
 
 interface PageProps {
   params: { slug: string }
@@ -82,8 +83,20 @@ export async function generateStaticParams() {
   }
 }
 
-export default function CountryPage({ params, searchParams }: PageProps) {
-  const page = searchParams.page ? parseInt(searchParams.page as string) || 1 : 1
-  
-  return <CountryDetailPage countrySlug={params.slug} initialPage={page} />
-} 
+export default async function CountryPage({ params, searchParams }: PageProps) {
+  const query = parseCatalogQuery(searchParams)
+  const [countries, genres] = await Promise.all([fetchCountries(), fetchGenres()])
+  const country = countries.find((item) => item.slug === params.slug)
+  if (!country) notFound()
+  const response = await fetchMoviesByCountry(params.slug, {
+    page: query.page,
+    limit: query.limit,
+    category: query.genre !== 'all' ? query.genre : undefined,
+    year: query.year !== 'all' ? query.year : undefined,
+    sort_field: query.sortField,
+    sort_type: query.sortType,
+  })
+  const items = response.data?.items || []
+  const pagination = response.data?.params?.pagination
+  return <CatalogPage title={`Phim ${country.name}`} description={`Khám phá phim ${country.name} mới và đáng xem tại CineMind.`} movies={items} query={query} totalItems={pagination?.totalItems || items.length} totalPages={pagination?.totalPages || 1} genres={genres} />
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -48,6 +48,60 @@ test('host successor is the earliest connected member with stable tie break', ()
   assert.equal(chooseHostSuccessor(members, 'host')?.memberId, 'a')
 })
 
+test('an empty room becomes hostless and the first connected member can claim host', () => {
+  const room = {
+    status: 'empty_grace',
+    hostMemberId: 'old-host',
+    playback: { revision: 4 },
+    members: {
+      'old-host': { memberId: 'old-host', role: 'host', connected: false },
+      first: { memberId: 'first', role: 'viewer', connected: true },
+    },
+  }
+  assert.equal(clearRoomHost(room), 'old-host')
+  assert.equal(room.hostMemberId, '')
+  assert.equal(room.members['old-host'].role, 'viewer')
+  assert.equal(claimVacantHost(room, 'first'), true)
+  assert.equal(room.hostMemberId, 'first')
+  assert.equal(room.members.first.role, 'host')
+  assert.equal(room.status, 'active')
+  assert.equal(room.playback.revision, 5)
+})
+
+test('a connected host cannot be replaced by a later member', () => {
+  const room = {
+    status: 'active',
+    hostMemberId: 'host',
+    playback: { revision: 1 },
+    members: {
+      host: { memberId: 'host', role: 'host', connected: true },
+      guest: { memberId: 'guest', role: 'viewer', connected: true },
+    },
+  }
+  assert.equal(claimVacantHost(room, 'guest'), false)
+  assert.equal(room.hostMemberId, 'host')
+  assert.equal(room.playback.revision, 1)
+})
+
+test('empty room lifecycle hides public rooms immediately and closes after grace period', () => {
+  const room = { accessMode: 'public', status: 'active', expiresAt: 50_000, members: { host: { connected: false } } }
+  markRoomEmpty(room, 1_000, 300_000)
+  assert.equal(room.status, 'empty_grace')
+  assert.equal(room.lifecycle.deleteAt, 301_000)
+  assert.equal(isPublicRoomDiscoverable(room), false)
+  assert.equal(shouldCloseEmptyRoom(room, 300_999), false)
+  assert.equal(shouldCloseEmptyRoom(room, 301_000), true)
+})
+
+test('rejoining during grace restores room visibility and cancels deletion', () => {
+  const room = { accessMode: 'public', status: 'empty_grace', expiresAt: 50_000, members: { host: { connected: true } }, lifecycle: { hardExpiresAt: 50_000, emptySince: 1_000, deleteAt: 301_000 } }
+  markRoomOccupied(room)
+  assert.equal(room.status, 'active')
+  assert.equal(room.lifecycle.deleteAt, null)
+  assert.equal(connectedMemberCount(room), 1)
+  assert.equal(isPublicRoomDiscoverable(room), true)
+})
+
 test('voice permission remains authoritative room state without duplicating media state', () => {
   const room = { voiceEnabled: true, members: { host: {}, guest: {} } }
   applyVoicePermission(room, false)
@@ -79,4 +133,14 @@ test('CORS allows configured web origins and local development without allowing 
   assert.equal(isAllowedClientOrigin('http://localhost:3000', origins), true)
   assert.equal(isAllowedClientOrigin('http://127.0.0.1:3000', origins), true)
   assert.equal(isAllowedClientOrigin('https://malicious.example', origins), false)
+})
+
+test('room invites require a non-anonymous authenticated room member', () => {
+  const room = { members: {
+    account: { uid: 'uid-a', isAnonymous: false },
+    anonymous: { uid: 'uid-b', isAnonymous: true },
+  } }
+  assert.equal(findEligibleInvitingMember(room, 'uid-a'), room.members.account)
+  assert.equal(findEligibleInvitingMember(room, 'uid-b'), null)
+  assert.equal(findEligibleInvitingMember(room, 'missing'), null)
 })

@@ -1,5 +1,7 @@
 import { Metadata } from 'next'
-import { TvSeriesPage } from '@/components/pages/TvSeriesPage'
+import { CatalogPage } from '@/components/pages/CatalogPage'
+import { parseCatalogQuery } from '@/lib/catalog'
+import { fetchCountries, fetchGenres, fetchMoviesByFilter } from '@/lib/api'
 
 export const metadata: Metadata = {
   title: 'Phim Bộ - MovieWiser',
@@ -32,6 +34,14 @@ export const metadata: Metadata = {
   }
 }
 
-export default function TvSeries() {
-  return <TvSeriesPage />
-} 
+export default async function TvSeries({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+  const query = parseCatalogQuery(searchParams)
+  const [genres, countries, response] = await Promise.all([
+    fetchGenres(),
+    fetchCountries(),
+    fetchMoviesByFilter({ type_list: 'phim-bo', page: query.page, limit: query.limit, country: query.country !== 'all' ? query.country : undefined, category: query.genre !== 'all' ? query.genre : undefined, year: query.year !== 'all' ? query.year : undefined, sort_field: query.sortField as 'modified.time' | '_id' | 'year', sort_type: query.sortType }),
+  ])
+  const items = response.data?.items || []
+  const pagination = response.data?.params?.pagination
+  return <CatalogPage title="Phim bộ" description="Series mới từ Hàn Quốc, Trung Quốc, Âu Mỹ và nhiều quốc gia khác." movies={items} query={query} totalItems={pagination?.totalItems || items.length} totalPages={pagination?.totalPages || 1} genres={genres} countries={countries} />
+}

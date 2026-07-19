@@ -16,8 +16,10 @@ const overpassMono = Overpass_Mono({
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/components/auth/AuthProvider'
 import { AppChrome } from '@/components/AppChrome'
+import { getNavigationData } from '@/lib/navigation-data'
 
 export const metadata: Metadata = {
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
     title: "CineMind - Cinema meets Mind",
     description: "Khám phá bộ phim hoàn hảo dựa trên tâm trạng của bạn. Nơi Cinema meets Mind.",
     keywords: "phim, movie, cinema, entertainment, AI recommendation, mood-based",
@@ -44,11 +46,12 @@ export const viewport: Viewport = {
     viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
+    const navigation = await getNavigationData()
     return (
         <html lang="vi" suppressHydrationWarning className="dark">
             <body
@@ -61,7 +64,7 @@ export default function RootLayout({
                     disableTransitionOnChange
                     forcedTheme="dark"
                 >
-                    <AppChrome>{children}</AppChrome>
+                    <AppChrome genres={navigation.genres} countries={navigation.countries}>{children}</AppChrome>
                 </ThemeProvider></AuthProvider>
             </body>
         </html>

@@ -230,7 +230,7 @@ export async function fetchMovieDetail(slug: string): Promise<MovieDetail> {
   }
 }
 
-export async function searchMovies(params: SearchParams): Promise<ApiResponse<any>> {
+export async function searchMovies(params: SearchParams, options: { signal?: AbortSignal } = {}): Promise<ApiResponse<any>> {
   try {
     let endpoint = '/v1/api/danh-sach';
     let queryParams: any = { ...params };
@@ -254,7 +254,10 @@ export async function searchMovies(params: SearchParams): Promise<ApiResponse<an
       }
     }
 
-    const response = await fetch(buildApiUrl(endpoint, queryParams))
+    const response = await fetch(buildApiUrl(endpoint, queryParams), {
+      signal: options.signal,
+      next: { revalidate: 300 }
+    })
     if (!response.ok) throw new Error('Failed to search movies')
     return normalizeMovieListResponse(await response.json())
   } catch (error) {
@@ -297,7 +300,9 @@ export async function fetchMoviesByCategory(
   params: Omit<SearchParams, 'category'> = {}
 ): Promise<CategoryApiResponse> {
   try {
-    const response = await fetch(buildApiUrl(`/v1/api/the-loai/${categorySlug}`, params))
+    const response = await fetch(buildApiUrl(`/v1/api/the-loai/${categorySlug}`, params), {
+      next: { revalidate: 300 }
+    })
     if (!response.ok) throw new Error('Failed to fetch movies by category')
     return await response.json()
   } catch (error) {
@@ -311,7 +316,9 @@ export async function fetchMoviesByCountry(
   params: Omit<SearchParams, 'country'> = {}
 ): Promise<CategoryApiResponse> {
   try {
-    const response = await fetch(buildApiUrl(`/v1/api/quoc-gia/${countrySlug}`, params))
+    const response = await fetch(buildApiUrl(`/v1/api/quoc-gia/${countrySlug}`, params), {
+      next: { revalidate: 300 }
+    })
     if (!response.ok) throw new Error('Failed to fetch movies by country')
     return await response.json()
   } catch (error) {
@@ -336,7 +343,7 @@ export async function fetchMoviesByYear(
 
 export async function fetchGenres(): Promise<Genre[]> {
   try {
-    const response = await fetch(buildApiUrl('/the-loai'))
+    const response = await fetch(buildApiUrl('/the-loai'), { next: { revalidate: 3600 } })
     if (!response.ok) throw new Error('Failed to fetch genres')
     return extractLookupItems<Genre>(await response.json())
   } catch (error) {
@@ -347,7 +354,7 @@ export async function fetchGenres(): Promise<Genre[]> {
 
 export async function fetchCountries(): Promise<Country[]> {
   try {
-    const response = await fetch(buildApiUrl('/quoc-gia'))
+    const response = await fetch(buildApiUrl('/quoc-gia'), { next: { revalidate: 3600 } })
     if (!response.ok) throw new Error('Failed to fetch countries')
     const data = await response.json()
     // Current API wraps lookup values in data.items.

@@ -1,63 +1,42 @@
-import { Metadata } from 'next'
-import { MovieDetailPage } from '@/components/pages/MovieDetailPage'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { MovieDetailPage } from '@/components/pages/MovieDetailPage'
+import { getImageUrl } from '@/lib/api'
+import { getMoviePageData } from '@/lib/movie-data'
 
-interface PageProps {
-  params: {
-    slug: string
-  }
+interface PageProps { params: { slug: string } }
+
+export const revalidate = 600
+
+function plainText(value?: string) {
+  return (value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-// Generate metadata for the movie page
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { slug } = params
-  
-  // Create a more readable title from slug
-  const title = slug
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-
-  return {
-    title: `${title} - MovieWiser`,
-    description: `Xem phim ${title} vietsub chất lượng cao tại MovieWiser. Phim HD với nhiều server và tốc độ tải nhanh.`,
-    keywords: [
-      title,
-      'xem phim online',
-      'phim vietsub',
-      'phim HD',
-      'MovieWiser',
-      'phim hay'
-    ],
-    openGraph: {
-      title: `${title} - MovieWiser`,
-      description: `Xem phim ${title} vietsub chất lượng cao tại MovieWiser.`,
-      type: 'video.movie',
-      url: `https://moviewiser.com/movie/${slug}`,
-      siteName: 'MovieWiser'
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: `${title} - MovieWiser`,
-      description: `Xem phim ${title} vietsub chất lượng cao tại MovieWiser.`,
-    },
-    alternates: {
-      canonical: `https://moviewiser.com/movie/${slug}`
+  try {
+    const detail = await getMoviePageData(params.slug)
+    const movie = detail.movie
+    const description = plainText(movie.content).slice(0, 155) || `Xem ${movie.name} chất lượng cao tại CineMind.`
+    const image = getImageUrl(movie.thumb_url || movie.poster_url)
+    return {
+      title: `${movie.name}${movie.origin_name ? ` (${movie.origin_name})` : ''} - CineMind`,
+      description,
+      alternates: { canonical: `/movie/${movie.slug}` },
+      openGraph: { title: movie.name, description, type: 'video.movie', images: [{ url: image, alt: movie.name }] },
+      twitter: { card: 'summary_large_image', title: movie.name, description, images: [image] },
     }
+  } catch {
+    return { title: 'Phim không tồn tại - CineMind' }
   }
 }
 
-export default function MoviePage({ params }: PageProps) {
-  const { slug } = params
-
-  // Validate slug format (basic check)
-  if (!slug || slug.length < 2) {
+export default async function MoviePage({ params }: PageProps) {
+  if (!params.slug || params.slug.length < 2) notFound()
+  try {
+    const detail = await getMoviePageData(params.slug)
+    if (!detail?.movie || detail.status === false) notFound()
+    return <MovieDetailPage slug={params.slug} initialDetail={detail} />
+  } catch {
     notFound()
   }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
-      <MovieDetailPage slug={slug} />
-    </div>
-  )
 }

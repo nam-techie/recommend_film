@@ -1,56 +1,55 @@
-'use client'
-
-import React from 'react'
+import { DeferredContinueWatching } from '@/components/sections/DeferredContinueWatching'
 import { HeroSection } from '@/components/sections/HeroSection'
-import { FeaturedMovies } from '@/components/sections/FeaturedMovies'
-import { KoreanMovies } from '@/components/sections/KoreanMovies'
-import { ChineseMovies } from '@/components/sections/ChineseMovies'
-import { USUKMovies } from '@/components/sections/USUKMovies'
-import { VietnameseMovies } from '@/components/sections/VietnameseMovies'
-import { ActionMovies } from '@/components/sections/ActionMovies'
-import { AnimeMovies } from '@/components/sections/AnimeMovies'
-import { NewReleases } from '@/components/sections/NewReleases'
-import { GenreSection } from '@/components/sections/GenreSection'
+import { MovieSection } from '@/components/sections/MovieSection'
 import { ScrollToTop } from '@/components/ui/ScrollToTop'
-import { ContinueWatching } from '@/components/sections/ContinueWatching'
+import type { HomePageData } from '@/lib/home-data'
+import Link from 'next/link'
+import { ArrowRight, Sparkles } from 'lucide-react'
 
-export function HomePage() {
-    return (
-        <>
-            <div className="space-y-8 sm:space-y-12 lg:space-y-16">
-                <div className="w-full sm:container sm:mx-auto sm:px-4 sm:pt-4">
-                    <HeroSection />
+export function HomePage({ data }: { data: HomePageData }) {
+  return (
+    <div className="pb-8">
+      <HeroSection movies={data.hero} />
+
+      <div className="mx-auto mt-8 max-w-[1600px] space-y-10 px-4 sm:mt-12 sm:px-6 lg:space-y-14 lg:px-8">
+        <DeferredContinueWatching />
+
+        {data.sections.map((section) => (
+          <MovieSection key={section.id} {...section} />
+        ))}
+
+        {data.genres.length > 0 && (
+          <section className="deferred-section rounded-3xl border border-white/[0.07] bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-fuchsia-300">
+                  <Sparkles className="h-4 w-4" /> Khám phá theo sở thích
                 </div>
-                
-                <div className="container mx-auto px-4 space-y-8 sm:space-y-12 lg:space-y-16 pb-8">
-                    <ContinueWatching />
-                    {/* Phim đánh giá cao nhất - giữ lại từ design cũ */}
-                    <FeaturedMovies />
-                
-                {/* Phim theo quốc gia - theo ảnh mẫu */}
-                <KoreanMovies />
-                <ChineseMovies />
-                <USUKMovies />
-                
-                {/* Yêu Kiều Mỹ - Phim Việt Nam */}
-                <VietnameseMovies />
-                
-                {/* Đường về nhà là vào tim ta - Phim hành động */}
-                <ActionMovies />
-                
-                {/* Kho tàng Anime */}
-                <AnimeMovies />
-                
-                {/* Phim mới ra mắt */}
-                <NewReleases />
-                
-                    {/* Section thể loại */}
-                    <GenreSection />
-                </div>
+                <h2 className="text-2xl font-bold text-white sm:text-3xl">Bạn đang quan tâm gì?</h2>
+              </div>
+              <Link href="/genres" className="hidden items-center gap-1 text-sm font-semibold text-slate-300 hover:text-white sm:flex">
+                Tất cả thể loại <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-            
-            {/* Scroll to top button */}
-            <ScrollToTop />
-        </>
-    )
+            <div className="flex flex-wrap gap-2.5">
+              {data.genres.slice(0, 12).map((genre, index) => (
+                <Link
+                  key={genre._id}
+                  href={`/genre/${genre.slug}`}
+                  className={`rounded-full border px-4 py-2.5 text-sm font-medium transition-colors ${
+                    index < 4
+                      ? 'border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-100 hover:bg-fuchsia-500/20'
+                      : 'border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/25 hover:text-white'
+                  }`}
+                >
+                  {genre.name}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+      <ScrollToTop />
+    </div>
+  )
 }

@@ -1,9 +1,29 @@
 'use client'
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, GoogleAuthProvider, onAuthStateChanged, reauthenticateWithCredential, reauthenticateWithPopup, reload, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile, User } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
-import { deleteAccountData, ensureAccountProfile } from '@/lib/account-service'
+import type { Auth, User } from 'firebase/auth'
+
+type AuthApi = typeof import('firebase/auth')
+type AccountApi = typeof import('@/lib/account-service')
+
+interface FirebaseRuntime {
+  auth: Auth | null
+  authApi: AuthApi
+  accountApi: AccountApi
+}
+
+let firebaseRuntime: Promise<FirebaseRuntime> | null = null
+
+function loadFirebaseRuntime() {
+  if (!firebaseRuntime) {
+    firebaseRuntime = Promise.all([
+      import('@/lib/firebase'),
+      import('firebase/auth'),
+      import('@/lib/account-service'),
+    ]).then(([firebase, authApi, accountApi]) => ({ auth: firebase.auth, authApi, accountApi }))
+  }
+  return firebaseRuntime
+}
 
 export function firebaseAuthError(error: unknown) {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
@@ -13,6 +33,8 @@ export function firebaseAuthError(error: unknown) {
     'auth/unauthorized-domain': 'Ứng dụng không được cấp quyền đăng nhập từ địa chỉ này.',
     'auth/popup-closed-by-user': 'Bạn đã đóng cửa sổ đăng nhập Google.',
     'auth/popup-blocked': 'Trình duyệt đang chặn cửa sổ đăng nhập. Hãy cho phép popup và thử lại.',
+    'auth/cancelled-popup-request': 'Yêu cầu đăng nhập Google trước đó đã bị hủy. Hãy thử lại.',
+    'auth/account-exists-with-different-credential': 'Email này đã đăng ký bằng phương thức khác. Hãy đăng nhập bằng email/mật khẩu trước.',
     'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
     'auth/invalid-login-credentials': 'Email hoặc mật khẩu không đúng.',
     'auth/email-already-in-use': 'Email này đã được đăng ký.',
@@ -42,31 +64,140 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+async function requireRuntime() {
+  const runtime = await loadFirebaseRuntime()
+  if (!runtime.auth) throw new Error('Thiếu cấu hình NEXT_PUBLIC_FIREBASE_* trong file .env.')
+  return { ...runtime, auth: runtime.auth }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [authVersion, setAuthVersion] = useState(0)
+  const configured = Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY)
+
   useEffect(() => {
-    if (!auth) { setLoading(false); return undefined }
-    // Do not leave protected routes on an infinite spinner if Firebase auth
-    // initialization is delayed or blocked by the browser/network.
-    const timeout = window.setTimeout(() => setLoading(false), 4000)
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => { window.clearTimeout(timeout); setUser(nextUser); setLoading(false) }, () => { window.clearTimeout(timeout); setUser(null); setLoading(false) })
-    return () => { window.clearTimeout(timeout); unsubscribe() }
+    let active = true
+    let unsubscribe: (() => void) | undefined
+    const timeout = window.setTimeout(() => { if (active) setLoading(false) }, 4000)
+
+    void loadFirebaseRuntime().then(({ auth, authApi }) => {
+      if (!active) return
+      if (!auth) {
+        window.clearTimeout(timeout)
+        setLoading(false)
+        return
+      }
+      unsubscribe = authApi.onAuthStateChanged(auth, (nextUser) => {
+        window.clearTimeout(timeout)
+        setUser(nextUser)
+        setLoading(false)
+      }, () => {
+        window.clearTimeout(timeout)
+        setUser(null)
+        setLoading(false)
+      })
+    }).catch(() => {
+      if (active) {
+        window.clearTimeout(timeout)
+        setLoading(false)
+      }
+    })
+
+    return () => {
+      active = false
+      window.clearTimeout(timeout)
+      unsubscribe?.()
+    }
   }, [])
 
-  const requireAuth = useCallback(() => { if (!auth) throw new Error('Thiếu cấu hình NEXT_PUBLIC_FIREBASE_* trong file .env.'); return auth }, [])
-  const signInWithGoogle = useCallback(async () => { try { return (await signInWithPopup(requireAuth(), new GoogleAuthProvider())).user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const signInWithEmail = useCallback(async (email: string, password: string) => { try { return (await signInWithEmailAndPassword(requireAuth(), email.trim(), password)).user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const registerWithEmail = useCallback(async (name: string, email: string, password: string) => { try { const result = await createUserWithEmailAndPassword(requireAuth(), email.trim(), password); if (name.trim()) await updateProfile(result.user, { displayName: name.trim().slice(0, 40) }); await sendEmailVerification(result.user).catch(() => undefined); return result.user } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const resetPassword = useCallback(async (email: string) => { try { await sendPasswordResetEmail(requireAuth(), email.trim()) } catch (error) { throw firebaseAuthError(error) } }, [requireAuth])
-  const sendVerification = useCallback(async () => { if (!user) throw new Error('Bạn chưa đăng nhập.'); try { await sendEmailVerification(user) } catch (error) { throw firebaseAuthError(error) } }, [user])
-  const updateIdentity = useCallback(async (displayName: string, photoURL?: string | null) => { if (!user) throw new Error('Bạn chưa đăng nhập.'); try { await updateProfile(user, { displayName: displayName.trim().slice(0, 40), ...(photoURL !== undefined ? { photoURL: photoURL || null } : {}) }); await reload(user); setAuthVersion((value) => value + 1) } catch (error) { throw firebaseAuthError(error) } }, [user])
-  const refreshUser = useCallback(async () => { if (!user) return; await reload(user); setAuthVersion((value) => value + 1) }, [user])
-  const deleteCurrentAccount = useCallback(async (password?: string, beforeDelete?: () => Promise<void>) => { if (!user) return; try { if (user.providerData.some((provider) => provider.providerId === 'password')) { if (!password || !user.email) throw new Error('Hãy nhập mật khẩu để xác nhận.'); await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password)) } else await reauthenticateWithPopup(user, new GoogleAuthProvider()); if (beforeDelete) await beforeDelete(); else await deleteAccountData(await ensureAccountProfile(user)); await deleteUser(user); setUser(null) } catch (error) { throw firebaseAuthError(error) } }, [user])
-  const logout = useCallback(async () => { if (auth) await signOut(auth) }, [])
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      const { auth, authApi, accountApi } = await requireRuntime()
+      const provider = new authApi.GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      const signedInUser = (await authApi.signInWithPopup(auth, provider)).user
+      await accountApi.ensureAccountProfile(signedInUser)
+      return signedInUser
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [])
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    try {
+      const { auth, authApi, accountApi } = await requireRuntime()
+      const signedInUser = (await authApi.signInWithEmailAndPassword(auth, email.trim(), password)).user
+      await accountApi.ensureAccountProfile(signedInUser)
+      return signedInUser
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [])
+
+  const registerWithEmail = useCallback(async (name: string, email: string, password: string) => {
+    try {
+      const { auth, authApi, accountApi } = await requireRuntime()
+      const result = await authApi.createUserWithEmailAndPassword(auth, email.trim(), password)
+      const displayName = name.trim().slice(0, 40)
+      if (displayName) await authApi.updateProfile(result.user, { displayName })
+      await accountApi.ensureAccountProfile(result.user, displayName)
+      await authApi.sendEmailVerification(result.user).catch(() => undefined)
+      return result.user
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [])
+
+  const resetPassword = useCallback(async (email: string) => {
+    try {
+      const { auth, authApi } = await requireRuntime()
+      await authApi.sendPasswordResetEmail(auth, email.trim())
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [])
+
+  const sendVerification = useCallback(async () => {
+    if (!user) throw new Error('Bạn chưa đăng nhập.')
+    try {
+      const { authApi } = await requireRuntime()
+      await authApi.sendEmailVerification(user)
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [user])
+
+  const updateIdentity = useCallback(async (displayName: string, photoURL?: string | null) => {
+    if (!user) throw new Error('Bạn chưa đăng nhập.')
+    try {
+      const { authApi } = await requireRuntime()
+      await authApi.updateProfile(user, { displayName: displayName.trim().slice(0, 40), ...(photoURL !== undefined ? { photoURL: photoURL || null } : {}) })
+      await authApi.reload(user)
+      setAuthVersion((value) => value + 1)
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [user])
+
+  const refreshUser = useCallback(async () => {
+    if (!user) return
+    const { authApi } = await requireRuntime()
+    await authApi.reload(user)
+    setAuthVersion((value) => value + 1)
+  }, [user])
+
+  const deleteCurrentAccount = useCallback(async (password?: string, beforeDelete?: () => Promise<void>) => {
+    if (!user) return
+    try {
+      const { authApi, accountApi } = await requireRuntime()
+      if (user.providerData.some((provider) => provider.providerId === 'password')) {
+        if (!password || !user.email) throw new Error('Hãy nhập mật khẩu để xác nhận.')
+        await authApi.reauthenticateWithCredential(user, authApi.EmailAuthProvider.credential(user.email, password))
+      } else {
+        await authApi.reauthenticateWithPopup(user, new authApi.GoogleAuthProvider())
+      }
+      if (beforeDelete) await beforeDelete()
+      else await accountApi.deleteAccountData(await accountApi.ensureAccountProfile(user))
+      await authApi.deleteUser(user)
+      setUser(null)
+    } catch (error) { throw firebaseAuthError(error) }
+  }, [user])
+
+  const logout = useCallback(async () => {
+    const { auth, authApi } = await requireRuntime()
+    await authApi.signOut(auth)
+  }, [])
   const getIdToken = useCallback(async () => user ? user.getIdToken() : null, [user])
-  const value = useMemo(() => ({ user, loading, configured: Boolean(auth), signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken }), [user, loading, authVersion, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken])
+  const value = useMemo(() => ({ user, loading, configured, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken }), [user, loading, configured, authVersion, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

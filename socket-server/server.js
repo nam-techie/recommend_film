@@ -7,8 +7,10 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
+import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, findDeniedMediaEpisode, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import nodemailer from 'nodemailer'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -17,9 +19,9 @@ const PORT = Number(process.env.PORT || 4001)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 const REDIS_URL = process.env.REDIS_URL || ''
 const TOKEN_SECRET = process.env.WATCH_PARTY_TOKEN_SECRET || (IS_PRODUCTION ? '' : 'dev-only-change-me')
-const ROOM_TTL_SECONDS = Number(process.env.ROOM_TTL_SECONDS || 14400)
+const ROOM_TTL_SECONDS = Number(process.env.ROOM_TTL_SECONDS || 43200)
 const EMPTY_ROOM_TTL_SECONDS = Number(process.env.EMPTY_ROOM_TTL_SECONDS || 300)
-const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 15)
+const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 30)
 const MAX_ROOM_MEMBERS = Number(process.env.MAX_ROOM_MEMBERS || 50)
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || (IS_PRODUCTION ? '' : 'http://localhost:3000,http://localhost:8080'))
   .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean)
@@ -28,6 +30,16 @@ const MEDIA_ALLOWED_HOSTS = (process.env.MEDIA_ALLOWED_HOSTS || '')
 const LIVEKIT_URL = process.env.LIVEKIT_URL || ''
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || ''
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || ''
+const APP_BASE_URL = (process.env.APP_BASE_URL || CLIENT_ORIGINS[0] || 'http://localhost:3000').replace(/\/$/, '')
+const MAIL_HOST = process.env.MAIL_HOST || 'smtp.gmail.com'
+const MAIL_PORT = Number(process.env.MAIL_PORT || 587)
+const MAIL_SECURE = String(process.env.MAIL_SECURE || 'false').toLowerCase() === 'true'
+const MAIL_USERNAME = process.env.MAIL_USERNAME || ''
+const MAIL_PASSWORD = process.env.MAIL_PASSWORD || ''
+const MAIL_FROM = process.env.MAIL_FROM || MAIL_USERNAME
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'CineMind'
+const mailConfigured = Boolean(MAIL_USERNAME && MAIL_PASSWORD && MAIL_FROM)
+const mailTransporter = mailConfigured ? nodemailer.createTransport({ host: MAIL_HOST, port: MAIL_PORT, secure: MAIL_SECURE, auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD } }) : null
 const voiceConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
 const livekitRooms = voiceConfigured ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) : null
 
@@ -36,13 +48,16 @@ if (IS_PRODUCTION && !REDIS_URL) throw new Error('REDIS_URL is required in produ
 if (IS_PRODUCTION && CLIENT_ORIGINS.length === 0) throw new Error('CLIENT_ORIGINS is required in production')
 
 let adminAuth = null
+let adminDb = null
 try {
   const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
   const serviceAccount = rawServiceAccount ? JSON.parse(rawServiceAccount) : null
   const projectId = serviceAccount?.project_id || process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  const databaseURL = process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL
   if (serviceAccount || projectId) {
-    const app = getApps()[0] || initializeApp(serviceAccount ? { credential: cert(serviceAccount) } : { projectId })
+    const app = getApps()[0] || initializeApp({ ...(serviceAccount ? { credential: cert(serviceAccount) } : { projectId }), ...(databaseURL ? { databaseURL } : {}) })
     adminAuth = getAuth(app)
+    if (databaseURL) adminDb = getDatabase(app)
   }
 } catch (error) {
   console.error('Firebase Admin initialization failed:', error instanceof Error ? error.message : String(error))
@@ -52,6 +67,7 @@ const allowedReactions = new Set(['❤️', '😂', '🔥', '😮', '👏', '�
 const roomKey = (id) => `watch-party:room:${id}`
 const publicRoomsKey = 'watch-party:rooms:public'
 const allRoomsKey = 'watch-party:rooms:all'
+const ownerRoomKey = (uid) => `watch-party:owner-room:${uid}`
 const dedupeKey = (roomId, eventId) => `watch-party:dedupe:${roomId}:${eventId}`
 
 const episodeSchema = z.object({
@@ -68,7 +84,8 @@ const movieSchema = z.object({
 const createRoomSchema = z.object({
   roomName: z.string().trim().max(80).optional(), accessMode: z.enum(['public', 'link_only', 'password']).default('link_only'),
   password: z.string().min(6).max(64).optional(), movie: movieSchema, initialEpisodeId: z.string().optional(),
-  playbackPolicy: z.object({ autoNext: z.boolean() }).optional()
+  playbackPolicy: z.object({ autoNext: z.boolean() }).optional(),
+  replaceActiveRoom: z.boolean().optional().default(false), expectedActiveRoomId: z.string().max(12).optional()
 }).refine((input) => input.accessMode !== 'password' || Boolean(input.password), { message: 'Password is required', path: ['password'] })
 const joinRoomSchema = z.object({ displayName: z.string().trim().min(1).max(30), password: z.string().max(64).optional(), firebaseIdToken: z.string().min(1).max(5000), anonymous: z.boolean().optional().default(false) })
 const playbackSchema = z.object({
@@ -82,14 +99,17 @@ const episodeChangeSchema = z.object({
   clientEventId: z.string().min(8).max(100).optional()
 })
 const policySchema = z.object({ autoNext: z.boolean(), clientEventId: z.string().min(8).max(100) })
+const emailLookupSchema = z.object({ email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()) })
+const roomInviteSchema = z.object({ friendUid: z.string().trim().min(1).max(128) })
 class MemoryStore {
-  constructor() { this.rooms = new Map(); this.dedupe = new Map() }
+  constructor() { this.rooms = new Map(); this.dedupe = new Map(); this.ownerRooms = new Map() }
   async ping() { return 'PONG' }
-  async getRoom(id) { const room = this.rooms.get(id); if (!room) return null; if (room.expiresAt <= Date.now()) { this.rooms.delete(id); return null } return structuredClone(room) }
-  async setRoom(room) { this.rooms.set(room.id, structuredClone(room)) }
-  async deleteRoom(id) { this.rooms.delete(id) }
-  async listRooms() { return [...this.rooms.values()].filter((room) => room.accessMode === 'public' && room.status !== 'closed' && room.expiresAt > Date.now()).map((room) => structuredClone(room)) }
-  async listAllRooms() { return [...this.rooms.values()].filter((room) => room.expiresAt > Date.now()).map((room) => structuredClone(room)) }
+  async getRoom(id) { const room = this.rooms.get(id); return room ? structuredClone(room) : null }
+  async setRoom(room) { this.rooms.set(room.id, structuredClone(room)); if (room.ownerUid && room.status !== 'closed') this.ownerRooms.set(room.ownerUid, room.id) }
+  async deleteRoom(id) { const room = this.rooms.get(id); this.rooms.delete(id); if (room?.ownerUid && this.ownerRooms.get(room.ownerUid) === id) this.ownerRooms.delete(room.ownerUid) }
+  async getActiveRoomByOwner(uid) { const id = this.ownerRooms.get(uid); return id ? this.getRoom(id) : null }
+  async listRooms() { return [...this.rooms.values()].filter((room) => isPublicRoomDiscoverable(room) && room.expiresAt > Date.now()).map((room) => structuredClone(room)) }
+  async listAllRooms() { return [...this.rooms.values()].map((room) => structuredClone(room)) }
   async dedupeEvent(roomId, eventId) { const key = `${roomId}:${eventId}`; if (this.dedupe.has(key)) return false; this.dedupe.set(key, Date.now()); return true }
   async allow(key, limit, windowMs) { return rateLimit(key, limit, windowMs) }
 }
@@ -99,19 +119,24 @@ class RedisStore {
   async ping() { return this.client.ping() }
   async getRoom(id) { const value = await this.client.get(roomKey(id)); return value ? JSON.parse(value) : null }
   async setRoom(room) {
-    const ttl = Math.max(1, Math.ceil((room.expiresAt - Date.now()) / 1000))
+    const ttl = Math.max(1, Math.ceil((room.expiresAt - Date.now()) / 1000) + 60)
     await this.client.set(roomKey(room.id), JSON.stringify(room), { EX: ttl })
     await this.client.zAdd(allRoomsKey, [{ score: room.createdAt, value: room.id }])
-    if (room.accessMode === 'public' && room.status !== 'closed') await this.client.zAdd(publicRoomsKey, [{ score: room.createdAt, value: room.id }])
+    if (room.ownerUid && room.status !== 'closed') await this.client.set(ownerRoomKey(room.ownerUid), room.id, { EX: ttl })
+    if (isPublicRoomDiscoverable(room)) await this.client.zAdd(publicRoomsKey, [{ score: room.createdAt, value: room.id }])
     else await this.client.zRem(publicRoomsKey, room.id)
   }
-  async deleteRoom(id) { await Promise.all([this.client.del(roomKey(id)), this.client.zRem(publicRoomsKey, id), this.client.zRem(allRoomsKey, id)]) }
+  async deleteRoom(id) { const room = await this.getRoom(id); await Promise.all([this.client.del(roomKey(id)), this.client.zRem(publicRoomsKey, id), this.client.zRem(allRoomsKey, id), ...(room?.ownerUid ? [this.client.del(ownerRoomKey(room.ownerUid))] : [])]) }
+  async getActiveRoomByOwner(uid) { const id = await this.client.get(ownerRoomKey(uid)); return id ? this.getRoom(id) : null }
   async listRooms() {
     const ids = await this.client.zRange(publicRoomsKey, 0, -1, { REV: true })
     const rooms = await Promise.all(ids.map((id) => this.getRoom(id)))
     const expired = ids.filter((_, index) => !rooms[index])
     if (expired.length) await this.client.zRem(publicRoomsKey, expired)
-    return rooms.filter(Boolean)
+    const visible = rooms.filter((room) => room && isPublicRoomDiscoverable(room))
+    const hidden = rooms.flatMap((room, index) => room && !isPublicRoomDiscoverable(room) ? [ids[index]] : [])
+    if (hidden.length) await this.client.zRem(publicRoomsKey, hidden)
+    return visible
   }
   async listAllRooms() {
     const ids = await this.client.zRange(allRoomsKey, 0, -1)
@@ -149,6 +174,7 @@ const deleteVoiceRoom = async (roomId, attempt = 1) => {
   }
 }
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
+const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character])
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
 const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
 const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
@@ -169,9 +195,10 @@ const publicRoom = (room) => ({
   movie: { slug: room.movie.slug, title: room.movie.title, poster: room.movie.poster },
   episode: room.movie.episodes.find((episode) => episode.id === room.playback.episodeId),
   playback: { currentTime: room.playback.currentTime, isPlaying: room.playback.isPlaying },
-  hostName: room.members[room.hostMemberId]?.displayName || 'Host',
+  hostName: room.members[room.hostMemberId]?.displayName || 'Đang chờ host',
   userCount: Object.values(room.members).filter((member) => member.connected).length,
   createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status,
+  deleteAt: room.lifecycle?.deleteAt || null,
   playbackPolicy: room.playbackPolicy || { autoNext: true }
 })
 const clientMember = (member) => {
@@ -231,6 +258,29 @@ function rateLimit(key, limit, windowMs) {
   values.push(now); rateLimits.set(key, values); return true
 }
 
+async function closeRoom(roomId, reason = 'host_closed') {
+  const room = await store.getRoom(roomId)
+  if (!room) return false
+  room.status = 'closing'
+  if (adminDb) {
+    try {
+      const inviteSnapshot = await adminDb.ref('watchPartyInvites').orderByChild('roomId').equalTo(roomId).get()
+      const inviteUpdates = {}
+      inviteSnapshot.forEach((child) => { if (child.val()?.status === 'pending') { inviteUpdates[`${child.key}/status`] = reason === 'hard_expired' ? 'expired' : 'cancelled'; inviteUpdates[`${child.key}/updatedAt`] = Date.now() } })
+      if (Object.keys(inviteUpdates).length) await adminDb.ref('watchPartyInvites').update(inviteUpdates)
+    } catch (error) { log('invite_status_cleanup_failed', { roomId, error: error instanceof Error ? error.message : String(error) }) }
+  }
+  room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), closedAt: Date.now(), closeReason: reason }
+  io.to(room.id).emit('room:closed', { code: reason.toUpperCase(), reason })
+  await store.deleteRoom(room.id)
+  io.in(room.id).disconnectSockets(true)
+  await deleteVoiceRoom(room.id)
+  clearTimeout(hostTimers.get(room.id)); hostTimers.delete(room.id)
+  io.emit('room:list_changed')
+  log('room_closed', { roomId: room.id, reason })
+  return true
+}
+
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
@@ -248,13 +298,13 @@ const server = http.createServer(async (req, res) => {
   }
   if (origin && originAllowed(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Vary', 'Origin')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.writeHead(204).end()
   const ip = req.socket.remoteAddress || 'unknown'
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
-    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured }) }
+    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured, mailConfigured, socialDatabaseConfigured: Boolean(adminDb) }) }
     if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
       const sourceUrl = url.searchParams.get('url') || ''
       if (!mediaAllowed(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
@@ -282,6 +332,61 @@ const server = http.createServer(async (req, res) => {
       const fallbackAvailable = Boolean(input.linkEmbed)
       return json(res, 200, { hlsReachable, directAllowed, contentType, errorCode, fallbackAvailable, capability: directAllowed ? 'full' : fallbackAvailable ? 'limited' : 'unavailable' })
     }
+    if (req.method === 'POST' && url.pathname === '/api/friends/lookup-email') {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập để tìm bằng email.' })
+      const actor = await verifyFirebaseToken(authToken)
+      if (!adminDb) return json(res, 503, { code: 'SOCIAL_DATABASE_NOT_CONFIGURED', error: 'Dịch vụ tìm bạn chưa được cấu hình.' })
+      if (!(await store.allow(`email-lookup:${actor.uid}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn tìm bằng email quá nhiều lần. Hãy thử lại sau một phút.' })
+      const { email } = emailLookupSchema.parse(await readBody(req))
+      try {
+        const account = await adminAuth.getUserByEmail(email)
+        const profileSnapshot = await adminDb.ref(`publicProfiles/${account.uid}`).get()
+        if (!profileSnapshot.exists()) return json(res, 200, { found: false })
+        const profile = profileSnapshot.val()
+        return json(res, 200, { found: true, profile: { uid: profile.uid, username: profile.username, displayName: profile.displayName, avatar: profile.avatar || undefined, favoriteGenres: profile.favoriteGenres || [], createdAt: profile.createdAt, updatedAt: profile.updatedAt, isPublic: Boolean(profile.isPublic), showRecentMovies: Boolean(profile.showRecentMovies), showWatchlist: Boolean(profile.showWatchlist), showActivity: Boolean(profile.showActivity), allowWatchPartyInvites: profile.allowWatchPartyInvites !== false } })
+      } catch (error) {
+        if (String(error?.code || '').includes('user-not-found')) return json(res, 200, { found: false })
+        throw error
+      }
+    }
+    const inviteMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/i)
+    if (req.method === 'POST' && inviteMatch) {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập để mời bạn bè.' })
+      const actor = await verifyFirebaseToken(authToken)
+      if (!adminDb) return json(res, 503, { code: 'SOCIAL_DATABASE_NOT_CONFIGURED', error: 'Dịch vụ lời mời chưa được cấu hình.' })
+      const roomId = inviteMatch[1].toUpperCase(); const room = await store.getRoom(roomId)
+      if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
+      const actorMember = findEligibleInvitingMember(room, actor.uid)
+      if (!actorMember) return json(res, 403, { code: 'ROOM_MEMBER_REQUIRED', error: 'Bạn cần tham gia phòng bằng tài khoản để gửi lời mời.' })
+      const { friendUid } = roomInviteSchema.parse(await readBody(req))
+      if (friendUid === actor.uid) return json(res, 400, { code: 'INVALID_TARGET', error: 'Bạn không thể tự mời chính mình.' })
+      if (!(await store.allow(`room-invite:${actor.uid}:${friendUid}:${roomId}`, 1, 60_000))) return json(res, 429, { code: 'DUPLICATE_INVITE', error: 'Bạn vừa mời người này. Hãy đợi một phút trước khi gửi lại.' })
+      const [actorFriendship, targetFriendship, actorBlock, targetBlock, actorProfileSnapshot, targetProfileSnapshot, targetSettingsSnapshot] = await Promise.all([
+        adminDb.ref(`friendships/${actor.uid}/${friendUid}`).get(), adminDb.ref(`friendships/${friendUid}/${actor.uid}`).get(), adminDb.ref(`blocks/${actor.uid}/${friendUid}`).get(), adminDb.ref(`blocks/${friendUid}/${actor.uid}`).get(), adminDb.ref(`publicProfiles/${actor.uid}`).get(), adminDb.ref(`publicProfiles/${friendUid}`).get(), adminDb.ref(`users/${friendUid}/settings`).get(),
+      ])
+      if (!actorFriendship.exists() || !targetFriendship.exists() || actorBlock.exists() || targetBlock.exists()) return json(res, 403, { code: 'FRIENDSHIP_REQUIRED', error: 'Bạn chỉ có thể mời bạn bè chưa chặn nhau.' })
+      const actorProfile = actorProfileSnapshot.val() || {}; const targetProfile = targetProfileSnapshot.val() || {}; const targetSettings = targetSettingsSnapshot.val() || {}
+      if (targetProfile.allowWatchPartyInvites === false) return json(res, 403, { code: 'INVITES_DISABLED', error: 'Người bạn này đang tắt lời mời xem chung.' })
+      const now = Date.now(); const inviteId = id('invite'); const notificationId = id('notification')
+      const movieTitle = room.movie.title
+      const updates = {
+        [`watchPartyInvites/${inviteId}`]: { id: inviteId, roomId, inviterUid: actor.uid, recipientUid: friendUid, movieSlug: room.movie.slug, movieTitle, status: 'pending', createdAt: now, expiresAt: room.expiresAt },
+        [`notifications/${friendUid}/${notificationId}`]: { id: notificationId, type: 'watch_party_invite', actorUid: actor.uid, actorName: actorProfile.displayName || actorMember.displayName, actorUsername: actorProfile.username || '', actorAvatar: actorProfile.avatar || null, roomId, movieSlug: room.movie.slug, read: false, createdAt: now },
+      }
+      await adminDb.ref().update(updates)
+      let emailStatus = 'skipped'
+      if (mailTransporter && targetSettings.emailNotifications !== false) {
+        try {
+          const targetAccount = await adminAuth.getUser(friendUid)
+          if (targetAccount.email && targetAccount.emailVerified) {
+            const joinUrl = `${APP_BASE_URL}/watch-party/${roomId}`; const safeActor = escapeHtml(actorProfile.displayName || actorMember.displayName); const safeMovie = escapeHtml(movieTitle)
+            await mailTransporter.sendMail({ from: `"${MAIL_FROM_NAME}" <${MAIL_FROM}>`, to: targetAccount.email, subject: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle}`, text: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle} trên CineMind. Mã phòng: ${roomId}. Tham gia: ${joinUrl}`, html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827"><h2>${safeActor} mời bạn xem chung</h2><p>Hai bạn có một buổi xem <strong>${safeMovie}</strong> đang chờ trên CineMind.</p><p>Mã phòng: <strong>${roomId}</strong></p><p><a href="${joinUrl}" style="display:inline-block;padding:12px 18px;background:#7c3aed;color:white;text-decoration:none;border-radius:10px">Tham gia xem chung</a></p><p style="color:#6b7280;font-size:13px">Phòng hết hạn lúc ${new Date(room.expiresAt).toISOString()}.</p></div>` })
+            emailStatus = 'sent'
+          }
+        } catch (error) { emailStatus = 'failed'; log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, error: error instanceof Error ? error.message : String(error) }) }
+      }
+      return json(res, 200, { inviteId, inAppStatus: 'sent', emailStatus })
+    }
     const voiceTokenMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/voice-token$/i)
     if (req.method === 'POST' && voiceTokenMatch) {
       if (!voiceConfigured) return json(res, 503, { code: 'VOICE_NOT_CONFIGURED', error: 'Dịch vụ voice chưa được cấu hình.' })
@@ -303,12 +408,32 @@ const server = http.createServer(async (req, res) => {
         return json(res, 502, { code: 'VOICE_TOKEN_FAILED', error: 'Không thể tạo quyền truy cập LiveKit.' })
       }
     }
+    if (req.method === 'GET' && url.pathname === '/api/users/me/active-room') {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập.' })
+      const owner = await verifyFirebaseToken(authToken); const activeRoom = await store.getActiveRoomByOwner(owner.uid)
+      return json(res, 200, { room: activeRoom ? publicRoom(activeRoom) : null })
+    }
+    const closeMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})$/i)
+    if (req.method === 'DELETE' && closeMatch) {
+      const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập.' })
+      const owner = await verifyFirebaseToken(authToken); const room = await store.getRoom(closeMatch[1].toUpperCase())
+      if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không còn tồn tại.' })
+      if (room.ownerUid !== owner.uid) return json(res, 403, { code: 'NOT_OWNER', error: 'Chỉ chủ phòng mới có thể kết thúc phòng.' })
+      await closeRoom(room.id, 'host_closed'); return json(res, 200, { ok: true })
+    }
     if (req.method === 'POST' && url.pathname === '/api/rooms') {
       const authToken = bearer(req)
       if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập Google để tạo phòng.' })
       const owner = await verifyFirebaseToken(authToken)
       if (!(await store.allow(`create:${ip}`, 5, 600_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn đã tạo quá nhiều phòng.' })
-      const input = createRoomSchema.parse(await readBody(req)); let code = roomCode(); while (await store.getRoom(code)) code = roomCode()
+      const input = createRoomSchema.parse(await readBody(req))
+      const previousRoom = await store.getActiveRoomByOwner(owner.uid)
+      if (previousRoom) {
+        const replacementConfirmed = input.replaceActiveRoom && input.expectedActiveRoomId?.toUpperCase() === previousRoom.id
+        if (!replacementConfirmed) return json(res, 409, { code: 'ACTIVE_ROOM_EXISTS', error: 'Bạn đang có một phòng hoạt động.', activeRoom: publicRoom(previousRoom) })
+        await closeRoom(previousRoom.id, 'replaced')
+      }
+      let code = roomCode(); while (await store.getRoom(code)) code = roomCode()
       const now = Date.now(); const memberId = id('member'); const initial = input.movie.episodes.find((episode) => episode.id === input.initialEpisodeId) || input.movie.episodes.find((episode) => episode.linkM3u8)
       if (!initial?.linkM3u8) return json(res, 400, { code: 'HLS_REQUIRED', error: 'Xem chung cần ít nhất một nguồn HLS để đồng bộ chính xác.' })
       const deniedEpisode = findDeniedMediaEpisode(input.movie.episodes, MEDIA_ALLOWED_HOSTS)
@@ -318,7 +443,8 @@ const server = http.createServer(async (req, res) => {
       const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
         members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false,
-        playbackPolicy: input.playbackPolicy || { autoNext: true }, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'active', emptySince: now }
+        playbackPolicy: input.playbackPolicy || { autoNext: true }, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'empty_grace', emptySince: now,
+        lifecycle: { emptySince: now, deleteAt: now + EMPTY_ROOM_TTL_SECONDS * 1000, hardExpiresAt: now + ROOM_TTL_SECONDS * 1000 } }
       await store.setRoom(room); log('room_created', { roomId: room.id, accessMode: room.accessMode, ownerUid: owner.uid })
       return json(res, 201, { roomId: room.id, roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
@@ -333,6 +459,14 @@ const server = http.createServer(async (req, res) => {
       const account = await verifyFirebaseToken(input.firebaseIdToken)
       const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
+      if (adminDb) {
+        try {
+          const inviteSnapshot = await adminDb.ref('watchPartyInvites').orderByChild('recipientUid').equalTo(account.uid).get()
+          const inviteUpdates = {}
+          inviteSnapshot.forEach((child) => { const invite = child.val(); if (invite?.roomId === roomId && invite?.status === 'pending') { inviteUpdates[`${child.key}/status`] = 'accepted'; inviteUpdates[`${child.key}/acceptedAt`] = now; inviteUpdates[`${child.key}/updatedAt`] = now } })
+          if (Object.keys(inviteUpdates).length) await adminDb.ref('watchPartyInvites').update(inviteUpdates)
+        } catch (error) { log('invite_accept_update_failed', { roomId, recipientUid: account.uid, error: error instanceof Error ? error.message : String(error) }) }
+      }
       return json(res, 201, { roomToken: signToken(room, member), member, room: publicRoom(room), expiresAt: room.expiresAt })
     }
     const reclaimMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/reclaim-host$/i)
@@ -343,7 +477,9 @@ const server = http.createServer(async (req, res) => {
       if (room.ownerUid !== owner.uid) return json(res, 403, { code: 'NOT_OWNER', error: 'Tài khoản này không phải chủ phòng.' })
       const member = Object.values(room.members).find((item) => item.uid === owner.uid)
       if (!member) return json(res, 409, { code: 'OWNER_NOT_JOINED', error: 'Hãy tham gia phòng trước khi lấy lại quyền host.' })
-      room.members[room.hostMemberId].role = 'viewer'; member.role = 'host'; room.hostMemberId = member.memberId; room.status = 'active'; room.playback.revision += 1
+      const currentHost = room.members[room.hostMemberId]
+      if (currentHost) currentHost.role = 'viewer'
+      member.role = 'host'; room.hostMemberId = member.memberId; room.status = 'active'; room.playback.revision += 1
       await store.setRoom(room); io.to(room.id).emit('host:changed', { hostMemberId: member.memberId, room: clientRoom(room) })
       return json(res, 200, { ok: true, roomToken: signToken(room, member) })
     }
@@ -383,18 +519,31 @@ io.use(async (socket, next) => {
 const hostTimers = new Map()
 async function saveAndBroadcast(room, event = 'room:snapshot') { await store.setRoom(room); io.to(room.id).emit(event, clientRoom(room)); io.emit('room:list_changed') }
 async function transferHost(roomId) {
-  const room = await store.getRoom(roomId); if (!room || room.status !== 'host_reconnecting') return
+  const room = await store.getRoom(roomId); if (!room || !['host_reconnecting', 'empty_grace'].includes(room.status)) return
   const successor = chooseHostSuccessor(room.members, room.hostMemberId)
-  if (!successor) return
-  const previous = room.hostMemberId; room.members[previous].role = 'viewer'; successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.playback.revision += 1
+  if (!successor) {
+    const previous = clearRoomHost(room)
+    clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
+    await store.setRoom(room)
+    io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: '', room: clientRoom(room) })
+    log('room_became_hostless', { roomId })
+    return
+  }
+  const previous = clearRoomHost(room); successor.role = 'host'; room.hostMemberId = successor.memberId; room.status = 'active'; room.hostReconnectDeadline = null; room.playback.revision += 1
+  clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
   await store.setRoom(room); io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: room.hostMemberId, room: clientRoom(room) }); log('host_transferred', { roomId, hostMemberId: room.hostMemberId })
 }
 
 io.on('connection', async (socket) => {
   const { roomId, memberId } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
-  const member = room.members[memberId]; member.connected = true; member.lastSeenAt = Date.now(); member.socketIds = [...new Set([...member.socketIds, socket.id])]; room.emptySince = null
+  const wasEmptyRoom = room.status === 'empty_grace' || connectedMemberCount(room) === 0
+  const member = room.members[memberId]; member.connected = true; member.lastSeenAt = Date.now(); member.socketIds = [...new Set([...member.socketIds, socket.id])]; markRoomOccupied(room)
+  const currentHost = room.members[room.hostMemberId]
+  const claimedHost = (!room.hostMemberId || (wasEmptyRoom && !currentHost?.connected)) && claimVacantHost(room, memberId)
+  if (claimedHost) { clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId) }
   if (memberId === room.hostMemberId && room.status === 'host_reconnecting') { room.status = 'active'; room.hostReconnectDeadline = null; clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId); log('host_resumed', { roomId }) }
   socket.join(roomId); socket.join(`${roomId}:${memberId}`); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', clientMember(member)); io.emit('room:list_changed')
+  if (claimedHost) { io.to(roomId).emit('host:changed', { previousHostMemberId: '', hostMemberId: memberId, room: clientRoom(room) }); log('host_claimed', { roomId, hostMemberId: memberId }) }
 
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
   socket.on('sync:request', async (payload, ack) => { const fresh = await store.getRoom(roomId); const response = { serverTime: Date.now(), clientSentAt: payload?.clientSentAt, playback: fresh?.playback }; ack?.(response); socket.emit('sync:pong', response) })
@@ -456,6 +605,12 @@ io.on('connection', async (socket) => {
     if (!enabled) void deleteVoiceRoom(roomId)
     ack?.({ ok: true })
   })
+  socket.on('room:close', async (ack) => {
+    const fresh = await store.getRoom(roomId)
+    if (!fresh || (fresh.hostMemberId !== memberId && fresh.ownerUid !== fresh.members[memberId]?.uid)) return ack?.({ ok: false, code: 'HOST_ONLY' })
+    ack?.({ ok: true })
+    setTimeout(() => { void closeRoom(roomId, 'host_closed') }, 0)
+  })
 
   const disconnectMember = async () => {
     const fresh = await store.getRoom(roomId); if (!fresh?.members[memberId]) return
@@ -464,10 +619,12 @@ io.on('connection', async (socket) => {
     if (memberId === fresh.hostMemberId && !current.connected) {
       fresh.status = 'host_reconnecting'; fresh.hostReconnectDeadline = Date.now() + HOST_GRACE_SECONDS * 1000; io.to(roomId).emit('host:reconnecting', { graceSeconds: HOST_GRACE_SECONDS }); clearTimeout(hostTimers.get(roomId)); hostTimers.set(roomId, setTimeout(() => transferHost(roomId), HOST_GRACE_SECONDS * 1000))
     }
-    if (!Object.values(fresh.members).some((item) => item.connected)) fresh.emptySince = Date.now()
+    if (!Object.values(fresh.members).some((item) => item.connected)) {
+      markRoomEmpty(fresh, Date.now(), EMPTY_ROOM_TTL_SECONDS * 1000)
+    }
     await store.setRoom(fresh); io.emit('room:list_changed')
   }
-  socket.on('room:leave', async () => { await disconnectMember(); socket.disconnect(true) })
+  socket.on('room:leave', async (ack) => { await disconnectMember(); await transferHost(roomId); ack?.({ ok: true }); setTimeout(() => socket.disconnect(true), 0) })
   socket.on('disconnect', disconnectMember)
 })
 
@@ -475,7 +632,9 @@ setInterval(async () => {
   try {
     for (const room of await store.listAllRooms()) {
       if (room.status === 'host_reconnecting' && room.hostReconnectDeadline && room.hostReconnectDeadline <= Date.now()) await transferHost(room.id)
-      if (room.emptySince && Date.now() - room.emptySince > EMPTY_ROOM_TTL_SECONDS * 1000) { await store.deleteRoom(room.id); io.to(room.id).emit('room:closed', { code: 'EMPTY_ROOM' }); log('room_closed', { roomId: room.id, reason: 'empty' }) }
+      if (room.lifecycle?.hardExpiresAt && room.lifecycle.hardExpiresAt - Date.now() <= 600_000 && !room.lifecycle.expiryWarningSentAt) { room.lifecycle.expiryWarningSentAt = Date.now(); await store.setRoom(room); io.to(room.id).emit('room:expiry_warning', { expiresAt: room.lifecycle.hardExpiresAt }) }
+      if (room.lifecycle?.hardExpiresAt && room.lifecycle.hardExpiresAt <= Date.now()) { await closeRoom(room.id, 'hard_expired'); continue }
+      if (shouldCloseEmptyRoom(room, Date.now()) || (room.emptySince && Date.now() - room.emptySince > EMPTY_ROOM_TTL_SECONDS * 1000)) await closeRoom(room.id, 'empty_timeout')
     }
   } catch (error) {
     log('room_cleanup_error', { error: error instanceof Error ? error.message : String(error) })

@@ -1,7 +1,8 @@
 import { Metadata } from 'next'
-import { GenreDetailPage } from '@/components/pages/GenreDetailPage'
-import { fetchGenres } from '@/lib/api'
 import { notFound } from 'next/navigation'
+import { CatalogPage } from '@/components/pages/CatalogPage'
+import { parseCatalogQuery } from '@/lib/catalog'
+import { fetchCountries, fetchGenres, fetchMoviesByCategory } from '@/lib/api'
 
 interface PageProps {
   params: { slug: string }
@@ -76,28 +77,19 @@ export async function generateStaticParams() {
 }
 
 export default async function GenrePage({ params, searchParams }: PageProps) {
-  const { slug } = params
-  const page = Number(searchParams.page) || 1
-  
-  // Validate genre exists
-  try {
-    const genres = await fetchGenres()
-    const genre = genres.find(g => g.slug === slug)
-    
-    if (!genre) {
-      notFound()
-    }
-  } catch (error) {
-    console.error('Error validating genre:', error)
-    notFound()
-  }
-
-  return (
-    <div className="min-h-screen bg-background">
-      <GenreDetailPage 
-        genreSlug={slug} 
-        initialPage={page}
-      />
-    </div>
-  )
-} 
+  const query = parseCatalogQuery(searchParams)
+  const [genres, countries] = await Promise.all([fetchGenres(), fetchCountries()])
+  const genre = genres.find((item) => item.slug === params.slug)
+  if (!genre) notFound()
+  const response = await fetchMoviesByCategory(params.slug, {
+    page: query.page,
+    limit: query.limit,
+    country: query.country !== 'all' ? query.country : undefined,
+    year: query.year !== 'all' ? query.year : undefined,
+    sort_field: query.sortField,
+    sort_type: query.sortType,
+  })
+  const items = response.data?.items || []
+  const pagination = response.data?.params?.pagination
+  return <CatalogPage title={`Phim ${genre.name}`} description={`Bộ sưu tập phim ${genre.name} được cập nhật liên tục.`} movies={items} query={query} totalItems={pagination?.totalItems || items.length} totalPages={pagination?.totalPages || 1} countries={countries} />
+}

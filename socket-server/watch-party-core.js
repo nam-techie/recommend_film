@@ -66,6 +66,57 @@ export function chooseHostSuccessor(members, currentHostMemberId) {
     .sort((a, b) => a.joinedAt - b.joinedAt || a.memberId.localeCompare(b.memberId))[0] || null
 }
 
+export function connectedMemberCount(room) {
+  return Object.values(room?.members || {}).filter((member) => member.connected).length
+}
+
+export function clearRoomHost(room) {
+  const previousHostMemberId = room.hostMemberId || ''
+  const previousHost = room.members?.[previousHostMemberId]
+  if (previousHost) previousHost.role = 'viewer'
+  room.hostMemberId = ''
+  room.hostReconnectDeadline = null
+  return previousHostMemberId
+}
+
+export function claimVacantHost(room, memberId) {
+  const member = room?.members?.[memberId]
+  if (!member?.connected) return false
+  const currentHost = room.members?.[room.hostMemberId]
+  if (currentHost?.connected && currentHost.memberId !== memberId) return false
+  for (const candidate of Object.values(room.members || {})) {
+    if (candidate.memberId !== memberId && candidate.role === 'host') candidate.role = 'viewer'
+  }
+  member.role = 'host'
+  room.hostMemberId = memberId
+  room.hostReconnectDeadline = null
+  room.status = 'active'
+  room.playback.revision += 1
+  return true
+}
+
+export function markRoomOccupied(room) {
+  room.emptySince = null
+  room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), emptySince: null, deleteAt: null }
+  if (room.status === 'empty_grace') room.status = 'active'
+  return room
+}
+
+export function markRoomEmpty(room, now, emptyTtlMs) {
+  room.emptySince = now
+  room.status = 'empty_grace'
+  room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), emptySince: now, deleteAt: now + emptyTtlMs }
+  return room
+}
+
+export function shouldCloseEmptyRoom(room, now) {
+  return Boolean(room?.lifecycle?.deleteAt && room.lifecycle.deleteAt <= now)
+}
+
+export function isPublicRoomDiscoverable(room) {
+  return Boolean(room?.accessMode === 'public' && room.status !== 'closed' && room.status !== 'closing' && connectedMemberCount(room) > 0)
+}
+
 export function applyVoicePermission(room, enabled) {
   room.voiceEnabled = Boolean(enabled)
   return room
@@ -73,4 +124,8 @@ export function applyVoicePermission(room, enabled) {
 
 export function buildVoiceGrant(roomId) {
   return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: [TrackSource.MICROPHONE] }
+}
+
+export function findEligibleInvitingMember(room, uid) {
+  return Object.values(room?.members || {}).find((member) => member.uid === uid && !member.isAnonymous) || null
 }
