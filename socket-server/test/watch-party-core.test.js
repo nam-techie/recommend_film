@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, directConversationId, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -98,11 +98,6 @@ test('CORS allows configured web origins and local development without allowing 
   assert.equal(isAllowedClientOrigin('http://localhost:3000', origins), true)
   assert.equal(isAllowedClientOrigin('http://127.0.0.1:3000', origins), true)
   assert.equal(isAllowedClientOrigin('https://malicious.example', origins), false)
-})
-
-test('direct conversation IDs are deterministic regardless of participant order', () => {
-  assert.equal(directConversationId('uid-b', 'uid-a'), 'dm_uid-a_uid-b')
-  assert.equal(directConversationId('uid-a', 'uid-b'), 'dm_uid-a_uid-b')
 })
 
 test('room invites require a non-anonymous authenticated room member', () => {

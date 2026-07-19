@@ -1,4 +1,4 @@
-# Social, chat và email invite
+# Kết bạn, chat phòng và email invite
 
 ## Firebase Console
 
@@ -27,5 +27,5 @@ Kiểm tra sau deploy:
 1. `GET /ready` trả `socialDatabaseConfigured: true` và `mailConfigured: true`.
 2. Đăng nhập production bằng Google và xác nhận profile được tạo.
 3. Tìm email đúng/sai; request thứ 11 trong một phút phải bị giới hạn.
-4. Gửi lời mời từ một thành viên phòng đã đăng nhập; người nhận thấy notification, chat card và email.
+4. Gửi lời mời từ một thành viên phòng đã đăng nhập; người nhận thấy notification và email. Chat chỉ hoạt động bên trong phòng xem chung.
 5. Tắt **Email mời xem chung** trong Quyền riêng tư; lần mời sau chỉ xuất hiện trong ứng dụng.

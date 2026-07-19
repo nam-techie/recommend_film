@@ -15,8 +15,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AccountSettings, PublicProfile } from '@/lib/account-types'
 import { savePublicProfile, usernameAvailable } from '@/lib/account-service'
-import { database } from '@/lib/firebase'
-import { ref, update } from 'firebase/database'
 import { cn } from '@/lib/utils'
 
 type Tab = 'overview' | 'profile' | 'movies' | 'friends' | 'notifications' | 'privacy' | 'security'
@@ -46,11 +44,6 @@ export function AccountPage() {
 
   useEffect(() => { if (!authLoading && !user) router.replace('/login?returnUrl=/account') }, [authLoading, router, user])
   useEffect(() => { if (account.profile) setDraft(account.profile) }, [account.profile])
-  useEffect(() => {
-    if (!user || !database || account.degraded || !account.settings.privacy.showRecentMovies) return
-    const recent = Object.fromEntries(Object.values(records).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12).map((item) => [item.movieSlug, { movieSlug: item.movieSlug, movieTitle: item.movieTitle, poster: item.poster || null, episodeName: item.episodeName, percentage: item.percentage, updatedAt: item.updatedAt }]))
-    void update(ref(database), { [`publicRecent/${user.uid}`]: recent })
-  }, [account.degraded, account.settings.privacy.showRecentMovies, records, user])
   useEffect(() => {
     if (!draft || draft.username === account.profile?.username) { setUsernameState('idle'); return }
     setUsernameState('checking'); const timer = window.setTimeout(() => { void usernameAvailable(draft.username, user?.uid).then((available) => setUsernameState(available ? 'available' : 'taken')) }, 400)

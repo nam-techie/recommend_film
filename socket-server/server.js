@@ -10,7 +10,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import nodemailer from 'nodemailer'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, directConversationId, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -367,25 +367,12 @@ const server = http.createServer(async (req, res) => {
       if (!actorFriendship.exists() || !targetFriendship.exists() || actorBlock.exists() || targetBlock.exists()) return json(res, 403, { code: 'FRIENDSHIP_REQUIRED', error: 'Bạn chỉ có thể mời bạn bè chưa chặn nhau.' })
       const actorProfile = actorProfileSnapshot.val() || {}; const targetProfile = targetProfileSnapshot.val() || {}; const targetSettings = targetSettingsSnapshot.val() || {}
       if (targetProfile.allowWatchPartyInvites === false) return json(res, 403, { code: 'INVITES_DISABLED', error: 'Người bạn này đang tắt lời mời xem chung.' })
-      const now = Date.now(); const inviteId = id('invite'); const messageId = id('message'); const notificationId = id('notification'); const conversationId = directConversationId(actor.uid, friendUid)
-      const movieTitle = room.movie.title; const inviteText = `${actorProfile.displayName || actorMember.displayName} mời bạn xem chung`;
-      const [existingConversation, actorConversationState, targetConversationState] = await Promise.all([adminDb.ref(`directConversations/${conversationId}`).get(), adminDb.ref(`userConversations/${actor.uid}/${conversationId}`).get(), adminDb.ref(`userConversations/${friendUid}/${conversationId}`).get()])
+      const now = Date.now(); const inviteId = id('invite'); const notificationId = id('notification')
+      const movieTitle = room.movie.title
       const updates = {
         [`watchPartyInvites/${inviteId}`]: { id: inviteId, roomId, inviterUid: actor.uid, recipientUid: friendUid, movieSlug: room.movie.slug, movieTitle, status: 'pending', createdAt: now, expiresAt: room.expiresAt },
         [`notifications/${friendUid}/${notificationId}`]: { id: notificationId, type: 'watch_party_invite', actorUid: actor.uid, actorName: actorProfile.displayName || actorMember.displayName, actorUsername: actorProfile.username || '', actorAvatar: actorProfile.avatar || null, roomId, movieSlug: room.movie.slug, read: false, createdAt: now },
-        [`directMessages/${conversationId}/${messageId}`]: { id: messageId, conversationId, senderUid: actor.uid, senderName: actorProfile.displayName || actorMember.displayName, type: 'watch_party_invite', text: inviteText, roomId, movieSlug: room.movie.slug, movieTitle, createdAt: now },
-        [`directConversations/${conversationId}/lastMessage`]: inviteText,
-        [`directConversations/${conversationId}/lastMessageType`]: 'watch_party_invite',
-        [`directConversations/${conversationId}/lastSenderUid`]: actor.uid,
-        [`directConversations/${conversationId}/lastMessageAt`]: now,
-        [`directConversations/${conversationId}/updatedAt`]: now,
       }
-      if (!existingConversation.exists()) {
-        const [memberA, memberB] = [actor.uid, friendUid].sort()
-        updates[`directConversations/${conversationId}/id`] = conversationId; updates[`directConversations/${conversationId}/memberA`] = memberA; updates[`directConversations/${conversationId}/memberB`] = memberB; updates[`directConversations/${conversationId}/memberUids`] = { [actor.uid]: true, [friendUid]: true }; updates[`directConversations/${conversationId}/createdAt`] = now
-      }
-      updates[actorConversationState.exists() ? `userConversations/${actor.uid}/${conversationId}/updatedAt` : `userConversations/${actor.uid}/${conversationId}`] = actorConversationState.exists() ? now : { conversationId, otherUid: friendUid, lastReadAt: now, muted: false, updatedAt: now }
-      updates[targetConversationState.exists() ? `userConversations/${friendUid}/${conversationId}/updatedAt` : `userConversations/${friendUid}/${conversationId}`] = targetConversationState.exists() ? now : { conversationId, otherUid: actor.uid, lastReadAt: 0, muted: false, updatedAt: now }
       await adminDb.ref().update(updates)
       let emailStatus = 'skipped'
       if (mailTransporter && targetSettings.emailNotifications !== false) {

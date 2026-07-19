@@ -172,10 +172,14 @@ export async function writeActivity(uid: string, activity: Omit<SocialActivity, 
 }
 
 export async function saveReview(profile: PublicProfile, input: Pick<SocialReview, 'movieSlug' | 'movieTitle' | 'poster' | 'rating' | 'content' | 'spoiler'>) {
+  const content = input.content.trim().slice(0, 1200)
+  if (content.length < 3) throw new Error('Đánh giá cần ít nhất 3 ký tự.')
+  if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 10) throw new Error('Điểm đánh giá phải từ 1 đến 10.')
   const db = requireDatabase(); const now = Date.now(); const reviewRef = ref(db, `reviews/${input.movieSlug}/${profile.uid}`); const old = await get(reviewRef)
   const review: SocialReview = {
     id: `${input.movieSlug}:${profile.uid}`,
     ...input,
+    content,
     authorUid: profile.uid,
     authorName: profile.displayName,
     authorUsername: profile.username,
@@ -251,7 +255,7 @@ export async function toggleReviewLike(actor: PublicProfile, review: SocialRevie
   const db = requireDatabase(); await set(ref(db, `reviewLikes/${review.movieSlug}/${review.authorUid}/${actor.uid}`), liked || null)
   if (liked && actor.uid !== review.authorUid) {
     const notificationRef = push(ref(db, `notifications/${review.authorUid}`))
-    await set(notificationRef, { id: notificationRef.key!, type: 'review_like', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() })
+    await set(notificationRef, { id: notificationRef.key!, type: 'review_like', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() }).catch(() => undefined)
   }
 }
 
@@ -260,7 +264,7 @@ export async function addReviewReply(actor: PublicProfile, review: SocialReview,
   await set(replyRef, reply)
   if (actor.uid !== review.authorUid) {
     const notificationRef = push(ref(db, `notifications/${review.authorUid}`))
-    await set(notificationRef, { id: notificationRef.key!, type: 'review_reply', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() })
+    await set(notificationRef, { id: notificationRef.key!, type: 'review_reply', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() }).catch(() => undefined)
   }
   return reply
 }
@@ -285,7 +289,6 @@ export async function deleteAccountData(profile: PublicProfile) {
     [`blocks/${profile.uid}`]: null,
     [`presenceConnections/${profile.uid}`]: null,
     [`presenceLastSeen/${profile.uid}`]: null,
-    [`userConversations/${profile.uid}`]: null,
   }
   Object.keys(followingSnapshot.val() || {}).forEach((targetUid) => { updates[`followers/${targetUid}/${profile.uid}`] = null })
   Object.keys(followersSnapshot.val() || {}).forEach((followerUid) => { updates[`following/${followerUid}/${profile.uid}`] = null })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { get, ref, remove, set } from 'firebase/database'
+import { get, onValue, ref, remove, set } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { WatchProgress, WatchProgressMovieV2 } from '@/lib/watch-party-types'
@@ -35,6 +35,13 @@ function writeLocal(store: ProgressStore) { localStorage.setItem(LOCAL_V2, JSON.
 export function useWatchProgress() {
   const { user } = useAuth()
   const [store, setStore] = useState<ProgressStore>({})
+  const [shareRecent, setShareRecent] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    setShareRecent(null)
+    if (!user || !database) return
+    return onValue(ref(database, `users/${user.uid}/settings/privacy/showRecentMovies`), (snapshot) => setShareRecent(snapshot.val() === true), () => setShareRecent(false))
+  }, [user])
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -59,6 +66,19 @@ export function useWatchProgress() {
     void load()
     return () => { cancelled = true }
   }, [user])
+
+  useEffect(() => {
+    if (!user || !database || shareRecent !== true) return
+    const recent = Object.fromEntries(Object.values(store).map((movie) => movie.resume).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12).map((item) => [item.movieSlug, {
+      movieSlug: item.movieSlug,
+      movieTitle: item.movieTitle,
+      ...(item.poster ? { poster: item.poster } : {}),
+      episodeName: item.episodeName,
+      percentage: item.percentage,
+      updatedAt: item.updatedAt,
+    }]))
+    void set(ref(database, `publicRecent/${user.uid}`), recent).catch(() => undefined)
+  }, [shareRecent, store, user])
 
   const saveProgress = useCallback(async (progress: WatchProgress) => {
     const existing = store[progress.movieSlug]

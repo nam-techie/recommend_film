@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
-import { AtSign, Check, Loader2, Mail, MessageCircle, Search, UserPlus, X } from 'lucide-react'
+import { AtSign, Check, Loader2, Mail, Search, UserPlus, X } from 'lucide-react'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,12 +49,11 @@ export function FriendSearchPanel() {
     }
   }
 
-  const openChat = (uid: string) => window.dispatchEvent(new CustomEvent('cinemind:open-chat', { detail: { uid } }))
   const relationAction = async () => {
     if (!result || !account.profile || result.uid === account.profile.uid) return
     try {
-      if (account.friends[result.uid]) openChat(result.uid)
-      else if (account.friendRequests[result.uid]) await account.answerFriend(account.friendRequests[result.uid], true)
+      if (account.friends[result.uid]) return
+      if (account.friendRequests[result.uid]) await account.answerFriend(account.friendRequests[result.uid], true)
       else if (account.sentFriendRequests[result.uid]) await account.cancelFriend(result.uid)
       else await account.requestFriend(result)
     } catch (nextError) {
@@ -83,7 +82,7 @@ export function FriendSearchPanel() {
     {state === 'found' && result && <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
       <AccountAvatar name={result.displayName} src={result.avatar} className="h-12 w-12 text-xs" />
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{result.displayName}</p><Link href={`/u/${result.username}`} className="text-xs text-purple-300 hover:underline">@{result.username} · Xem hồ sơ</Link></div>
-      {relation !== 'self' && <Button size="sm" variant={relation === 'outgoing' ? 'outline' : 'default'} onClick={() => void relationAction()}>{relation === 'friend' ? <MessageCircle className="h-4 w-4" /> : relation === 'incoming' ? <Check className="h-4 w-4" /> : relation === 'outgoing' ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{relation === 'friend' ? 'Nhắn tin' : relation === 'incoming' ? 'Chấp nhận' : relation === 'outgoing' ? 'Hủy lời mời' : 'Kết bạn'}</Button>}
+      {relation !== 'self' && <Button size="sm" disabled={relation === 'friend'} variant={relation === 'outgoing' ? 'outline' : 'default'} onClick={() => void relationAction()}>{relation === 'friend' || relation === 'incoming' ? <Check className="h-4 w-4" /> : relation === 'outgoing' ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{relation === 'friend' ? 'Đã là bạn' : relation === 'incoming' ? 'Chấp nhận' : relation === 'outgoing' ? 'Hủy lời mời' : 'Kết bạn'}</Button>}
       {relation === 'self' && <span className="text-xs text-slate-500">Đây là bạn</span>}
     </div>}
   </section>

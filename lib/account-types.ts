@@ -119,47 +119,6 @@ export interface FriendPresence {
   lastSeen: number
 }
 
-export type DirectMessageType = 'text' | 'watch_party_invite' | 'system'
-
-export interface DirectConversation {
-  id: string
-  memberA: string
-  memberB: string
-  memberUids: Record<string, true>
-  lastMessage: string
-  lastMessageType: DirectMessageType
-  lastSenderUid: string
-  lastMessageAt: number
-  createdAt: number
-  updatedAt: number
-}
-
-export interface DirectMessage {
-  id: string
-  conversationId: string
-  senderUid: string
-  senderName: string
-  type: DirectMessageType
-  text: string
-  roomId?: string
-  movieSlug?: string
-  movieTitle?: string
-  createdAt: number
-}
-
-export interface ConversationState {
-  conversationId: string
-  otherUid: string
-  lastReadAt: number
-  muted: boolean
-  updatedAt: number
-}
-
-export interface TypingState {
-  typing: boolean
-  updatedAt: number
-}
-
 export interface WatchPartyInviteResult {
   inviteId: string
   inAppStatus: 'sent'
