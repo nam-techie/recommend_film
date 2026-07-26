@@ -52,6 +52,8 @@ interface AuthContextValue {
   configured: boolean
   signInWithGoogle: () => Promise<User>
   signInWithEmail: (email: string, password: string) => Promise<User>
+  /** Danh tính tạm cho khách vào phòng xem chung bằng link, không cần tài khoản. */
+  signInAsGuest: () => Promise<User>
   registerWithEmail: (name: string, email: string, password: string) => Promise<User>
   resetPassword: (email: string) => Promise<void>
   sendVerification: () => Promise<void>
@@ -108,6 +110,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false
       window.clearTimeout(timeout)
       unsubscribe?.()
+    }
+  }, [])
+
+  /**
+   * Đăng nhập ẩn danh của Firebase. Dùng cho khách mở link phòng xem chung:
+   * socket-server vẫn yêu cầu một idToken hợp lệ (server.js:91), nên thay vì nới
+   * lỏng backend thì cấp cho khách một danh tính tạm — mọi ràng buộc uid,
+   * rate-limit và phân quyền host ở server giữ nguyên.
+   *
+   * Cần bật provider Anonymous trong Firebase Console → Authentication.
+   */
+  const signInAsGuest = useCallback(async () => {
+    try {
+      const { auth, authApi } = await requireRuntime()
+      const signedInUser = (await authApi.signInAnonymously(auth)).user
+      setUser(signedInUser)
+      return signedInUser
+    } catch (error) {
+      throw firebaseAuthError(error)
     }
   }, [])
 
@@ -197,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.signOut(auth)
   }, [])
   const getIdToken = useCallback(async () => user ? user.getIdToken() : null, [user])
-  const value = useMemo(() => ({ user, loading, configured, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken }), [user, loading, configured, authVersion, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken])
+  const value = useMemo(() => ({ user, loading, configured, signInAsGuest, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken }), [user, loading, configured, authVersion, signInAsGuest, signInWithGoogle, signInWithEmail, registerWithEmail, resetPassword, sendVerification, updateIdentity, refreshUser, deleteCurrentAccount, logout, getIdToken])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

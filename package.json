@@ -7,9 +7,10 @@
     "dev:web": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint && node scripts/check-tokens.mjs",
     "socket:dev": "npm --prefix socket-server run dev",
-    "socket:start": "npm --prefix socket-server start"
+    "socket:start": "npm --prefix socket-server start",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.1.0",
@@ -30,6 +31,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
+    "sharp": "^0.35.3",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7"

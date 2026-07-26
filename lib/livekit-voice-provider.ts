@@ -1,14 +1,29 @@
 'use client'
 
-import {
+import type {
   ConnectionQuality,
-  DisconnectReason,
   RemoteAudioTrack,
   RemoteParticipant,
   Room,
-  RoomEvent,
-  Track,
 } from 'livekit-client'
+
+/**
+ * livekit-client nặng và trước đây được import tĩnh, nên nó nằm trong bundle
+ * của mọi lần vào /watch-party — kể cả phòng không bật voice hay người dùng còn
+ * ở màn hình đăng nhập (first-load JS của route lên tới 503 kB).
+ *
+ * Giờ chỉ tải khi thực sự connect voice. Mọi giá trị runtime của SDK
+ * (Room, RoomEvent, Track…) phải lấy qua `sdk` sau khi await loadSdk().
+ */
+type LiveKitSdk = typeof import('livekit-client')
+let sdk: LiveKitSdk | null = null
+let sdkPromise: Promise<LiveKitSdk> | null = null
+
+async function loadSdk(): Promise<LiveKitSdk> {
+  if (sdk) return sdk
+  if (!sdkPromise) sdkPromise = import('livekit-client').then((module) => { sdk = module; return module })
+  return sdkPromise
+}
 import { VoiceConnectionQuality, VoiceParticipant } from '@/lib/watch-party-types'
 import { VoiceCredentials, VoiceProvider, VoiceProviderListener, VoiceProviderSnapshot } from '@/lib/voice-provider'
 
@@ -22,14 +37,15 @@ const initialSnapshot = (): VoiceProviderSnapshot => ({
 })
 
 function mapQuality(quality: ConnectionQuality): VoiceConnectionQuality {
-  if (quality === ConnectionQuality.Excellent) return 'excellent'
-  if (quality === ConnectionQuality.Good) return 'good'
-  if (quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost) return 'poor'
+  if (!sdk) return 'unknown'
+  if (quality === sdk.ConnectionQuality.Excellent) return 'excellent'
+  if (quality === sdk.ConnectionQuality.Good) return 'good'
+  if (quality === sdk.ConnectionQuality.Poor || quality === sdk.ConnectionQuality.Lost) return 'poor'
   return 'unknown'
 }
 
 function remoteVoiceParticipant(participant: RemoteParticipant): VoiceParticipant {
-  const microphone = [...participant.audioTrackPublications.values()].find((publication) => publication.source === Track.Source.Microphone)
+  const microphone = [...participant.audioTrackPublications.values()].find((publication) => publication.source === sdk?.Track.Source.Microphone)
   return {
     memberId: participant.identity,
     connected: true,
@@ -98,6 +114,7 @@ export class LiveKitVoiceProvider implements VoiceProvider {
   }
 
   private bindRoom(room: Room) {
+    const { RoomEvent, Track, DisconnectReason } = sdk!
     room.on(RoomEvent.TrackSubscribed, (track) => {
       if (track.kind === Track.Kind.Audio && track.source === Track.Source.Microphone) this.attachTrack(track as RemoteAudioTrack)
       this.syncParticipants()
@@ -133,7 +150,8 @@ export class LiveKitVoiceProvider implements VoiceProvider {
     this.intentionalDisconnect = false
     this.snapshot = { ...initialSnapshot(), connectionState: 'joining' }
     this.update({})
-    const room = new Room({
+    const livekit = await loadSdk()
+    const room = new livekit.Room({
       audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
       publishDefaults: { audioPreset: { maxBitrate: 24_000 }, dtx: true, red: true, stopMicTrackOnMute: false },
     })
@@ -143,7 +161,7 @@ export class LiveKitVoiceProvider implements VoiceProvider {
       await room.connect(credentials.serverUrl, credentials.participantToken, { autoSubscribe: true })
       for (const participant of room.remoteParticipants.values()) {
         for (const publication of participant.audioTrackPublications.values()) {
-          if (publication.source === Track.Source.Microphone && publication.track?.kind === Track.Kind.Audio) this.attachTrack(publication.track as RemoteAudioTrack)
+          if (publication.source === livekit.Track.Source.Microphone && publication.track?.kind === livekit.Track.Kind.Audio) this.attachTrack(publication.track as RemoteAudioTrack)
         }
       }
       this.syncParticipants()

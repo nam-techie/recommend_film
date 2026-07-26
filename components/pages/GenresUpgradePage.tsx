@@ -216,7 +216,7 @@ export default function GenresUpgradePage() {
       
       {/* Create Room Section */}
       <div className="mt-12 mb-16">
-        <Card className="border-0 bg-gradient-to-br from-primary/5 via-purple-500/5 to-yellow-500/5 shadow-2xl">
+        <Card className="border-0 bg-gradient-to-br from-primary/5 via-accent/5 to-yellow-500/5 shadow-2xl">
           <CardContent className="p-8 lg:p-12">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
               {/* Left: Content */}
@@ -226,7 +226,7 @@ export default function GenresUpgradePage() {
                     <Crown className="h-4 w-4" />
                     Tạo phòng mới
                   </div>
-                  <h2 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary via-purple-600 to-yellow-500 bg-clip-text text-transparent">
+                  <h2 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary via-accent-strong to-yellow-500 bg-clip-text text-transparent">
                     Xem phim cùng bạn bè
                   </h2>
                   <p className="text-lg text-muted-foreground leading-relaxed">
@@ -242,11 +242,11 @@ export default function GenresUpgradePage() {
                       <span>Đồng bộ video real-time</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <div className="w-2 h-2 bg-info rounded-full"></div>
                       <span>Chat trực tiếp trong phim</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      <div className="w-2 h-2 bg-accent rounded-full"></div>
                       <span>Phòng riêng tư & bảo mật</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -257,7 +257,7 @@ export default function GenresUpgradePage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg">
+                  <Button asChild className="bg-gradient-to-r from-primary to-accent-strong hover:from-primary/90 hover:to-accent-strong/90 shadow-lg">
                     <Link href="/">
                       <Play className="h-4 w-4 mr-2" />
                       Chọn phim để tạo phòng
@@ -275,13 +275,13 @@ export default function GenresUpgradePage() {
               {/* Right: Visual */}
               <div className="relative">
                 <div className="relative mx-auto w-full max-w-sm">
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-3xl blur-3xl opacity-20"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent-strong rounded-3xl blur-3xl opacity-20"></div>
                   <Card className="relative border-0 shadow-2xl">
                     <CardContent className="p-6">
                       <div className="space-y-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-r from-primary to-purple-600 rounded-full flex items-center justify-center">
-                            <Users className="h-5 w-5 text-white" />
+                          <div className="w-10 h-10 bg-gradient-to-r from-primary to-accent-strong rounded-full flex items-center justify-center">
+                            <Users className="h-5 w-5 text-fg" />
                           </div>
                           <div>
                             <p className="font-semibold">Phòng của bạn</p>
@@ -430,26 +430,26 @@ export default function GenresUpgradePage() {
                       {/* Status badges */}
                       <div className="absolute top-3 left-3 flex gap-2">
                         {room.playback.isPlaying ? (
-                          <Badge className="bg-red-500 text-white animate-pulse shadow-lg border-0">
+                          <Badge className="bg-bad text-fg animate-pulse shadow-lg border-0">
                             <div className="w-2 h-2 bg-white rounded-full animate-ping mr-1"></div>
                             LIVE
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="bg-gray-500/80 text-white">
+                          <Badge variant="secondary" className="bg-fg-faint/80 text-fg">
                             <div className="w-2 h-2 bg-yellow-400 rounded-full mr-1"></div>
                             Tạm dừng
                           </Badge>
                         )}
                         
                         {getActiveUserCount(room) > 3 && (
-                          <Badge className="bg-orange-500 text-white text-xs">
+                          <Badge className="bg-warn text-black text-xs">
                             🔥 HOT
                           </Badge>
                         )}
                       </div>
                       
                       <div className="absolute top-3 right-3">
-                        <Badge variant="secondary" className="bg-black/50 text-white">
+                        <Badge variant="secondary" className="bg-black/50 text-fg">
                           <Users className="h-3 w-3 mr-1" />
                           {getActiveUserCount(room)}
                         </Badge>

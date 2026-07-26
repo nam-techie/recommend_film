@@ -79,11 +79,11 @@ const GENRES = [
 
 const MOODS = [
     { value: 'happy', label: '😊 Happy', color: 'from-yellow-400 to-orange-400', description: 'Feel-good vibes' },
-    { value: 'sad', label: '😢 Sad', color: 'from-blue-400 to-purple-400', description: 'Emotional stories' },
-    { value: 'excited', label: '🤩 Excited', color: 'from-red-400 to-pink-400', description: 'High energy thrills' },
-    { value: 'relaxed', label: '😌 Relaxed', color: 'from-green-400 to-emerald-400', description: 'Peaceful moments' },
-    { value: 'scared', label: '😨 Scared', color: 'from-purple-400 to-indigo-400', description: 'Spine-chilling fun' },
-    { value: 'adventurous', label: '🗺️ Adventurous', color: 'from-orange-400 to-red-400', description: 'Epic journeys' },
+    { value: 'sad', label: '😢 Sad', color: 'from-blue-400 to-accent-strong', description: 'Emotional stories' },
+    { value: 'excited', label: '🤩 Excited', color: 'from-bad to-pink-400', description: 'High energy thrills' },
+    { value: 'relaxed', label: '😌 Relaxed', color: 'from-green-400 to-ok', description: 'Peaceful moments' },
+    { value: 'scared', label: '😨 Scared', color: 'from-accent-strong to-indigo-400', description: 'Spine-chilling fun' },
+    { value: 'adventurous', label: '🗺️ Adventurous', color: 'from-orange-400 to-bad', description: 'Epic journeys' },
 ] as const
 
 const SORT_OPTIONS = [
@@ -255,18 +255,18 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                     <Button
                         size="icon"
                         variant="secondary"
-                        className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-red-500/80 transition-all duration-300"
+                        className="h-9 w-9 rounded-full bg-black/40 backdrop-blur-md border-0 hover:bg-bad/80 transition-all duration-300"
                         onClick={() => setIsLiked(!isLiked)}
                     >
-                        <Heart className={`h-4 w-4 transition-all duration-300 ${isLiked ? 'fill-red-500 text-red-500 scale-110' : 'text-white'}`} />
+                        <Heart className={`h-4 w-4 transition-all duration-300 ${isLiked ? 'fill-bad text-bad scale-110' : 'text-fg'}`} />
                     </Button>
                 </div>
 
                 {/* Rating Badge */}
                 {movie.tmdb?.vote_average && (
                     <div className="absolute top-3 left-3">
-                        <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 shadow-lg">
-                            <Star className="h-3 w-3 text-white mr-1 fill-current" />
+                        <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-fg border-0 shadow-lg">
+                            <Star className="h-3 w-3 text-fg mr-1 fill-current" />
                             {movie.tmdb.vote_average.toFixed(1)}
                         </Badge>
                     </div>
@@ -274,7 +274,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
                 {/* Language Badge */}
                 <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                    <Badge variant="secondary" className="bg-black/40 backdrop-blur-md text-white border-0">
+                    <Badge variant="secondary" className="bg-black/40 backdrop-blur-md text-fg border-0">
                         <Globe className="h-3 w-3 mr-1" />
                         {movie.lang || 'Vietsub'}
                     </Badge>
@@ -282,7 +282,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
 
                 {/* Popularity Badge */}
                 <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                    <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white border-0">
+                    <Badge className="bg-gradient-to-r from-primary to-accent-strong text-fg border-0">
                         <Users className="h-3 w-3 mr-1" />
                         {movie.view || 'N/A'}
                     </Badge>
@@ -293,14 +293,14 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                     <div className="transform scale-75 group-hover:scale-100 transition-transform duration-500">
                             <Button 
                                 size="icon" 
-                                className="h-16 w-16 rounded-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-2xl border-4 border-white/20 disabled:opacity-70"
+                                className="h-16 w-16 rounded-full bg-gradient-to-r from-primary to-accent-strong hover:from-primary/90 hover:to-accent-strong/90 shadow-2xl border-4 border-white/20 disabled:opacity-70"
                                 onClick={handlePlayTrailer}
                                 disabled={loadingTrailer}
                             >
                                 {loadingTrailer ? (
                                     <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                 ) : (
-                            <Play className="h-7 w-7 ml-1 text-white" />
+                            <Play className="h-7 w-7 ml-1 text-fg" />
                                 )}
                         </Button>
                     </div>
@@ -327,7 +327,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                 <Link href={`/movie/${movieSlug}`} className="w-full">
                         <Button 
                             variant="outline" 
-                            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 font-medium"
+                            className="w-full group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent-strong group-hover:text-fg group-hover:border-transparent transition-all duration-300 font-medium"
                         >
                             <Info className="h-4 w-4 mr-2" />
                         Xem Chi Tiết
@@ -351,7 +351,7 @@ const MovieCard = ({ movie }: MovieCardProps) => {
                         )}
                     </div>
                     <div className="p-3 sm:p-4 bg-gradient-to-br from-background via-background to-muted/30">
-                        <h3 className="text-lg sm:text-xl font-bold text-white mb-1 sm:mb-2">{movie.name}</h3>
+                        <h3 className="text-lg sm:text-xl font-bold text-fg mb-1 sm:mb-2">{movie.name}</h3>
                         <p className="text-sm sm:text-base text-muted-foreground">Official Trailer</p>
                     </div>
                 </DialogContent>
@@ -365,9 +365,9 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
         <div className="mb-8 sm:mb-16 px-4 sm:px-6 lg:px-8">
             {/* Hero Section */}
             <div className="text-center mb-8 sm:mb-12 relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-purple-600/10 to-pink-600/10 blur-3xl -z-10" />
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-accent-strong/10 to-pink-600/10 blur-3xl -z-10" />
                 <div className="relative">
-                    <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-primary/20 to-purple-600/20 border border-primary/30 mb-4 sm:mb-6">
+                    <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-primary/20 to-accent-strong/20 border border-primary/30 mb-4 sm:mb-6">
                         <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
                         <span className="text-xs sm:text-sm font-medium">AI-Powered Movie Discovery</span>
                     </div>
@@ -375,7 +375,7 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
                         CineMind
                     </h1>
                     <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-2 leading-relaxed">
-                        Where <span className="font-semibold text-primary">Cinema</span> meets <span className="font-semibold text-purple-600">Mind</span>
+                        Where <span className="font-semibold text-primary">Cinema</span> meets <span className="font-semibold text-accent-strong">Mind</span>
                     </p>
                     <p className="text-base sm:text-lg text-muted-foreground/80 max-w-2xl mx-auto">
                         Discover your perfect movie based on your current mood and preferences
@@ -401,13 +401,13 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
                                         onClick={() => setMood(mood === value ? '' : value)}
                                         className={`p-3 sm:p-4 rounded-xl border-2 transition-all duration-300 text-left ${
                                             mood === value
-                                                ? `border-primary bg-gradient-to-br ${color} text-white shadow-lg scale-105`
+                                                ? `border-primary bg-gradient-to-br ${color} text-fg shadow-lg scale-105`
                                                 : 'border-border/50 hover:border-primary/50 hover:shadow-md bg-card'
                                         }`}
                                     >
                                         <div className="text-xl sm:text-2xl mb-1.5 sm:mb-2">{label.split(' ')[0]}</div>
                                         <div className="font-medium text-xs sm:text-sm">{label.split(' ').slice(1).join(' ')}</div>
-                                        <div className={`text-xs mt-1 ${mood === value ? 'text-white/80' : 'text-muted-foreground'} hidden sm:block`}>
+                                        <div className={`text-xs mt-1 ${mood === value ? 'text-fg/80' : 'text-muted-foreground'} hidden sm:block`}>
                                             {description}
                                         </div>
                                     </button>
@@ -480,7 +480,7 @@ const SelectionForm = ({ mood, setMood, genre, setGenre, sortBy, setSortBy, year
                             <Button 
                                 type="submit" 
                                 disabled={loading} 
-                                className="shiny-button w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-gradient-to-r from-primary to-purple-600 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
+                                className="shiny-button w-full h-12 sm:h-14 text-base sm:text-lg font-semibold bg-gradient-to-r from-primary to-accent-strong hover:from-accent-strong hover:to-pink-600 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
                             >
                                 <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                                 Discover Amazing Movies
@@ -544,7 +544,7 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                         className={`h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-sm ${
                             currentPage === 1 
                                 ? "pointer-events-none opacity-50" 
-                                : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"
+                                : "hover:bg-gradient-to-r hover:from-primary hover:to-accent-strong hover:text-fg"
                         } transition-all duration-300`}
                     />
                 </PaginationItem>
@@ -565,8 +565,8 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                                 isActive={currentPage === page}
                                 className={`h-9 sm:h-10 w-9 sm:w-10 text-xs sm:text-sm transition-all duration-300 ${
                                     currentPage === page 
-                                        ? "bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg" 
-                                        : "hover:bg-gradient-to-r hover:from-primary/20 hover:to-purple-600/20"
+                                        ? "bg-gradient-to-r from-primary to-accent-strong text-fg shadow-lg" 
+                                        : "hover:bg-gradient-to-r hover:from-primary/20 hover:to-accent-strong/20"
                                 }`}
                             >
                                 {page}
@@ -585,7 +585,7 @@ const MoviePagination = ({ currentPage, totalPages, onPageChange }: MoviePaginat
                         className={`h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-sm ${
                             currentPage === totalPages 
                                 ? "pointer-events-none opacity-50" 
-                                : "hover:bg-gradient-to-r hover:from-primary hover:to-purple-600 hover:text-white"
+                                : "hover:bg-gradient-to-r hover:from-primary hover:to-accent-strong hover:text-fg"
                         } transition-all duration-300`}
                     />
                 </PaginationItem>
@@ -690,7 +690,7 @@ export function MovieMoodRecommender() {
                         <p className="text-muted-foreground mb-6 text-lg">{error}</p>
                         <Button 
                             onClick={() => window.location.reload()}
-                            className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                            className="bg-gradient-to-r from-primary to-accent-strong hover:from-primary/90 hover:to-accent-strong/90"
                         >
                             Try Again
                         </Button>
@@ -711,7 +711,7 @@ export function MovieMoodRecommender() {
             {!loading && movies.length > 0 && (
                 <>
                     <div className="mb-6 sm:mb-10 text-center px-4 sm:px-0">
-                        <h2 className="text-2xl sm:text-3xl font-bold mb-2 sm:mb-3 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                        <h2 className="text-2xl sm:text-3xl font-bold mb-2 sm:mb-3 bg-gradient-to-r from-primary to-accent-strong bg-clip-text text-transparent">
                             Your Perfect Movie Collection
                         </h2>
                         <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -723,7 +723,7 @@ export function MovieMoodRecommender() {
                             )}
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-2 mt-3 sm:mt-4">
-                            <Badge className="bg-gradient-to-r from-primary to-purple-600 text-white text-xs sm:text-sm">
+                            <Badge className="bg-gradient-to-r from-primary to-accent-strong text-fg text-xs sm:text-sm">
                                 {SORT_OPTIONS.find(opt => opt.value === sortBy)?.label}
                             </Badge>
                             {mood && (

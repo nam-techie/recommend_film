@@ -5,25 +5,28 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  // motion-safe cho scale: người bật "giảm chuyển động" không bị nút nhún.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform] duration-150 motion-safe:active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm hover:shadow-md",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm hover:shadow-md dark:border-gray-600 dark:hover:bg-gray-800",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow-md dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600",
-        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-gray-800",
-        link: "text-primary underline-offset-4 hover:underline",
+        default: "bg-primary text-primary-foreground hover:bg-accent-strong shadow-sm hover:shadow-md",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm hover:shadow-md",
+        // Trước đây outline/ghost dùng `hover:bg-accent`. Sau khi `--accent` đổi
+        // thành màu nhấn fuchsia, hover biến thành mảng hồng đặc — sai hoàn toàn.
+        // Hover của nút phụ phải là surface, không phải màu nhấn.
+        outline: "border border-border bg-transparent hover:border-fg/25 hover:bg-surface-2 hover:text-fg",
+        secondary: "bg-surface-2 text-fg hover:bg-surface-3",
+        ghost: "hover:bg-surface-2 hover:text-fg",
+        link: "text-accent-soft underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
+        // 40px là sàn vùng bấm. Trước là h-9 (36px) — dưới ngưỡng chạm được.
+        sm: "h-10 rounded-md px-3.5",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
+        "icon-lg": "h-11 w-11",
       },
       iconSize: {
         sm: "[&_svg]:size-3.5",

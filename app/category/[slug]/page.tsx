@@ -18,16 +18,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     
     if (!category) {
       return {
-        title: 'Danh mục không tồn tại - MovieWiser',
-        description: 'Danh mục phim bạn tìm kiếm không tồn tại trên MovieWiser.'
+        title: 'Danh mục không tồn tại - CineMind',
+        description: 'Danh mục phim bạn tìm kiếm không tồn tại trên CineMind.'
       }
     }
 
     const categoryTypeVi = category.type === 'country' ? 'Quốc gia' : 'Thể loại'
 
     return {
-      title: `${category.name} - ${categoryTypeVi} Phim Hay - MovieWiser`,
-      description: `${category.description} Xem ngay tại MovieWiser với chất lượng HD và phụ đề tiếng Việt.`,
+      title: `${category.name} - ${categoryTypeVi} Phim Hay - CineMind`,
+      description: `${category.description} Xem ngay tại CineMind với chất lượng HD và phụ đề tiếng Việt.`,
       keywords: [
         category.name.toLowerCase(),
         `phim ${category.name.toLowerCase()}`,
@@ -37,26 +37,26 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         'xem phim online',
         'phim vietsub',
         'phim lồng tiếng',
-        'MovieWiser'
+        'CineMind'
       ],
       openGraph: {
-        title: `${category.name} - MovieWiser`,
+        title: `${category.name} - CineMind`,
         description: category.description,
         type: 'website',
         url: `https://moviewiser.com/category/${slug}`,
-        siteName: 'MovieWiser',
+        siteName: 'CineMind',
         images: [
           {
             url: '/og-category-default.jpg',
             width: 1200,
             height: 630,
-            alt: `${category.name} - MovieWiser`
+            alt: `${category.name} - CineMind`
           }
         ]
       },
       twitter: {
         card: 'summary_large_image',
-        title: `${category.name} - MovieWiser`,
+        title: `${category.name} - CineMind`,
         description: category.description,
         images: ['/og-category-default.jpg']
       },
@@ -78,8 +78,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   } catch (error) {
     console.error('Error generating metadata:', error)
     return {
-      title: 'Danh mục phim - MovieWiser',
-      description: 'Khám phá các danh mục phim đa dạng tại MovieWiser.'
+      title: 'Danh mục phim - CineMind',
+      description: 'Khám phá các danh mục phim đa dạng tại CineMind.'
     }
   }
 }

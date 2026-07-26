@@ -5,23 +5,33 @@ import Hls from 'hls.js'
 import {
   AlertTriangle,
   AudioLines,
+  Gauge,
+  Headphones,
+  Keyboard,
   LockKeyhole,
   Maximize,
   MessageCircle,
+  Mic,
+  MicOff,
   Minimize,
   Pause,
+  PictureInPicture2,
   Play,
   RefreshCw,
   RotateCcw,
   RotateCw,
+  ServerCog,
   Settings,
   SkipBack,
   SkipForward,
   SmilePlus,
+  Volume1,
   Volume2,
   VolumeX,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PlayerSeekBar, formatClock } from '@/components/ui/PlayerSeekBar'
+import { PlayerShortcuts } from '@/components/ui/PlayerShortcuts'
 import {
   WATCH_PARTY_DRIFT_HARD_SECONDS,
   WATCH_PARTY_DRIFT_SOFT_SECONDS,
@@ -75,14 +85,30 @@ interface Props {
   onPreviousEpisode?: () => void
   onNextEpisode?: (reason?: 'next' | 'auto_next') => void
   onToggleAutoNext?: () => void
+  /** Ảnh nền hiển thị trước khi có khung hình đầu tiên. */
+  poster?: string
+  /** Cho phép người xem đổi máy chủ phát khi nguồn lỗi. */
+  onRequestServerChange?: () => void
 }
 
-const formatTime = (seconds = 0) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
+const formatTime = formatClock
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
+const STORAGE_KEYS = { volume: 'cinemind:player:volume', muted: 'cinemind:player:muted', rate: 'cinemind:player:rate' } as const
+
+const readStored = <T,>(key: string, fallback: T, parse: (raw: string) => T): T => {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw === null ? fallback : parse(raw)
+  } catch {
+    return fallback
+  }
+}
 const memberInitials = (name = '?') => name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase() || '?'
 
 function SeekIcon({ direction }: { direction: 'back' | 'forward' }) {
   const Icon = direction === 'back' ? RotateCcw : RotateCw
-  return <span className="relative flex h-7 w-7 items-center justify-center"><Icon className="h-7 w-7" /><span className="absolute text-[9px] font-black leading-none">10</span></span>
+  return <span className="relative flex h-7 w-7 items-center justify-center"><Icon className="h-7 w-7" /><span className="absolute text-xs font-black leading-none">10</span></span>
 }
 
 export function SyncedHlsPlayer({
@@ -122,6 +148,8 @@ export function SyncedHlsPlayer({
   onPreviousEpisode,
   onNextEpisode,
   onToggleAutoNext,
+  poster,
+  onRequestServerChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -143,8 +171,12 @@ export function SyncedHlsPlayer({
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [volume, setVolume] = useState(0.85)
-  const [muted, setMuted] = useState(false)
+  // Khôi phục tuỳ chọn lần xem trước — trước đây âm lượng luôn reset về 0.85.
+  const [volume, setVolume] = useState(() => readStored(STORAGE_KEYS.volume, 0.85, (raw) => {
+    const value = Number(raw)
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.85
+  }))
+  const [muted, setMuted] = useState(() => readStored(STORAGE_KEYS.muted, false, (raw) => raw === '1'))
   const [volumeWritable, setVolumeWritable] = useState(true)
   const [isScrubbing, setIsScrubbing] = useState(false)
   const [scrubTime, setScrubTime] = useState(0)
@@ -155,6 +187,31 @@ export function SyncedHlsPlayer({
   const [qualityLevel, setQualityLevel] = useState(-1)
   const [qualityOptions, setQualityOptions] = useState<Array<{ index: number; label: string }>>([])
   const endedEpisodeRef = useRef<string | null>(null)
+
+  const [bufferedEnd, setBufferedEnd] = useState(0)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showSpeed, setShowSpeed] = useState(false)
+  const [pipActive, setPipActive] = useState(false)
+  /** Chỉ hiện spinner khi buffering kéo dài — nếu không, mỗi lần seek nhỏ là một lần nhấp nháy. */
+  const [showBufferSpinner, setShowBufferSpinner] = useState(false)
+  const [userRate, setUserRate] = useState(() => readStored(STORAGE_KEYS.rate, 1, (raw) => {
+    const value = Number(raw)
+    return PLAYBACK_RATES.includes(value as (typeof PLAYBACK_RATES)[number]) ? value : 1
+  }))
+  /** Đang giữ để xem nhanh 2× trên mobile; nhả tay là trả về tốc độ cũ. */
+  const [holdBoost, setHoldBoost] = useState(false)
+  const holdTimerRef = useRef<number | null>(null)
+  const gestureRef = useRef<{ mode: 'none' | 'seek' | 'volume'; startX: number; startY: number; startTime: number; startVolume: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEYS.volume, String(volume))
+      window.localStorage.setItem(STORAGE_KEYS.muted, muted ? '1' : '0')
+      window.localStorage.setItem(STORAGE_KEYS.rate, String(userRate))
+    } catch {
+      // localStorage bị chặn (chế độ riêng tư) — bỏ qua, chỉ mất phần ghi nhớ
+    }
+  }, [muted, userRate, volume])
 
   const playerStateRef = useRef(playerState)
   useEffect(() => { playerStateRef.current = playerState }, [playerState])
@@ -446,24 +503,167 @@ export function SyncedHlsPlayer({
     else void root.requestFullscreen?.()
   }, [onToggleFullscreen])
 
+  const seekBy = useCallback((delta: number) => {
+    commitSeek(currentTime + delta)
+    showGestureFeedback(`${delta > 0 ? '+' : '−'}${Math.abs(delta)} giây`, delta > 0 ? 'right' : 'left')
+  }, [commitSeek, currentTime, showGestureFeedback])
+
+  const adjustVolume = useCallback((delta: number) => {
+    setMuted(false)
+    setVolume((value) => {
+      const next = Math.min(1, Math.max(0, value + delta))
+      showGestureFeedback(`Âm lượng ${Math.round(next * 100)}%`, 'center')
+      return next
+    })
+  }, [showGestureFeedback])
+
+  const changeRate = useCallback((rate: number) => {
+    setUserRate(rate)
+    showGestureFeedback(`Tốc độ ${rate}×`, 'center')
+  }, [showGestureFeedback])
+
+  const togglePip = useCallback(async () => {
+    const video = videoRef.current
+    if (!video || !document.pictureInPictureEnabled) return
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture()
+      else await video.requestPictureInPicture()
+    } catch {
+      showGestureFeedback('Không mở được cửa sổ nhỏ', 'center')
+    }
+  }, [showGestureFeedback])
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      // Chỉ nhường phím khi người dùng đang gõ chữ thật.
+      // Trước đây loại trừ toàn bộ INPUT, mà thanh tua và thanh âm lượng của chính
+      // player lại là input → click vào thanh tua một lần là Space chết cho tới khi
+      // click ra chỗ khác. Đây chính là lỗi "nhấn Space không play/pause được".
+      if (target) {
+        if (target.isContentEditable) return
+        if (['TEXTAREA', 'SELECT'].includes(target.tagName)) return
+        if (target.tagName === 'INPUT') {
+          const type = (target as HTMLInputElement).type
+          if (!['range', 'checkbox', 'radio', 'button', 'submit'].includes(type)) return
+        }
+      }
+
       const key = event.key.toLowerCase()
-      if (key === 'f') { event.preventDefault(); toggleFullscreen(); return }
-      if (key === 'm') { event.preventDefault(); toggleMute(); return }
-      if (!isHost) return
-      if (key === ' ' || key === 'k') { event.preventDefault(); togglePlayback() }
-      else if (event.key === 'ArrowLeft') { event.preventDefault(); commitSeek(currentTime - 10); showGestureFeedback('−10 giây', 'left') }
-      else if (event.key === 'ArrowRight') { event.preventDefault(); commitSeek(currentTime + 10); showGestureFeedback('+10 giây', 'right') }
+      const localKeys = ['f', 'm', 'i', '?', 'arrowup', 'arrowdown']
+      const isLocal = localKeys.includes(key) || event.key === '?' || event.key === 'Escape'
+
+      // Phím điều khiển phim chỉ dành cho host. Vẫn preventDefault trước khi thoát
+      // để Space của guest không cuộn trang.
+      if (!isHost && !isLocal) {
+        if (key === ' ' || key.startsWith('arrow')) {
+          event.preventDefault()
+          showGestureFeedback('Host đang điều khiển', 'center')
+        }
+        return
+      }
+
+      switch (true) {
+        case key === 'f': event.preventDefault(); toggleFullscreen(); break
+        case key === 'm': event.preventDefault(); toggleMute(); break
+        case key === 'i': event.preventDefault(); void togglePip(); break
+        case event.key === '?': event.preventDefault(); setShowShortcuts((value) => !value); break
+        case event.key === 'Escape': setShowShortcuts(false); setShowSettings(false); setShowSpeed(false); setShowReactionTray(false); break
+        case event.key === 'ArrowUp': event.preventDefault(); adjustVolume(0.05); break
+        case event.key === 'ArrowDown': event.preventDefault(); adjustVolume(-0.05); break
+        case key === ' ' || key === 'k': event.preventDefault(); togglePlayback(); break
+        case key === 'j': event.preventDefault(); seekBy(-10); break
+        case key === 'l': event.preventDefault(); seekBy(10); break
+        case event.key === 'ArrowLeft': event.preventDefault(); seekBy(-5); break
+        case event.key === 'ArrowRight': event.preventDefault(); seekBy(5); break
+        case key === 'n': event.preventDefault(); if (nextEpisode) onNextEpisode?.('next'); break
+        case key === 'p': event.preventDefault(); if (previousEpisode) onPreviousEpisode?.(); break
+        case event.key === '<' || event.key === ',': {
+          event.preventDefault()
+          const index = PLAYBACK_RATES.indexOf(userRate as (typeof PLAYBACK_RATES)[number])
+          changeRate(PLAYBACK_RATES[Math.max(0, index - 1)])
+          break
+        }
+        case event.key === '>' || event.key === '.': {
+          event.preventDefault()
+          const index = PLAYBACK_RATES.indexOf(userRate as (typeof PLAYBACK_RATES)[number])
+          changeRate(PLAYBACK_RATES[Math.min(PLAYBACK_RATES.length - 1, index + 1)])
+          break
+        }
+        case /^[0-9]$/.test(event.key): {
+          event.preventDefault()
+          if (duration > 0) {
+            const ratio = Number(event.key) / 10
+            commitSeek(duration * ratio)
+            showGestureFeedback(`${Number(event.key) * 10}%`, 'center')
+          }
+          break
+        }
+        default: return
+      }
       scheduleControls()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [commitSeek, currentTime, isHost, scheduleControls, showGestureFeedback, toggleFullscreen, toggleMute, togglePlayback])
+  }, [adjustVolume, changeRate, commitSeek, duration, isHost, nextEpisode, onNextEpisode, onPreviousEpisode, previousEpisode, scheduleControls, seekBy, showGestureFeedback, toggleFullscreen, toggleMute, togglePip, togglePlayback, userRate])
+
+  /** Tốc độ phát do người dùng chọn. Guest để cơ chế đồng bộ tự chỉnh (xem applyRoomPlayback). */
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || (!standalone && !isHost)) return
+    video.playbackRate = holdBoost ? 2 : userRate
+  }, [holdBoost, isHost, standalone, userRate, playerState])
+
+  /** Vùng đã tải sẵn, để thanh tua vẽ lớp buffered. */
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const update = () => {
+      try {
+        const ranges = video.buffered
+        for (let index = 0; index < ranges.length; index += 1) {
+          if (ranges.start(index) <= video.currentTime && video.currentTime <= ranges.end(index)) {
+            setBufferedEnd(ranges.end(index))
+            return
+          }
+        }
+        if (ranges.length > 0) setBufferedEnd(ranges.end(ranges.length - 1))
+      } catch {
+        // buffered không đọc được ở một số nguồn — bỏ qua, chỉ mất lớp hiển thị
+      }
+    }
+    video.addEventListener('progress', update)
+    video.addEventListener('timeupdate', update)
+    return () => {
+      video.removeEventListener('progress', update)
+      video.removeEventListener('timeupdate', update)
+    }
+  }, [sourceVersion])
+
+  /** Trễ 350ms trước khi hiện spinner buffering. */
+  useEffect(() => {
+    if (playerState !== 'buffering') { setShowBufferSpinner(false); return }
+    const timer = window.setTimeout(() => setShowBufferSpinner(true), 350)
+    return () => window.clearTimeout(timer)
+  }, [playerState])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onEnter = () => setPipActive(true)
+    const onLeave = () => setPipActive(false)
+    video.addEventListener('enterpictureinpicture', onEnter)
+    video.addEventListener('leavepictureinpicture', onLeave)
+    return () => {
+      video.removeEventListener('enterpictureinpicture', onEnter)
+      video.removeEventListener('leavepictureinpicture', onLeave)
+    }
+  }, [])
 
   const handleSurfaceClick = () => {
+    // Đưa focus về player để phím tắt luôn thuộc về nó, kể cả khi trước đó
+    // người dùng vừa bấm một nút khác trên trang.
+    rootRef.current?.focus({ preventScroll: true })
     scheduleControls()
     if (gestureTimerRef.current) window.clearTimeout(gestureTimerRef.current)
     gestureTimerRef.current = window.setTimeout(() => {
@@ -473,6 +673,72 @@ export function SyncedHlsPlayer({
         showGestureFeedback(willPlay ? 'Phát' : 'Tạm dừng', 'center')
       }
     }, 240)
+  }
+
+  // ---- Cử chỉ trên màn cảm ứng --------------------------------------------
+  const SWIPE_THRESHOLD = 18
+
+  const handleSurfacePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== 'touch') return
+    gestureRef.current = {
+      mode: 'none',
+      startX: event.clientX,
+      startY: event.clientY,
+      startTime: currentTime,
+      startVolume: volume,
+    }
+    if (!isHost) return
+    // Giữ 500ms → xem nhanh 2×, nhả tay là về tốc độ cũ.
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current)
+    holdTimerRef.current = window.setTimeout(() => {
+      if (gestureRef.current?.mode === 'none' && !videoRef.current?.paused) {
+        setHoldBoost(true)
+        showGestureFeedback('2× ▶▶', 'center')
+      }
+    }, 500)
+  }
+
+  const handleSurfacePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const gesture = gestureRef.current
+    if (event.pointerType !== 'touch' || !gesture) return
+    const deltaX = event.clientX - gesture.startX
+    const deltaY = event.clientY - gesture.startY
+
+    if (gesture.mode === 'none') {
+      if (Math.abs(deltaX) < SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_THRESHOLD) return
+      if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current)
+      gesture.mode = Math.abs(deltaX) > Math.abs(deltaY) ? 'seek' : 'volume'
+      if (gesture.mode === 'seek' && (!isHost || !duration)) gesture.mode = 'none'
+    }
+
+    if (gesture.mode === 'volume') {
+      const rect = event.currentTarget.getBoundingClientRect()
+      // Chỉ nửa phải chỉnh âm lượng, để dành nửa trái cho thao tác khác.
+      if (gesture.startX - rect.left < rect.width / 2) return
+      const next = Math.min(1, Math.max(0, gesture.startVolume - deltaY / rect.height))
+      setMuted(false)
+      setVolume(next)
+      showGestureFeedback(`Âm lượng ${Math.round(next * 100)}%`, 'center')
+    } else if (gesture.mode === 'seek') {
+      const rect = event.currentTarget.getBoundingClientRect()
+      // Kéo hết chiều ngang màn hình = 90 giây.
+      const next = Math.min(duration, Math.max(0, gesture.startTime + (deltaX / rect.width) * 90))
+      setScrubTime(next)
+      setIsScrubbing(true)
+      showGestureFeedback(`${formatTime(next)} (${next >= gesture.startTime ? '+' : '−'}${Math.abs(Math.round(next - gesture.startTime))}s)`, 'center')
+    }
+  }
+
+  const handleSurfacePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== 'touch') return
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current)
+    if (holdBoost) setHoldBoost(false)
+    const gesture = gestureRef.current
+    if (gesture?.mode === 'seek') {
+      commitSeek(scrubTime)
+      setIsScrubbing(false)
+    }
+    gestureRef.current = null
   }
 
   const handleSurfaceDoubleClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -486,29 +752,36 @@ export function SyncedHlsPlayer({
     showGestureFeedback(side === 'left' ? '−10 giây' : '+10 giây', side)
   }
 
-  if (!episode) return <div className="flex h-full min-h-80 items-center justify-center bg-black text-gray-400">Chưa có tập phim để phát.</div>
+  if (!episode) return <div className="flex h-full min-h-80 items-center justify-center bg-black text-fg-secondary">Chưa có tập phim để phát.</div>
   if (playerState === 'fallback_embed') return <div ref={rootRef} className={cn('relative w-full bg-black', fillContainer ? 'h-full' : 'aspect-video h-full')}>
     <iframe src={episode.linkEmbed} title={episode.name} className="h-full w-full border-0" allowFullScreen allow="autoplay; encrypted-media; picture-in-picture" />
-    <div className="absolute left-3 top-3 max-w-md rounded-lg border border-amber-500/40 bg-black/90 px-3 py-2 text-sm text-amber-100">{sourceError || 'Nguồn này chỉ hỗ trợ đồng bộ giới hạn. Chat, reaction và đổi tập vẫn hoạt động.'}</div>
+    <div className="absolute left-3 top-3 max-w-md rounded-lg border border-rating/40 bg-black/90 px-3 py-2 text-sm text-rating">{sourceError || 'Nguồn này chỉ hỗ trợ đồng bộ giới hạn. Chat, reaction và đổi tập vẫn hoạt động.'}</div>
     <div className="absolute bottom-3 right-3 flex gap-2">
-      {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className="relative h-11 w-11 rounded-full border-white/20 bg-black/60 text-white hover:bg-white/20"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
-      <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFullscreen} className="h-11 w-11 rounded-full border-white/20 bg-black/60 text-white hover:bg-white/20">{isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}</Button>
+      {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className="relative h-11 w-11 rounded-full border-white/20 bg-black/60 text-fg hover:bg-white/20"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
+      <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFullscreen} className="h-11 w-11 rounded-full border-white/20 bg-black/60 text-fg hover:bg-white/20">{isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}</Button>
     </div>
   </div>
 
   const connectionText = !isConnected ? 'Mất kết nối' : roomStatus === 'host_reconnecting' ? 'Host đang kết nối lại' : playerState === 'buffering' ? 'Đang tải dữ liệu' : playerState === 'playing' || playerState === 'ready' ? 'Đã đồng bộ' : 'Đang bắt kịp'
   const controlsAreVisible = controlsVisible || !isPlaying
-  const iconButtonClass = 'h-11 w-11 rounded-full border-white/20 bg-black/45 text-white shadow-none hover:bg-white/20 hover:text-white'
+  // Nút trong suốt trên nền phim, nhún nhẹ khi bấm. Vùng bấm giữ 44px.
+  const iconButtonClass = 'rounded-full border-0 bg-transparent text-fg shadow-none hover:bg-fg/15 hover:text-fg focus-visible:ring-offset-0 disabled:opacity-35'
+  const primaryButtonClass = 'rounded-full bg-fg text-black shadow-none hover:bg-fg/85 focus-visible:ring-offset-0 disabled:opacity-35'
+  const panelClass = 'absolute bottom-[4.75rem] right-3 z-40 w-[min(18rem,calc(100%-1.5rem))] rounded-lg border border-white/12 bg-surface-1/95 p-2 shadow-raised backdrop-blur-md sm:right-4'
+  const chipClass = 'min-h-9 rounded-md border border-border px-3 text-xs font-medium text-fg-secondary transition-colors hover:border-fg/25 hover:text-fg'
+  const chipActiveClass = 'border-accent bg-accent/20 text-fg'
+  const pipSupported = typeof document !== 'undefined' && document.pictureInPictureEnabled
 
   return <div
     ref={rootRef}
-    className={cn('group relative w-full overflow-hidden bg-black text-white', fillContainer ? 'h-full min-h-0' : 'aspect-video h-full', !controlsAreVisible && 'cursor-none')}
+    tabIndex={-1}
+    className={cn('group relative w-full overflow-hidden bg-black text-fg outline-none', fillContainer ? 'h-full min-h-0' : 'aspect-video h-full', !controlsAreVisible && 'cursor-none')}
     onPointerMove={scheduleControls}
     onPointerDown={scheduleControls}
     onFocusCapture={scheduleControls}
     onMouseLeave={() => { if (isPlaying) scheduleControls() }}
   >
-      <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="metadata"
+      <video ref={videoRef} poster={poster} className="h-full w-full bg-black object-contain" playsInline preload="metadata"
       onLoadedMetadata={() => { const video = videoRef.current; if (video) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); if (!standalone) void applyRoomPlayback() } }}
       onWaiting={() => setPlayerState('buffering')}
       onCanPlay={(event) => {
@@ -527,12 +800,22 @@ export function SyncedHlsPlayer({
       }}
       onSeeked={(event) => { const time = event.currentTarget.currentTime; setCurrentTime(time); onProgress?.(time, duration, 'seek'); if (suppressSeekEventRef.current) { suppressSeekEventRef.current = false; return } emitNative('seek') }} />
 
-    <button type="button" aria-label={isHost ? 'Nhấn để phát hoặc tạm dừng; nhấn đúp hai bên để tua 10 giây' : 'Hiện điều khiển video'} className={cn('absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400', controlsAreVisible ? 'cursor-default' : 'cursor-none')} onClick={handleSurfaceClick} onDoubleClick={handleSurfaceDoubleClick} />
+    <button
+      type="button"
+      aria-label={isHost ? 'Nhấn để phát hoặc tạm dừng; nhấn đúp hai bên để tua 10 giây' : 'Hiện điều khiển video'}
+      className={cn('absolute inset-0 z-10 touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent', controlsAreVisible ? 'cursor-default' : 'cursor-none')}
+      onClick={handleSurfaceClick}
+      onDoubleClick={handleSurfaceDoubleClick}
+      onPointerDown={handleSurfacePointerDown}
+      onPointerMove={handleSurfacePointerMove}
+      onPointerUp={handleSurfacePointerUp}
+      onPointerCancel={handleSurfacePointerUp}
+    />
 
     {!standalone && <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden" aria-live="polite">
       {reactions.map((reaction, index) => <div key={reaction.id} className="watch-party-reaction absolute flex -translate-x-1/2 flex-col items-center" style={{ left: `${16 + (index * 17) % 68}%`, bottom: `${23 + (index * 9) % 33}%` }}>
         <span className="text-4xl drop-shadow-lg sm:text-5xl">{reaction.emoji}</span>
-        <span className="mt-1 max-w-28 truncate rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white/90">{reaction.displayName}</span>
+        <span className="mt-1 max-w-28 truncate rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-fg/90">{reaction.displayName}</span>
       </div>)}
     </div>}
 
@@ -542,62 +825,128 @@ export function SyncedHlsPlayer({
     </div>}
 
     {!standalone && <div className={cn('absolute left-3 top-3 z-30 flex items-center rounded-full bg-black/65 px-3 py-1.5 text-xs transition-opacity duration-200', controlsAreVisible ? 'opacity-100' : 'opacity-0')} aria-live="polite">
-      <span className={cn('mr-2 inline-block h-2 w-2 rounded-full', connectionText === 'Đã đồng bộ' ? 'bg-emerald-400' : !isConnected ? 'bg-red-400' : 'bg-amber-400')} />{connectionText}
+      <span className={cn('mr-2 inline-block h-2 w-2 rounded-full', connectionText === 'Đã đồng bộ' ? 'bg-ok' : !isConnected ? 'bg-bad' : 'bg-rating')} />{connectionText}
     </div>}
     {!standalone && !isHost && <div className={cn('absolute right-3 top-3 z-30 hidden items-center rounded-full bg-black/65 px-3 py-1.5 text-xs transition-opacity duration-200 sm:flex', controlsAreVisible ? 'opacity-100' : 'opacity-0')}><LockKeyhole className="mr-1.5 h-3.5 w-3.5" />Host đang điều khiển</div>}
     {!standalone && speakingMembers.length > 0 && <div className="pointer-events-none absolute right-3 top-12 z-30 flex max-w-[70%] flex-wrap justify-end gap-2" aria-live="polite">
-      {speakingMembers.slice(0, 4).map((member) => <div key={member.memberId} className="flex items-center gap-2 rounded-full border border-emerald-400/70 bg-black/75 py-1 pl-1 pr-2 shadow-lg"><span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-purple-500/30 text-[10px] font-bold ring-2 ring-emerald-400">{memberInitials(member.displayName)}{member.avatar && <img src={member.avatar} alt="" referrerPolicy="no-referrer" onError={(event) => event.currentTarget.remove()} className="absolute inset-0 h-full w-full object-cover" />}</span><span className="max-w-24 truncate text-[11px] font-medium">{member.displayName}</span><AudioLines className="h-3.5 w-3.5 text-emerald-400" /></div>)}
+      {speakingMembers.slice(0, 4).map((member) => <div key={member.memberId} className="flex items-center gap-2 rounded-full border border-ok/70 bg-black/75 py-1 pl-1 pr-2 shadow-lg"><span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-accent/30 text-xs font-bold ring-2 ring-ok">{memberInitials(member.displayName)}{member.avatar && <img src={member.avatar} alt="" referrerPolicy="no-referrer" onError={(event) => event.currentTarget.remove()} className="absolute inset-0 h-full w-full object-cover" />}</span><span className="max-w-24 truncate text-xs font-medium">{member.displayName}</span><AudioLines className="h-3.5 w-3.5 text-ok" /></div>)}
     </div>}
 
-    {!standalone && commandError && <div role="status" className="absolute left-1/2 top-3 z-40 max-w-[80%] -translate-x-1/2 rounded-full border border-amber-400/30 bg-black/85 px-3 py-1.5 text-center text-xs text-amber-100">
+    {!standalone && commandError && <div role="status" className="absolute left-1/2 top-3 z-40 max-w-[80%] -translate-x-1/2 rounded-full border border-rating/30 bg-black/85 px-3 py-1.5 text-center text-xs text-rating">
       {commandError === 'DISCONNECTED' ? 'Mất kết nối phòng.' : commandError === 'TIMEOUT' ? 'Phòng phản hồi quá lâu. Hãy thử lại.' : commandError === 'HOST_ONLY' ? 'Chỉ host được điều khiển phim.' : 'Thao tác chưa thực hiện được.'}
     </div>}
 
-    {(playerState === 'loading_manifest' || playerState === 'loading_media') && <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/60">
-      <div className="rounded-lg bg-black/80 px-4 py-3 text-sm">Đang tải nguồn phim…</div>
-      {allowIframeFallback && episode.linkEmbed && <Button size="sm" variant="outline" onClick={() => useFallbackOrFail('Đã chuyển sang trình phát dự phòng theo yêu cầu.')} className="border-white/30 bg-black/60 text-xs text-white hover:bg-white/10">Chuyển sang trình phát dự phòng</Button>}
+    {(playerState === 'loading_manifest' || playerState === 'loading_media') && <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/70">
+      <span className="h-12 w-12 animate-spin rounded-full border-[3px] border-accent border-t-transparent motion-reduce:animate-none" aria-hidden />
+      <span className="text-sm text-fg-secondary">Đang tải nguồn phim…</span>
+      {allowIframeFallback && episode.linkEmbed && <Button size="sm" variant="outline" onClick={() => useFallbackOrFail('Đã chuyển sang trình phát dự phòng theo yêu cầu.')} className="text-xs">Chuyển sang trình phát dự phòng</Button>}
     </div>}
-    {playerState === 'buffering' && <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-3 text-sm">Đang tải đoạn phim…</div>}
-    {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2">Bấm để bắt kịp phòng</Button>}
-    {playerState === 'fatal_error' && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/85 p-6 text-center"><div><AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" /><p className="mb-4 text-sm text-gray-200">{sourceError || 'Không thể tải nguồn phim.'}</p><Button onClick={() => { setDeliveryAttempt({ episodeId: episode?.id || '', index: 0 }); setSourceVersion((value) => value + 1) }}><RefreshCw className="mr-2 h-4 w-4" />Thử lại</Button></div></div>}
+
+    {showBufferSpinner && <div role="status" aria-live="polite" className="pointer-events-none absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
+      <span className="h-14 w-14 animate-spin rounded-full border-[3px] border-accent border-t-transparent motion-reduce:animate-none" aria-hidden />
+      <span className="sr-only">Đang tải đoạn phim</span>
+    </div>}
+
+    {playerState === 'autoplay_blocked' && <Button onClick={() => void applyRoomPlayback()} className="absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-full">Bấm để bắt kịp phòng</Button>}
+
+    {playerState === 'fatal_error' && <div role="alert" className="absolute inset-0 z-40 flex items-center justify-center bg-black/88 p-6 text-center">
+      <div className="max-w-sm">
+        <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-warn" aria-hidden />
+        <p className="mb-1 font-semibold text-fg">Không phát được nguồn này</p>
+        <p className="mb-5 text-sm text-fg-muted">{sourceError || 'Nguồn phim không phản hồi. Thử lại hoặc đổi sang máy chủ khác.'}</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button className="rounded-full" onClick={() => { setDeliveryAttempt({ episodeId: episode?.id || '', index: 0 }); setSourceVersion((value) => value + 1) }}>
+            <RefreshCw className="h-4 w-4" aria-hidden />Thử lại
+          </Button>
+          {onRequestServerChange && <Button variant="outline" className="rounded-full" onClick={onRequestServerChange}>
+            <ServerCog className="h-4 w-4" aria-hidden />Đổi máy chủ
+          </Button>}
+        </div>
+      </div>
+    </div>}
+
+    {showShortcuts && <PlayerShortcuts onClose={() => setShowShortcuts(false)} />}
 
     {!standalone && showReactionTray && <div className="absolute bottom-[5.6rem] right-3 z-40 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-black/85 p-1.5 shadow-2xl backdrop-blur-sm sm:bottom-24 sm:right-4">
-      {reactionOptions.map((emoji) => <button key={emoji} type="button" aria-label={`Gửi reaction ${emoji}`} disabled={!isConnected} onClick={() => { onSendReaction?.(emoji); setShowReactionTray(false); scheduleControls() }} className="flex h-10 w-10 items-center justify-center rounded-lg text-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 disabled:opacity-40 sm:h-11 sm:w-11">{emoji}</button>)}
-      {reactionError && <span className="absolute -top-8 right-0 whitespace-nowrap rounded-full bg-black/90 px-2 py-1 text-[11px] text-amber-200">{reactionError}</span>}
+      {reactionOptions.map((emoji) => <button key={emoji} type="button" aria-label={`Gửi reaction ${emoji}`} disabled={!isConnected} onClick={() => { onSendReaction?.(emoji); setShowReactionTray(false); scheduleControls() }} className="flex h-10 w-10 items-center justify-center rounded-lg text-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-strong disabled:opacity-40 sm:h-11 sm:w-11">{emoji}</button>)}
+      {reactionError && <span className="absolute -top-8 right-0 whitespace-nowrap rounded-full bg-black/90 px-2 py-1 text-xs text-rating">{reactionError}</span>}
     </div>}
 
-    {showSettings && <div className="absolute bottom-[5.6rem] right-3 z-40 w-[min(18rem,calc(100%-1.5rem))] rounded-2xl border border-white/10 bg-[#0b0e18]/95 p-3 shadow-2xl backdrop-blur-md sm:bottom-24 sm:right-4">
-      <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">Cài đặt phát</span><button type="button" onClick={() => setShowSettings(false)} className="touch-target rounded-full text-xs text-slate-400 hover:text-white">Đóng</button></div>
-      {onToggleAutoNext && <button type="button" disabled={!isHost} onClick={onToggleAutoNext} className="flex min-h-11 w-full items-center justify-between rounded-xl px-2 text-sm hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"><span>Tự động chuyển tập</span><span className={cn('rounded-full px-2 py-1 text-[10px] font-bold', autoNextEnabled ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-slate-400')}>{autoNextEnabled ? 'ON' : 'OFF'}</span></button>}
-      <div className="mt-2 border-t border-white/10 pt-2"><p className="px-2 pb-2 text-xs text-slate-400">Chất lượng</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => selectQuality(-1)} className={cn('rounded-lg border px-3 py-2 text-xs', qualityLevel === -1 ? 'border-purple-400 bg-purple-500/20' : 'border-white/10')}>Tự động</button>{qualityOptions.map((option) => <button key={option.index} type="button" onClick={() => selectQuality(option.index)} className={cn('rounded-lg border px-3 py-2 text-xs', qualityLevel === option.index ? 'border-purple-400 bg-purple-500/20' : 'border-white/10')}>{option.label}</button>)}</div>{qualityOptions.length === 0 && <p className="mt-2 px-2 text-[11px] text-slate-500">Trình duyệt đang tự chọn chất lượng.</p>}</div>
-    </div>}
-
-    {controlsAreVisible && <div className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 md:hidden">
-      <Button size="icon" iconSize="xl" variant="outline" aria-label="Lùi 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime - 10); showGestureFeedback('−10 giây', 'left') }} className={iconButtonClass}><SeekIcon direction="back" /></Button>
-      <Button size="icon" iconSize="lg" aria-label={isPlaying ? 'Tạm dừng' : 'Phát'} disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={togglePlayback} className="h-12 w-12 rounded-full bg-white text-black hover:bg-white/85">{isPlaying ? <Pause className="fill-current" /> : <Play className="fill-current" />}</Button>
-      <Button size="icon" iconSize="xl" variant="outline" aria-label="Tiến 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime + 10); showGestureFeedback('+10 giây', 'right') }} className={iconButtonClass}><SeekIcon direction="forward" /></Button>
-    </div>}
-
-    <div className={cn('absolute inset-x-0 bottom-0 z-30 space-y-1.5 bg-gradient-to-t from-black via-black/85 to-transparent px-3 pb-3 pt-12 transition-opacity duration-200 sm:space-y-2 sm:px-4 sm:pb-4 sm:pt-16', controlsAreVisible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0')}>
-      <div className="flex items-center justify-between gap-3 text-xs sm:text-sm"><span className="truncate font-medium">{episode.name}</span><span className="hidden shrink-0 text-xs text-gray-300 sm:inline">{episode.serverName}</span></div>
-      <input aria-label="Tiến độ phát" title={!isHost ? 'Host đang điều khiển tiến độ phát' : undefined} type="range" min={0} max={duration || 0} step={0.1} value={Math.min(isScrubbing ? scrubTime : currentTime, duration || currentTime)} disabled={!isHost || !duration || !isConnected} onPointerDown={() => { scrubbingRef.current = true; setIsScrubbing(true); setScrubTime(currentTime) }} onChange={(event) => { const value = Number(event.target.value); setScrubTime(value); if (!scrubbingRef.current) commitSeek(value) }} onPointerUp={(event) => { commitSeek(Number(event.currentTarget.value)); scrubbingRef.current = false; setIsScrubbing(false) }} onPointerCancel={() => { scrubbingRef.current = false; setIsScrubbing(false); setScrubTime(currentTime) }} className="h-5 w-full cursor-pointer accent-purple-500 disabled:cursor-not-allowed" />
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-          <Button size="icon" iconSize="lg" aria-label={isPlaying ? 'Tạm dừng' : 'Phát'} title={!isHost ? 'Host đang điều khiển' : isPlaying ? 'Tạm dừng (K)' : 'Phát (K)'} disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={togglePlayback} className={cn(iconButtonClass, 'hidden md:inline-flex')}>{isPlaying ? <Pause className="fill-current" /> : <Play className="fill-current" />}</Button>
-          <Button size="icon" iconSize="xl" variant="outline" aria-label="Lùi 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime - 10); showGestureFeedback('−10 giây', 'left') }} className={cn(iconButtonClass, 'hidden md:inline-flex')}><SeekIcon direction="back" /></Button>
-          <Button size="icon" iconSize="xl" variant="outline" aria-label="Tiến 10 giây" disabled={!isHost || !isConnected || !duration} onClick={() => { commitSeek(currentTime + 10); showGestureFeedback('+10 giây', 'right') }} className={cn(iconButtonClass, 'hidden md:inline-flex')}><SeekIcon direction="forward" /></Button>
-          <span className="whitespace-nowrap font-mono text-[11px] text-white/90 sm:text-xs">{formatTime(isScrubbing ? scrubTime : currentTime)} <span className="hidden text-white/50 min-[360px]:inline">/ {formatTime(duration)}</span></span>
+    {showSettings && <div className={panelClass}>
+      <div className="mb-2 flex items-center justify-between px-1"><span className="text-sm font-semibold">Cài đặt phát</span><button type="button" onClick={() => setShowSettings(false)} aria-label="Đóng cài đặt" className="flex h-9 w-9 items-center justify-center rounded-full text-fg-secondary hover:bg-surface-3 hover:text-fg">✕</button></div>
+      {onToggleAutoNext && <button type="button" disabled={!isHost} aria-pressed={autoNextEnabled} onClick={onToggleAutoNext} className="flex min-h-11 w-full items-center justify-between rounded-md px-2 text-sm hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"><span>Tự động chuyển tập</span><span className={cn('rounded-full px-2 py-0.5 text-xs font-bold', autoNextEnabled ? 'bg-ok/20 text-ok' : 'bg-fg/10 text-fg-muted')}>{autoNextEnabled ? 'BẬT' : 'TẮT'}</span></button>}
+      {onRequestServerChange && <button type="button" onClick={() => { setShowSettings(false); onRequestServerChange() }} className="flex min-h-11 w-full items-center justify-between rounded-md px-2 text-sm hover:bg-surface-3"><span>Đổi máy chủ phát</span><ServerCog className="h-4 w-4 text-fg-muted" aria-hidden /></button>}
+      <div className="mt-2 border-t border-border pt-2">
+        <p className="px-2 pb-2 text-xs text-fg-muted">Chất lượng</p>
+        <div className="flex flex-wrap gap-2 px-1">
+          <button type="button" aria-pressed={qualityLevel === -1} onClick={() => selectQuality(-1)} className={cn(chipClass, qualityLevel === -1 && chipActiveClass)}>Tự động</button>
+          {qualityOptions.map((option) => <button key={option.index} type="button" aria-pressed={qualityLevel === option.index} onClick={() => selectQuality(option.index)} className={cn(chipClass, qualityLevel === option.index && chipActiveClass)}>{option.label}</button>)}
         </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {onPreviousEpisode && <Button size="icon" variant="outline" aria-label="Tập trước" disabled={!isHost || !previousEpisode || !isConnected} onClick={onPreviousEpisode} className={cn(iconButtonClass, 'hidden lg:inline-flex')}><SkipBack /></Button>}
-          <Button size="icon" variant="outline" aria-label="Tập kế" title={nextEpisode ? `Chuyển sang ${nextEpisode.name}` : 'Đây là tập cuối'} disabled={!isHost || !nextEpisode || !isConnected} onClick={() => onNextEpisode?.('next')} className={iconButtonClass}><SkipForward /></Button>
-          <Button size="icon" variant="outline" aria-label={muted ? 'Bật tiếng phim' : 'Tắt tiếng phim'} title={muted ? 'Bật tiếng (M)' : 'Tắt tiếng (M)'} onClick={toggleMute} className={iconButtonClass}>{muted ? <VolumeX /> : <Volume2 />}</Button>
-          {volumeWritable && <input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="hidden w-20 accent-purple-500 lg:block" />}
-          {!standalone && <Button size="icon" variant="outline" aria-label="Đồng bộ lại" title="Đồng bộ lại với phòng" onClick={() => void applyRoomPlayback()} className={cn(iconButtonClass, 'hidden lg:inline-flex')}><RefreshCw /></Button>}
-          <Button size="icon" variant="outline" aria-label="Cài đặt phát" aria-expanded={showSettings} onClick={() => { setShowSettings((value) => !value); setShowReactionTray(false); setControlsVisible(true) }} className={cn(iconButtonClass, showSettings && 'bg-white/20')}><Settings /></Button>
-          {!standalone && onSendReaction && <Button size="icon" variant="outline" aria-label={showReactionTray ? 'Ẩn reaction' : 'Gửi reaction'} onClick={() => { setShowReactionTray((value) => !value); setShowSettings(false); setControlsVisible(true) }} className={cn(iconButtonClass, 'hidden sm:inline-flex', showReactionTray && 'bg-white/20')}><SmilePlus /></Button>}
-          {!standalone && onToggleChat && <Button size="icon" variant="outline" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className={cn(iconButtonClass, 'relative', chatOpen && 'bg-white/20')}><MessageCircle />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold">{Math.min(unreadCount, 99)}</span>}</Button>}
-          <Button size="icon" variant="outline" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFullscreen} className={iconButtonClass}>{isFullscreen ? <Minimize /> : <Maximize />}</Button>
+        {qualityOptions.length === 0 && <p className="mt-2 px-2 text-xs text-fg-muted">Trình duyệt đang tự chọn chất lượng.</p>}
+      </div>
+    </div>}
+
+    {showSpeed && <div className={panelClass}>
+      <p className="px-2 pb-2 text-xs text-fg-muted">Tốc độ phát</p>
+      <div className="flex flex-wrap gap-2 px-1">
+        {PLAYBACK_RATES.map((rate) => <button key={rate} type="button" aria-pressed={userRate === rate} disabled={!standalone && !isHost} onClick={() => { changeRate(rate); setShowSpeed(false) }} className={cn(chipClass, userRate === rate && chipActiveClass, !standalone && !isHost && 'cursor-not-allowed opacity-50')}>{rate === 1 ? 'Chuẩn' : `${rate}×`}</button>)}
+      </div>
+      {!standalone && !isHost && <p className="mt-2 px-2 text-xs text-fg-muted">Chỉ host đổi được tốc độ, để cả phòng xem khớp nhau.</p>}
+    </div>}
+
+    <div className={cn('absolute inset-x-0 bottom-0 z-30 safe-x bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-2 pt-14 transition-opacity duration-200 motion-reduce:transition-none sm:px-4 sm:pb-3', controlsAreVisible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0')}>
+      <div className="mb-0.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
+        <span className="truncate font-medium">{episode.name}</span>
+        <span className="hidden shrink-0 text-xs text-fg-muted sm:inline">{episode.serverName}</span>
+      </div>
+
+      <PlayerSeekBar
+        currentTime={isScrubbing ? scrubTime : currentTime}
+        duration={duration}
+        bufferedEnd={bufferedEnd}
+        disabled={!isHost || !duration || !isConnected}
+        disabledReason={!isHost ? 'Host đang điều khiển' : undefined}
+        previewUrl={hlsCandidates[deliveryIndex]}
+        onScrubStart={() => { scrubbingRef.current = true; setIsScrubbing(true); setScrubTime(currentTime) }}
+        onScrubMove={(time) => setScrubTime(time)}
+        onScrubCommit={(time) => { commitSeek(time); scrubbingRef.current = false; setIsScrubbing(false) }}
+      />
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+          <Button size="icon-lg" iconSize="lg" aria-label={isPlaying ? 'Tạm dừng' : 'Phát'} title={!isHost ? 'Host đang điều khiển' : isPlaying ? 'Tạm dừng (Space)' : 'Phát (Space)'} disabled={!isHost || !isConnected || playerState === 'fatal_error'} onClick={togglePlayback} className={primaryButtonClass}>{isPlaying ? <Pause className="fill-current" /> : <Play className="fill-current" />}</Button>
+          <Button size="icon-lg" iconSize="xl" variant="ghost" aria-label="Lùi 10 giây" title="Lùi 10 giây (J)" disabled={!isHost || !isConnected || !duration} onClick={() => seekBy(-10)} className={iconButtonClass}><SeekIcon direction="back" /></Button>
+          <Button size="icon-lg" iconSize="xl" variant="ghost" aria-label="Tiến 10 giây" title="Tiến 10 giây (L)" disabled={!isHost || !isConnected || !duration} onClick={() => seekBy(10)} className={iconButtonClass}><SeekIcon direction="forward" /></Button>
+          {onPreviousEpisode && <Button size="icon-lg" variant="ghost" aria-label="Tập trước" title="Tập trước (P)" disabled={!isHost || !previousEpisode || !isConnected} onClick={onPreviousEpisode} className={cn(iconButtonClass, 'hidden sm:inline-flex')}><SkipBack /></Button>}
+          <Button size="icon-lg" variant="ghost" aria-label="Tập kế" title={nextEpisode ? `Chuyển sang ${nextEpisode.name} (N)` : 'Đây là tập cuối'} disabled={!isHost || !nextEpisode || !isConnected} onClick={() => onNextEpisode?.('next')} className={iconButtonClass}><SkipForward /></Button>
+
+          {/* Slider âm lượng trượt ra khi rê vào nhóm — gọn mà vẫn dùng được bằng chuột. */}
+          <div className="group/volume hidden items-center sm:flex">
+            <Button size="icon-lg" variant="ghost" aria-label={muted ? 'Bật tiếng phim' : 'Tắt tiếng phim'} title={muted ? 'Bật tiếng (M)' : 'Tắt tiếng (M)'} onClick={toggleMute} className={iconButtonClass}>{muted || volume === 0 ? <VolumeX /> : volume < 0.5 ? <Volume1 /> : <Volume2 />}</Button>
+            {volumeWritable && <input aria-label="Âm lượng" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => { setMuted(false); setVolume(Number(event.target.value)) }} className="h-1 w-0 cursor-pointer accent-accent opacity-0 transition-[width,opacity] duration-200 group-hover/volume:ml-1 group-hover/volume:w-20 group-hover/volume:opacity-100 focus:ml-1 focus:w-20 focus:opacity-100 motion-reduce:transition-none" />}
+          </div>
+
+          <span className="ml-1.5 whitespace-nowrap font-mono text-xs text-fg/90">
+            {formatTime(isScrubbing ? scrubTime : currentTime)}
+            <span className="hidden text-fg/45 min-[360px]:inline"> / {formatTime(duration)}</span>
+          </span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          {!standalone && onToggleMic && <Button size="icon-lg" variant="ghost" aria-label={micEnabled ? 'Tắt mic' : 'Bật mic'} aria-pressed={micEnabled} title={voiceEnabled ? (micEnabled ? 'Tắt mic' : 'Bật mic') : 'Host chưa mở voice'} disabled={!voiceEnabled} onClick={onToggleMic} className={cn(iconButtonClass, micEnabled && 'bg-ok/25 text-ok')}>{micEnabled ? <Mic /> : <MicOff />}</Button>}
+          {!standalone && onToggleSpeaker && <Button size="icon-lg" variant="ghost" aria-label={speakerEnabled ? 'Tắt tiếng phòng' : 'Bật tiếng phòng'} aria-pressed={speakerEnabled} disabled={!voiceEnabled} onClick={onToggleSpeaker} className={cn(iconButtonClass, 'hidden sm:inline-flex')}>{speakerEnabled ? <Headphones /> : <VolumeX />}</Button>}
+          {!standalone && <Button size="icon-lg" variant="ghost" aria-label="Đồng bộ lại" title="Đồng bộ lại với phòng" onClick={() => void applyRoomPlayback()} className={cn(iconButtonClass, 'hidden md:inline-flex')}><RefreshCw /></Button>}
+          {!standalone && onSendReaction && <Button size="icon-lg" variant="ghost" aria-label={showReactionTray ? 'Ẩn reaction' : 'Gửi reaction'} onClick={() => { setShowReactionTray((value) => !value); setShowSettings(false); setShowSpeed(false); setControlsVisible(true) }} className={cn(iconButtonClass, showReactionTray && 'bg-fg/20')}><SmilePlus /></Button>}
+          {!standalone && onToggleChat && <Button size="icon-lg" variant="ghost" aria-label={chatOpen ? 'Ẩn chat' : 'Hiện chat'} onClick={onToggleChat} className={cn(iconButtonClass, 'relative', chatOpen && 'bg-fg/20')}><MessageCircle />{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs font-bold text-accent-fg">{Math.min(unreadCount, 99)}</span>}</Button>}
+
+          <Button size="icon-lg" variant="ghost" aria-label="Tốc độ phát" aria-expanded={showSpeed} title={`Tốc độ ${userRate}× (< >)`} onClick={() => { setShowSpeed((value) => !value); setShowSettings(false); setShowReactionTray(false); setControlsVisible(true) }} className={cn(iconButtonClass, 'relative hidden sm:inline-flex', showSpeed && 'bg-fg/20')}>
+            <Gauge />
+            {userRate !== 1 && <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full bg-accent px-1 text-[0.625rem] font-bold leading-tight text-accent-fg">{userRate}×</span>}
+          </Button>
+          <Button size="icon-lg" variant="ghost" aria-label="Cài đặt phát" aria-expanded={showSettings} onClick={() => { setShowSettings((value) => !value); setShowReactionTray(false); setShowSpeed(false); setControlsVisible(true) }} className={cn(iconButtonClass, showSettings && 'bg-fg/20')}><Settings /></Button>
+          {pipSupported && <Button size="icon-lg" variant="ghost" aria-label="Cửa sổ nhỏ" title="Cửa sổ nhỏ (I)" aria-pressed={pipActive} onClick={() => void togglePip()} className={cn(iconButtonClass, 'hidden lg:inline-flex', pipActive && 'bg-fg/20')}><PictureInPicture2 /></Button>}
+          <Button size="icon-lg" variant="ghost" aria-label="Phím tắt" title="Phím tắt (?)" onClick={() => setShowShortcuts(true)} className={cn(iconButtonClass, 'hidden lg:inline-flex')}><Keyboard /></Button>
+          <Button size="icon-lg" variant="ghost" aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'} title={isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)'} onClick={toggleFullscreen} className={iconButtonClass}>{isFullscreen ? <Minimize /> : <Maximize />}</Button>
         </div>
       </div>
     </div>

@@ -17,10 +17,10 @@ export function MovieSection({ title, subtitle, href, movies }: MovieSectionProp
     <section className="deferred-section">
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+          <h2 className="text-2xl font-bold tracking-tight text-fg sm:text-3xl">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
         </div>
-        {href && <Link href={href} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-400 hover:text-white">Xem tất cả <ArrowRight className="h-4 w-4" /></Link>}
+        {href && <Link href={href} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-fg-secondary hover:text-fg">Xem tất cả <ArrowRight className="h-4 w-4" /></Link>}
       </div>
       <div className="movie-rail">
         {movies.map((movie) => <MovieCard key={movie._id || movie.slug} movie={movie} />)}

@@ -66,24 +66,24 @@ export function FriendSearchPanel() {
 
   return <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="font-semibold text-white">Tìm bạn mới</h2><p className="mt-1 text-xs text-slate-500">Chỉ tìm khi bạn bấm nút; hệ thống không truy vấn trong lúc gõ.</p></div>
+      <div><h2 className="font-semibold text-fg">Tìm bạn mới</h2><p className="mt-1 text-xs text-fg-muted">Chỉ tìm khi bạn bấm nút; hệ thống không truy vấn trong lúc gõ.</p></div>
       <div className="flex rounded-xl bg-black/30 p-1">
-        <button type="button" onClick={() => switchMode('username')} className={cn('flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs', mode === 'username' ? 'bg-purple-600 text-white' : 'text-slate-400')}><AtSign className="h-3.5 w-3.5" />Username</button>
-        <button type="button" onClick={() => switchMode('email')} className={cn('flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs', mode === 'email' ? 'bg-purple-600 text-white' : 'text-slate-400')}><Mail className="h-3.5 w-3.5" />Email</button>
+        <button type="button" onClick={() => switchMode('username')} className={cn('flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs', mode === 'username' ? 'bg-accent-strong text-fg' : 'text-fg-secondary')}><AtSign className="h-3.5 w-3.5" />Username</button>
+        <button type="button" onClick={() => switchMode('email')} className={cn('flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs', mode === 'email' ? 'bg-accent-strong text-fg' : 'text-fg-secondary')}><Mail className="h-3.5 w-3.5" />Email</button>
       </div>
     </div>
     <form onSubmit={submit} className="mt-4 flex flex-col gap-2 sm:flex-row">
-      {mode === 'username' ? <Input value={username} onChange={(event) => { setUsername(event.target.value); resetResult() }} maxLength={25} placeholder="Nhập đầy đủ @username" autoComplete="off" /> : customDomain ? <Input value={customEmail} onChange={(event) => { setCustomEmail(event.target.value); resetResult() }} type="email" placeholder="ban@example.com" autoComplete="off" /> : <div className="flex min-w-0 flex-1 overflow-hidden rounded-md border border-input bg-background"><input value={gmailName} onChange={(event) => { setGmailName(event.target.value.replace(/[@\s]/g, '')); resetResult() }} className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none" placeholder="tenemail" autoComplete="off" /><span className="flex items-center border-l border-white/10 bg-white/5 px-3 text-sm text-slate-400">@gmail.com</span></div>}
+      {mode === 'username' ? <Input value={username} onChange={(event) => { setUsername(event.target.value); resetResult() }} maxLength={25} placeholder="Nhập đầy đủ @username" autoComplete="off" /> : customDomain ? <Input value={customEmail} onChange={(event) => { setCustomEmail(event.target.value); resetResult() }} type="email" placeholder="ban@example.com" autoComplete="off" /> : <div className="flex min-w-0 flex-1 overflow-hidden rounded-md border border-input bg-background"><input value={gmailName} onChange={(event) => { setGmailName(event.target.value.replace(/[@\s]/g, '')); resetResult() }} className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none" placeholder="tenemail" autoComplete="off" /><span className="flex items-center border-l border-white/10 bg-white/5 px-3 text-sm text-fg-secondary">@gmail.com</span></div>}
       {mode === 'email' && <Button type="button" variant="ghost" onClick={() => { setCustomDomain((value) => !value); resetResult() }} className="shrink-0 text-xs">{customDomain ? 'Dùng Gmail' : 'Email khác'}</Button>}
       <Button type="submit" disabled={!valid || state === 'loading'} className="shrink-0">{state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Tìm</Button>
     </form>
-    {state === 'empty' && <p className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-400">Không tìm thấy tài khoản phù hợp.</p>}
-    {state === 'error' && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+    {state === 'empty' && <p className="mt-4 rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-fg-secondary">Không tìm thấy tài khoản phù hợp.</p>}
+    {state === 'error' && <p role="alert" className="mt-4 rounded-xl border border-bad/30 bg-bad/10 p-3 text-sm text-bad">{error}</p>}
     {state === 'found' && result && <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
       <AccountAvatar name={result.displayName} src={result.avatar} className="h-12 w-12 text-xs" />
-      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{result.displayName}</p><Link href={`/u/${result.username}`} className="text-xs text-purple-300 hover:underline">@{result.username} · Xem hồ sơ</Link></div>
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-fg">{result.displayName}</p><Link href={`/u/${result.username}`} className="text-xs text-accent-soft hover:underline">@{result.username} · Xem hồ sơ</Link></div>
       {relation !== 'self' && <Button size="sm" disabled={relation === 'friend'} variant={relation === 'outgoing' ? 'outline' : 'default'} onClick={() => void relationAction()}>{relation === 'friend' || relation === 'incoming' ? <Check className="h-4 w-4" /> : relation === 'outgoing' ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{relation === 'friend' ? 'Đã là bạn' : relation === 'incoming' ? 'Chấp nhận' : relation === 'outgoing' ? 'Hủy lời mời' : 'Kết bạn'}</Button>}
-      {relation === 'self' && <span className="text-xs text-slate-500">Đây là bạn</span>}
+      {relation === 'self' && <span className="text-xs text-fg-muted">Đây là bạn</span>}
     </div>}
   </section>
 }
