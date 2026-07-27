@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" width="400" height="600" role="img" aria-label="Poster chưa tải được">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#151824"/>
+      <stop offset="100%" stop-color="#0b0e18"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#g)"/>
+  <g fill="none" stroke="#3b415c" stroke-width="10" stroke-linejoin="round">
+    <rect x="128" y="238" width="144" height="112" rx="14"/>
+    <path d="M128 272h144M128 316h144M164 238v112M236 238v112"/>
+  </g>
+  <text x="200" y="404" fill="#5a6280" font-family="system-ui, sans-serif" font-size="22" font-weight="600" text-anchor="middle">CineMind</text>
+</svg>

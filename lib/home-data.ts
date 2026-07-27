@@ -31,7 +31,7 @@ export interface HomePageData {
 
 async function safeMovies(load: () => Promise<Movie[]>): Promise<Movie[]> {
   try {
-    return (await load()).filter((movie) => movie?.slug && movie?.poster_url && movie?.name).slice(0, 10)
+    return (await load()).filter((movie) => movie?.slug && movie?.poster_url && movie?.name).slice(0, 12)
   } catch (error) {
     console.error('Unable to load home movie section', error)
     return []

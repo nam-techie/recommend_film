@@ -20,14 +20,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     
     if (!genre) {
       return {
-        title: 'Thể loại không tồn tại - MovieWiser',
-        description: 'Thể loại phim bạn tìm kiếm không tồn tại trên MovieWiser.'
+        title: 'Thể loại không tồn tại - CineMind',
+        description: 'Thể loại phim bạn tìm kiếm không tồn tại trên CineMind.'
       }
     }
 
     return {
-      title: `Phim ${genre.name} - MovieWiser`,
-      description: `Khám phá bộ sưu tập phim ${genre.name} chất lượng cao với phụ đề tiếng Việt tại MovieWiser. Xem phim ${genre.name} mới nhất và hay nhất.`,
+      title: `Phim ${genre.name} - CineMind`,
+      description: `Khám phá bộ sưu tập phim ${genre.name} chất lượng cao với phụ đề tiếng Việt tại CineMind. Xem phim ${genre.name} mới nhất và hay nhất.`,
       keywords: [
         `phim ${genre.name}`,
         `xem phim ${genre.name}`,
@@ -35,18 +35,18 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         `phim ${genre.name} hay nhất`,
         'xem phim online',
         'phim vietsub',
-        'MovieWiser'
+        'CineMind'
       ],
       openGraph: {
-        title: `Phim ${genre.name} - MovieWiser`,
-        description: `Khám phá bộ sưu tập phim ${genre.name} chất lượng cao với phụ đề tiếng Việt tại MovieWiser.`,
+        title: `Phim ${genre.name} - CineMind`,
+        description: `Khám phá bộ sưu tập phim ${genre.name} chất lượng cao với phụ đề tiếng Việt tại CineMind.`,
         type: 'website',
         url: `https://moviewiser.com/genre/${slug}`,
-        siteName: 'MovieWiser'
+        siteName: 'CineMind'
       },
       twitter: {
         card: 'summary_large_image',
-        title: `Phim ${genre.name} - MovieWiser`,
+        title: `Phim ${genre.name} - CineMind`,
         description: `Khám phá bộ sưu tập phim ${genre.name} chất lượng cao với phụ đề tiếng Việt.`,
       },
       alternates: {
@@ -56,8 +56,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   } catch (error) {
     console.error('Error generating metadata:', error)
     return {
-      title: 'Thể loại phim - MovieWiser',
-      description: 'Khám phá các thể loại phim đa dạng tại MovieWiser.'
+      title: 'Thể loại phim - CineMind',
+      description: 'Khám phá các thể loại phim đa dạng tại CineMind.'
     }
   }
 }

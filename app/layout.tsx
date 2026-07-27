@@ -1,16 +1,28 @@
 import type { Metadata, Viewport } from "next";
-import { Jost, Overpass_Mono } from "next/font/google";
+import { Be_Vietnam_Pro, Jost, Overpass_Mono } from "next/font/google";
 import "./globals.css";
 
-const jost = Jost({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-jost",
+// Thân bài: Be Vietnam Pro được thiết kế cho tiếng Việt — dấu không chồng nhau
+// ở cỡ 12–14px. Jost (geometric display) trước đây dùng cho toàn bộ body text
+// khiến chữ có dấu khó đọc, và tệ hơn: Tailwind trỏ tới tên font 'Jost' chứ không
+// phải biến của next/font nên 3 file woff2 tải về không hề được dùng.
+const bodyFont = Be_Vietnam_Pro({
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
   display: "swap",
 });
 
-const overpassMono = Overpass_Mono({
+// Chỉ dùng cho h1/h2/h3 và .font-display.
+const displayFont = Jost({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-overpass-mono",
+  variable: "--font-display",
+  display: "swap",
+});
+
+const monoFont = Overpass_Mono({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-mono",
   display: "swap",
 });
 import { ThemeProvider } from '@/components/theme-provider'
@@ -55,7 +67,7 @@ export default async function RootLayout({
     return (
         <html lang="vi" suppressHydrationWarning className="dark">
             <body
-                className={`antialiased ${jost.variable} ${overpassMono.variable} font-sans min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col`}
+                className={`antialiased ${bodyFont.variable} ${displayFont.variable} ${monoFont.variable} font-sans min-h-screen bg-bg flex flex-col`}
             >
                 <AuthProvider><ThemeProvider
                     attribute="class"

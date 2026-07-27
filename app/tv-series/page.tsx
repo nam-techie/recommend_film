@@ -4,7 +4,7 @@ import { parseCatalogQuery } from '@/lib/catalog'
 import { fetchCountries, fetchGenres, fetchMoviesByFilter } from '@/lib/api'
 
 export const metadata: Metadata = {
-  title: 'Phim Bộ - MovieWiser',
+  title: 'Phim Bộ - CineMind',
   description: 'Xem phim bộ chất lượng cao với phụ đề tiếng Việt. Bộ sưu tập phim bộ Hàn Quốc, Trung Quốc, Mỹ, Thái Lan và nhiều quốc gia khác. Cập nhật tập mới liên tục.',
   keywords: [
     'phim bộ',
@@ -15,18 +15,18 @@ export const metadata: Metadata = {
     'phim bộ Thái Lan',
     'TV series',
     'phim vietsub',
-    'MovieWiser'
+    'CineMind'
   ],
   openGraph: {
-    title: 'Phim Bộ - MovieWiser',
+    title: 'Phim Bộ - CineMind',
     description: 'Xem phim bộ chất lượng cao với phụ đề tiếng Việt. Cập nhật tập mới liên tục.',
     type: 'website',
     url: 'https://moviewiser.com/tv-series',
-    siteName: 'MovieWiser'
+    siteName: 'CineMind'
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Phim Bộ - MovieWiser',
+    title: 'Phim Bộ - CineMind',
     description: 'Xem phim bộ chất lượng cao với phụ đề tiếng Việt. Cập nhật tập mới liên tục.',
   },
   alternates: {

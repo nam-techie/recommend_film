@@ -27,8 +27,8 @@ export function SectionHeader({
             <div className="space-y-1">
                 <div className="flex items-center gap-3">
                     {Icon && (
-                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-purple-600">
-                            <Icon className="h-4 w-4 text-white" />
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-accent-strong">
+                            <Icon className="h-4 w-4 text-fg" />
                         </div>
                     )}
                     <h2 className="text-xl sm:text-2xl font-bold font-jost text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary pt-1">{title}</h2>

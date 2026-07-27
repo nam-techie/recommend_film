@@ -159,7 +159,7 @@ const CDN_IMAGE_URL = process.env.NEXT_PUBLIC_MOVIE_IMAGE_URL || 'https://phimim
 
 // Helper function to build image URL
 export function getImageUrl(path: string): string {
-  if (!path) return '/placeholder-movie.jpg'
+  if (!path) return '/poster-fallback.svg'
   if (path.startsWith('http')) return path
   return `${CDN_IMAGE_URL}/${path}`
 }

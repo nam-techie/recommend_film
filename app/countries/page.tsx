@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { CountriesPage } from '@/components/pages/CountriesPage'
 
 export const metadata: Metadata = {
-  title: 'Phim Theo Quốc Gia - MovieWiser',
+  title: 'Phim Theo Quốc Gia - CineMind',
   description: 'Khám phá bộ sưu tập phim từ các quốc gia khác nhau: Hàn Quốc, Trung Quốc, Mỹ, Nhật Bản, Thái Lan và nhiều quốc gia khác. Xem phim quốc tế chất lượng cao với phụ đề tiếng Việt.',
   keywords: [
     'phim quốc gia',
@@ -13,18 +13,18 @@ export const metadata: Metadata = {
     'phim Thái Lan',
     'xem phim quốc tế',
     'phim vietsub',
-    'MovieWiser'
+    'CineMind'
   ],
   openGraph: {
-    title: 'Phim Theo Quốc Gia - MovieWiser',
+    title: 'Phim Theo Quốc Gia - CineMind',
     description: 'Khám phá bộ sưu tập phim từ các quốc gia khác nhau với phụ đề tiếng Việt chất lượng cao.',
     type: 'website',
     url: 'https://moviewiser.com/countries',
-    siteName: 'MovieWiser'
+    siteName: 'CineMind'
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Phim Theo Quốc Gia - MovieWiser',
+    title: 'Phim Theo Quốc Gia - CineMind',
     description: 'Khám phá bộ sưu tập phim từ các quốc gia khác nhau với phụ đề tiếng Việt chất lượng cao.',
   },
   alternates: {

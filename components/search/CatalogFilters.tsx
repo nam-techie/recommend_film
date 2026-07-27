@@ -41,10 +41,10 @@ export function CatalogFilters({ query, genres, countries, extended = false }: C
   return (
     <section className="mb-8 overflow-visible rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.045] to-white/[0.018] shadow-[0_22px_60px_rgba(0,0,0,.18)]">
       <button type="button" onClick={() => setMobileOpen((value) => !value)} className="flex min-h-14 w-full items-center gap-3 px-5 text-left md:pointer-events-none" aria-expanded={mobileOpen}>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-fuchsia-500/10 text-fuchsia-300"><SlidersHorizontal className="h-4 w-4" /></span>
-        <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-white">Bộ lọc thông minh</span><span className="mt-0.5 block text-xs text-slate-500">Thu hẹp kết quả theo đúng sở thích của bạn</span></span>
-        {activeFilters > 0 && <span className="rounded-full bg-fuchsia-500/15 px-2.5 py-1 text-xs font-bold text-fuchsia-200">{activeFilters} đang chọn</span>}
-        <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform md:hidden ${mobileOpen ? 'rotate-180' : ''}`} />
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent-soft"><SlidersHorizontal className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-fg">Bộ lọc thông minh</span><span className="mt-0.5 block text-xs text-fg-muted">Thu hẹp kết quả theo đúng sở thích của bạn</span></span>
+        {activeFilters > 0 && <span className="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-bold text-accent-soft">{activeFilters} đang chọn</span>}
+        <ChevronDown className={`h-4 w-4 text-fg-muted transition-transform md:hidden ${mobileOpen ? 'rotate-180' : ''}`} />
       </button>
 
       <div className={`${mobileOpen ? 'grid' : 'hidden'} gap-4 border-t border-white/[0.07] p-5 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6`}>
@@ -57,9 +57,9 @@ export function CatalogFilters({ query, genres, countries, extended = false }: C
         <FilterSelect label="Số phim" value={String(filters.limit)} onChange={(value) => update({ limit: Number(value) })} options={[['16', '16 phim'], ['24', '24 phim'], ['32', '32 phim'], ['48', '48 phim']]} />
 
         <div className="flex items-end gap-2 md:col-span-2 lg:col-span-3 xl:col-span-6">
-          <Button type="button" onClick={() => apply()} className="h-11 flex-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 font-bold text-white shadow-lg shadow-fuchsia-950/25 hover:brightness-110 sm:flex-none sm:px-8"><Check className="h-4 w-4" /> Áp dụng bộ lọc</Button>
-          <Button type="button" variant="ghost" onClick={clear} className="h-11 rounded-xl px-4 text-slate-400 hover:bg-white/[0.06] hover:text-white"><RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Đặt lại</span></Button>
-          <span className="ml-auto hidden items-center gap-1.5 text-xs text-slate-600 lg:flex"><Sparkles className="h-3.5 w-3.5 text-fuchsia-400" /> URL sẽ ghi nhớ lựa chọn của bạn</span>
+          <Button type="button" onClick={() => apply()} className="h-11 flex-1 rounded-xl bg-gradient-to-r from-accent to-accent-strong font-bold text-fg shadow-lg shadow-accent hover:brightness-110 sm:flex-none sm:px-8"><Check className="h-4 w-4" /> Áp dụng bộ lọc</Button>
+          <Button type="button" variant="ghost" onClick={clear} className="h-11 rounded-xl px-4 text-fg-secondary hover:bg-white/[0.06] hover:text-fg"><RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Đặt lại</span></Button>
+          <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-muted lg:flex"><Sparkles className="h-3.5 w-3.5 text-accent" /> URL sẽ ghi nhớ lựa chọn của bạn</span>
         </div>
       </div>
     </section>
@@ -67,5 +67,5 @@ export function CatalogFilters({ query, genres, countries, extended = false }: C
 }
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[][] }) {
-  return <label className="block min-w-0 text-xs font-semibold text-slate-500"><span className="mb-2 block">{label}</span><Select value={value} onValueChange={onChange}><SelectTrigger className="h-11 rounded-xl border-white/10 bg-[#111521] px-3.5 text-sm font-semibold text-slate-200 shadow-none outline-none focus:ring-1 focus:ring-fuchsia-400/60 focus:ring-offset-0"><SelectValue /></SelectTrigger><SelectContent position="popper" sideOffset={8} className="z-[120] max-h-[340px] rounded-xl border-white/10 bg-[#151925] text-slate-200 shadow-2xl"><div className="max-h-[320px] overflow-y-auto p-1">{options.map(([optionValue, optionLabel]) => <SelectItem key={optionValue} value={optionValue} className="min-h-9 rounded-lg py-2 pl-8 pr-3 focus:bg-fuchsia-500/10 focus:text-fuchsia-100">{optionLabel}</SelectItem>)}</div></SelectContent></Select></label>
+  return <label className="block min-w-0 text-xs font-semibold text-fg-muted"><span className="mb-2 block">{label}</span><Select value={value} onValueChange={onChange}><SelectTrigger className="h-11 rounded-xl border-white/10 bg-[#111521] px-3.5 text-sm font-semibold text-fg-secondary shadow-none outline-none focus:ring-1 focus:ring-accent/60 focus:ring-offset-0"><SelectValue /></SelectTrigger><SelectContent position="popper" sideOffset={8} className="z-[120] max-h-[340px] rounded-xl border-white/10 bg-[#151925] text-fg-secondary shadow-2xl"><div className="max-h-[320px] overflow-y-auto p-1">{options.map(([optionValue, optionLabel]) => <SelectItem key={optionValue} value={optionValue} className="min-h-9 rounded-lg py-2 pl-8 pr-3 focus:bg-accent/10 focus:text-accent-soft">{optionLabel}</SelectItem>)}</div></SelectContent></Select></label>
 }

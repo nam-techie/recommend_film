@@ -23,7 +23,7 @@ interface FilterPillsProps {
 const FilterPills = ({ title, options, selectedValue, onToggle }: FilterPillsProps) => (
     <div className="flex flex-col md:flex-row md:items-start py-3 border-b border-border/20 last:border-0">
         <div className="w-full md:w-[130px] shrink-0 mb-3 md:mb-0 md:pt-1.5">
-            <label className="text-[13px] font-semibold text-muted-foreground tracking-wide">{title}:</label>
+            <label className="text-sm font-semibold text-muted-foreground tracking-wide">{title}:</label>
         </div>
         <div className="flex flex-wrap gap-1.5 md:gap-2 flex-1">
             {options.map((option) => {
@@ -34,7 +34,7 @@ const FilterPills = ({ title, options, selectedValue, onToggle }: FilterPillsPro
                         variant="ghost"
                         size="sm"
                         onClick={() => onToggle(option.value)}
-                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                        className={`h-8 px-3 text-sm rounded-md transition-colors ${
                             isSelected 
                                 ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
                                 : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
@@ -410,7 +410,7 @@ export function SearchPage() {
                                                         <p className="text-xs text-muted-foreground truncate font-mono mt-0.5">{movie.origin_name}</p>
                                                     </div>
                                                     {movie.year && (
-                                                        <Badge variant="outline" className="hidden sm:inline-flex shrink-0 font-mono text-[10px]">
+                                                        <Badge variant="outline" className="hidden sm:inline-flex shrink-0 font-mono text-xs">
                                                             {movie.year}
                                                         </Badge>
                                                     )}
@@ -480,7 +480,7 @@ export function SearchPage() {
                                     />
                                     <div className="flex flex-col md:flex-row md:items-start py-3 border-b border-border/20 last:border-0">
                                         <div className="w-full md:w-[130px] shrink-0 mb-3 md:mb-0 md:pt-1.5">
-                                            <label className="text-[13px] font-semibold text-muted-foreground tracking-wide">Sắp xếp:</label>
+                                            <label className="text-sm font-semibold text-muted-foreground tracking-wide">Sắp xếp:</label>
                                         </div>
                                         <div className="flex flex-wrap gap-4 flex-1">
                                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -490,7 +490,7 @@ export function SearchPage() {
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() => handleFilterChange('sort_field', opt.value)}
-                                                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                                                        className={`h-8 px-3 text-sm rounded-md transition-colors ${
                                                             sortBy === opt.value 
                                                                 ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
                                                                 : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
@@ -508,7 +508,7 @@ export function SearchPage() {
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() => handleFilterChange('sort_type', opt.value)}
-                                                        className={`h-8 px-3 text-[13px] rounded-md transition-colors ${
+                                                        className={`h-8 px-3 text-sm rounded-md transition-colors ${
                                                             sortType === opt.value 
                                                                 ? 'bg-transparent text-primary hover:text-primary font-bold border border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.1)]' 
                                                                 : 'bg-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground font-normal border border-transparent'
@@ -530,16 +530,16 @@ export function SearchPage() {
             {/* Active Filters Summary */}
             {hasActiveFilters && (
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-2 animate-in fade-in">
-                    {searchQuery && <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs px-3">{searchQuery}</Badge>}
-                    {searchType !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">Loại: {searchTypes.find(t => t.value === searchType)?.label}</Badge>}
-                    {selectedGenre !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">Thể loại: {genres.find(g => g.slug === selectedGenre)?.name}</Badge>}
-                    {selectedCountry !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-[10px] sm:text-xs">QG: {countries.find(c => c.slug === selectedCountry)?.name}</Badge>}
-                    {selectedYear !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 font-mono text-[10px] sm:text-xs">{selectedYear}</Badge>}
+                    {searchQuery && <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs sm:text-xs px-3">{searchQuery}</Badge>}
+                    {searchType !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-xs sm:text-xs">Loại: {searchTypes.find(t => t.value === searchType)?.label}</Badge>}
+                    {selectedGenre !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-xs sm:text-xs">Thể loại: {genres.find(g => g.slug === selectedGenre)?.name}</Badge>}
+                    {selectedCountry !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 text-xs sm:text-xs">QG: {countries.find(c => c.slug === selectedCountry)?.name}</Badge>}
+                    {selectedYear !== 'all' && <Badge variant="outline" className="border-border/50 bg-card/30 font-mono text-xs sm:text-xs">{selectedYear}</Badge>}
                     
                     <Button 
                         variant="ghost" 
                         size="sm" 
-                        className="text-[10px] h-6 px-2 text-muted-foreground hover:text-danger rounded-full"
+                        className="text-xs h-6 px-2 text-muted-foreground hover:text-danger rounded-full"
                         onClick={() => router.push('/search')}
                     >
                         Xóa tuỳ chọn
@@ -557,7 +557,7 @@ export function SearchPage() {
                     </h2>
                     <div className="flex items-center gap-1.5 text-muted-foreground bg-card/50 px-3 py-1 rounded-full border border-border/40">
                         <SlidersHorizontal className="h-3 w-3" />
-                        <span className="text-[11px] sm:text-xs font-mono">{totalResults} phim</span>
+                        <span className="text-xs sm:text-xs font-mono">{totalResults} phim</span>
                     </div>
                 </div>
 

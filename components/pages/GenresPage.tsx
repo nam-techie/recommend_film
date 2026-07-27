@@ -43,17 +43,17 @@ export function GenresPage() {
 
     // Modern gradient colors with better contrast
     const gradientColors = [
-        "from-blue-600 via-blue-500 to-purple-600",
-        "from-purple-600 via-pink-500 to-red-500", 
-        "from-green-600 via-emerald-500 to-teal-600",
-        "from-orange-600 via-red-500 to-pink-600",
-        "from-indigo-600 via-purple-500 to-pink-600",
-        "from-pink-600 via-rose-500 to-orange-500",
-        "from-gray-700 via-gray-600 to-slate-600",
+        "from-blue-600 via-blue-500 to-accent-strong",
+        "from-accent-strong via-pink-500 to-bad", 
+        "from-green-600 via-ok to-teal-600",
+        "from-orange-600 via-bad to-pink-600",
+        "from-indigo-600 via-accent to-pink-600",
+        "from-pink-600 via-bad to-orange-500",
+        "from-surface-3 via-surface-2 to-surface-3",
         "from-cyan-600 via-blue-500 to-indigo-600",
-        "from-emerald-600 via-green-500 to-teal-600",
-        "from-violet-600 via-purple-500 to-indigo-600",
-        "from-amber-600 via-orange-500 to-red-600",
+        "from-ok via-green-500 to-teal-600",
+        "from-accent-strong via-accent to-indigo-600",
+        "from-rating via-orange-500 to-bad",
         "from-teal-600 via-cyan-500 to-blue-600"
     ]
 
@@ -237,7 +237,7 @@ export function GenresPage() {
                         <Link key={genre._id} href={`/genre/${genre.slug}`}>
                             <Card className="group h-32 relative overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-xl border-0">
                                 <CardContent className="p-0 h-full">
-                                    <div className={`h-full w-full bg-gradient-to-br ${gradientClass} flex flex-col items-center justify-center text-white relative overflow-hidden`}>
+                                    <div className={`h-full w-full bg-gradient-to-br ${gradientClass} flex flex-col items-center justify-center text-fg relative overflow-hidden`}>
                                         {/* Background pattern */}
                                         <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition-colors duration-300" />
                                         
@@ -324,26 +324,26 @@ export function GenresPage() {
                                             {/* Status badges */}
                                             <div className="absolute top-3 left-3 flex gap-2">
                                                 {room.playback.isPlaying ? (
-                                                    <Badge className="bg-red-500 text-white animate-pulse shadow-lg border-0">
+                                                    <Badge className="bg-bad text-fg animate-pulse shadow-lg border-0">
                                                         <div className="w-2 h-2 bg-white rounded-full animate-ping mr-1"></div>
                                                         LIVE
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="secondary" className="bg-gray-500/80 text-white">
+                                                    <Badge variant="secondary" className="bg-fg-faint/80 text-fg">
                                                         <div className="w-2 h-2 bg-yellow-400 rounded-full mr-1"></div>
                                                         Tạm dừng
                                                     </Badge>
                                                 )}
                                                 
                                                 {getActiveUserCount(room) > 3 && (
-                                                    <Badge className="bg-orange-500 text-white text-xs">
+                                                    <Badge className="bg-orange-500 text-fg text-xs">
                                                         🔥 HOT
                                                     </Badge>
                                                 )}
                                             </div>
                                             
                                             <div className="absolute top-3 right-3">
-                                                <Badge variant="secondary" className="bg-black/50 text-white">
+                                                <Badge variant="secondary" className="bg-black/50 text-fg">
                                                     <Users className="h-3 w-3 mr-1" />
                                                     {getActiveUserCount(room)}
                                                 </Badge>
