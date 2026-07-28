@@ -1,3 +1,4 @@
+
 'use client'
 
 import { FormEvent, useState } from 'react'
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAccount } from '@/hooks/useAccount'
 import { useAuth } from '@/components/auth/AuthProvider'
-import { PublicProfile } from '@/lib/account-types'
+import { DirectoryProfile } from '@/lib/account-types'
 import { getProfileByUsername, normalizeUsername } from '@/lib/account-service'
 import { lookupProfileByEmail } from '@/lib/social-api'
 import { cn } from '@/lib/utils'
@@ -25,8 +26,9 @@ export function FriendSearchPanel() {
   const [customEmail, setCustomEmail] = useState('')
   const [customDomain, setCustomDomain] = useState(false)
   const [state, setState] = useState<SearchState>('idle')
-  const [result, setResult] = useState<PublicProfile | null>(null)
+  const [result, setResult] = useState<DirectoryProfile | null>(null)
   const [error, setError] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
 
   const resetResult = () => { setState('idle'); setResult(null); setError('') }
   const switchMode = (next: SearchMode) => { setMode(next); resetResult() }
@@ -50,7 +52,9 @@ export function FriendSearchPanel() {
   }
 
   const relationAction = async () => {
-    if (!result || !account.profile || result.uid === account.profile.uid) return
+    if (!result || !account.profile || result.uid === account.profile.uid || actionLoading) return
+    setActionLoading(true)
+    setError('')
     try {
       if (account.friends[result.uid]) return
       if (account.friendRequests[result.uid]) await account.answerFriend(account.friendRequests[result.uid], true)
@@ -58,7 +62,8 @@ export function FriendSearchPanel() {
       else await account.requestFriend(result)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Không thể cập nhật lời mời kết bạn.')
-      setState('error')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -82,8 +87,9 @@ export function FriendSearchPanel() {
     {state === 'found' && result && <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
       <AccountAvatar name={result.displayName} src={result.avatar} className="h-12 w-12 text-xs" />
       <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-fg">{result.displayName}</p><Link href={`/u/${result.username}`} className="text-xs text-accent-soft hover:underline">@{result.username} · Xem hồ sơ</Link></div>
-      {relation !== 'self' && <Button size="sm" disabled={relation === 'friend'} variant={relation === 'outgoing' ? 'outline' : 'default'} onClick={() => void relationAction()}>{relation === 'friend' || relation === 'incoming' ? <Check className="h-4 w-4" /> : relation === 'outgoing' ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{relation === 'friend' ? 'Đã là bạn' : relation === 'incoming' ? 'Chấp nhận' : relation === 'outgoing' ? 'Hủy lời mời' : 'Kết bạn'}</Button>}
+      {relation !== 'self' && <Button size="sm" disabled={relation === 'friend' || actionLoading} variant={relation === 'outgoing' ? 'outline' : 'default'} onClick={() => void relationAction()}>{actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : relation === 'friend' || relation === 'incoming' ? <Check className="h-4 w-4" /> : relation === 'outgoing' ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{relation === 'friend' ? 'Đã là bạn' : relation === 'incoming' ? 'Chấp nhận' : relation === 'outgoing' ? 'Hủy lời mời' : 'Kết bạn'}</Button>}
       {relation === 'self' && <span className="text-xs text-fg-muted">Đây là bạn</span>}
     </div>}
+    {state === 'found' && error && <p role="alert" className="mt-3 rounded-xl border border-bad/30 bg-bad/10 p-3 text-sm text-bad">{error}</p>}
   </section>
 }

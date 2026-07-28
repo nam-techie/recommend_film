@@ -11,6 +11,7 @@ import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import nodemailer from 'nodemailer'
 import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { directoryProfile, isAnonymousFirebaseActor, requestIp } from './social-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -49,6 +50,7 @@ if (IS_PRODUCTION && CLIENT_ORIGINS.length === 0) throw new Error('CLIENT_ORIGIN
 
 let adminAuth = null
 let adminDb = null
+let firebaseAdminError = null
 try {
   const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
   const serviceAccount = rawServiceAccount ? JSON.parse(rawServiceAccount) : null
@@ -60,7 +62,23 @@ try {
     if (databaseURL) adminDb = getDatabase(app)
   }
 } catch (error) {
+  firebaseAdminError = 'INITIALIZATION_FAILED'
   console.error('Firebase Admin initialization failed:', error instanceof Error ? error.message : String(error))
+}
+if (!adminAuth) firebaseAdminError ||= 'AUTH_NOT_CONFIGURED'
+else if (!adminDb) firebaseAdminError ||= 'DATABASE_URL_NOT_CONFIGURED'
+
+const socialDatabaseHealth = async () => {
+  if (!adminDb) return false
+  try {
+    await Promise.race([
+      adminDb.ref('publicProfiles').limitToFirst(1).get(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DATABASE_HEALTH_TIMEOUT')), 3000)),
+    ])
+    return true
+  } catch {
+    return false
+  }
 }
 
 const allowedReactions = new Set(['❤️', '😂', '🔥', '😮', '👏', '😢'])
@@ -301,10 +319,23 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.writeHead(204).end()
-  const ip = req.socket.remoteAddress || 'unknown'
+  const ip = requestIp(req)
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
-    if (url.pathname === '/ready') { await store.ping(); return json(res, 200, { ok: true, store: redisClient ? 'redis' : 'memory', voiceConfigured, mailConfigured, socialDatabaseConfigured: Boolean(adminDb) }) }
+    if (url.pathname === '/ready') {
+      await store.ping()
+      const socialDatabaseHealthy = await socialDatabaseHealth()
+      return json(res, 200, {
+        ok: true,
+        store: redisClient ? 'redis' : 'memory',
+        voiceConfigured,
+        mailConfigured,
+        firebaseAuthConfigured: Boolean(adminAuth),
+        socialDatabaseConfigured: Boolean(adminDb),
+        socialDatabaseHealthy,
+        ...(firebaseAdminError ? { firebaseAdminError } : {}),
+      })
+    }
     if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
       const sourceUrl = url.searchParams.get('url') || ''
       if (!mediaAllowed(sourceUrl)) return json(res, 403, { code: 'MEDIA_HOST_DENIED', error: 'Nguồn media không được cho phép.' })
@@ -335,15 +366,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/friends/lookup-email') {
       const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập để tìm bằng email.' })
       const actor = await verifyFirebaseToken(authToken)
+      if (isAnonymousFirebaseActor(actor)) return json(res, 403, { code: 'ANONYMOUS_NOT_ALLOWED', error: 'Tài khoản ẩn danh không thể tìm bằng email.' })
       if (!adminDb) return json(res, 503, { code: 'SOCIAL_DATABASE_NOT_CONFIGURED', error: 'Dịch vụ tìm bạn chưa được cấu hình.' })
-      if (!(await store.allow(`email-lookup:${actor.uid}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn tìm bằng email quá nhiều lần. Hãy thử lại sau một phút.' })
+      const [uidAllowed, ipAllowed] = await Promise.all([
+        store.allow(`email-lookup:${actor.uid}`, 10, 60_000),
+        store.allow(`email-lookup-ip:${ip}`, 30, 60_000),
+      ])
+      if (!uidAllowed || !ipAllowed) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn tìm bằng email quá nhiều lần. Hãy thử lại sau một phút.' })
       const { email } = emailLookupSchema.parse(await readBody(req))
       try {
         const account = await adminAuth.getUserByEmail(email)
         const profileSnapshot = await adminDb.ref(`publicProfiles/${account.uid}`).get()
         if (!profileSnapshot.exists()) return json(res, 200, { found: false })
-        const profile = profileSnapshot.val()
-        return json(res, 200, { found: true, profile: { uid: profile.uid, username: profile.username, displayName: profile.displayName, avatar: profile.avatar || undefined, favoriteGenres: profile.favoriteGenres || [], createdAt: profile.createdAt, updatedAt: profile.updatedAt, isPublic: Boolean(profile.isPublic), showRecentMovies: Boolean(profile.showRecentMovies), showWatchlist: Boolean(profile.showWatchlist), showActivity: Boolean(profile.showActivity), allowWatchPartyInvites: profile.allowWatchPartyInvites !== false } })
+        const profile = directoryProfile(profileSnapshot.val(), account.uid)
+        return profile ? json(res, 200, { found: true, profile }) : json(res, 200, { found: false })
       } catch (error) {
         if (String(error?.code || '').includes('user-not-found')) return json(res, 200, { found: false })
         throw error

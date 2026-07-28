@@ -18,6 +18,8 @@ export interface PublicProfile {
   allowWatchPartyInvites: boolean
 }
 
+export type DirectoryProfile = Pick<PublicProfile, 'uid' | 'username' | 'displayName' | 'avatar'>
+
 export interface AccountPrivacy {
   profilePublic: boolean
   showRecentMovies: boolean
@@ -114,9 +116,11 @@ export interface FriendRequest extends FriendshipRecord {
   direction?: 'incoming' | 'outgoing'
 }
 
+export type PresenceState = 'loading' | 'online' | 'offline' | 'unavailable'
+
 export interface FriendPresence {
-  online: boolean
-  lastSeen: number
+  state: PresenceState
+  lastSeen: number | null
 }
 
 export interface AccountSession {

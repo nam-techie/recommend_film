@@ -50,8 +50,8 @@
       "$recipientUid": {
         ".read": "auth != null && auth.uid === $recipientUid",
         "$senderUid": {
-          ".write": "auth != null && ((auth.uid === $senderUid && (!data.exists() || !newData.exists())) || auth.uid === $recipientUid)",
-          ".validate": "!newData.exists() || (newData.child('uid').val() === $senderUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+          ".write": "auth != null && $recipientUid !== $senderUid && ((auth.uid === $senderUid && !data.exists() && newData.exists() && !root.child('blocks').child($recipientUid).child($senderUid).exists() && !root.child('blocks').child($senderUid).child($recipientUid).exists() && !root.child('friendships').child($recipientUid).child($senderUid).exists() && !root.child('friendRequests').child($senderUid).child($recipientUid).exists()) || (data.exists() && !newData.exists() && (auth.uid === $senderUid || auth.uid === $recipientUid)))",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $senderUid && newData.child('username').val() === root.child('publicProfiles').child($senderUid).child('username').val() && newData.child('displayName').val() === root.child('publicProfiles').child($senderUid).child('displayName').val() && newData.child('createdAt').isNumber())"
         }
       }
     },
@@ -59,8 +59,8 @@
       "$senderUid": {
         ".read": "auth != null && auth.uid === $senderUid",
         "$recipientUid": {
-          ".write": "auth != null && (auth.uid === $senderUid || (!newData.exists() && auth.uid === $recipientUid))",
-          ".validate": "!newData.exists() || (newData.child('uid').val() === $recipientUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+          ".write": "auth != null && $recipientUid !== $senderUid && ((auth.uid === $senderUid && !data.exists() && newData.exists() && !root.child('blocks').child($recipientUid).child($senderUid).exists() && !root.child('blocks').child($senderUid).child($recipientUid).exists() && !root.child('friendships').child($senderUid).child($recipientUid).exists() && !root.child('friendRequests').child($senderUid).child($recipientUid).exists()) || (data.exists() && !newData.exists() && (auth.uid === $senderUid || auth.uid === $recipientUid)))",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $recipientUid && newData.child('username').val() === root.child('publicProfiles').child($recipientUid).child('username').val() && newData.child('displayName').val() === root.child('publicProfiles').child($recipientUid).child('displayName').val() && newData.child('createdAt').isNumber())"
         }
       }
     },
@@ -68,8 +68,8 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$friendUid": {
-          ".write": "auth != null && (auth.uid === $uid || auth.uid === $friendUid) && (!newData.exists() || root.child('friendRequests').child($uid).child($friendUid).exists() || root.child('friendRequests').child($friendUid).child($uid).exists())",
-          ".validate": "!newData.exists() || (newData.child('uid').val() === $friendUid && newData.child('username').isString() && newData.child('displayName').isString() && newData.child('createdAt').isNumber())"
+          ".write": "auth != null && $uid !== $friendUid && ((!data.exists() && newData.exists() && !root.child('blocks').child($uid).child($friendUid).exists() && !root.child('blocks').child($friendUid).child($uid).exists() && ((auth.uid === $uid && root.child('friendRequests').child($uid).child($friendUid).exists()) || (auth.uid === $friendUid && root.child('friendRequests').child($friendUid).child($uid).exists()))) || (data.exists() && !newData.exists() && (auth.uid === $uid || auth.uid === $friendUid)))",
+          ".validate": "!newData.exists() || (newData.child('uid').val() === $friendUid && newData.child('username').val() === root.child('publicProfiles').child($friendUid).child('username').val() && newData.child('displayName').val() === root.child('publicProfiles').child($friendUid).child('displayName').val() && newData.child('createdAt').isNumber())"
         }
       }
     },
@@ -146,7 +146,7 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$notificationId": {
-          ".write": "auth != null && (auth.uid === $uid || (!data.exists() && newData.child('actorUid').val() === auth.uid))",
+          ".write": "auth != null && (auth.uid === $uid || (!data.exists() && newData.child('actorUid').val() === auth.uid && ((newData.child('type').val() === 'friend_request' && root.child('friendRequests').child($uid).child(auth.uid).exists()) || (newData.child('type').val() === 'friend_accepted' && root.child('friendships').child($uid).child(auth.uid).exists()) || (newData.child('type').val() !== 'friend_request' && newData.child('type').val() !== 'friend_accepted'))))",
           ".validate": "!newData.exists() || (newData.child('actorUid').isString() && newData.child('type').isString() && newData.child('createdAt').isNumber())"
         }
       }

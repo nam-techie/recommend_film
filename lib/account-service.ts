@@ -5,6 +5,7 @@ import {
   AccountNotification,
   AccountSettings,
   DEFAULT_PRIVACY,
+  DirectoryProfile,
   FriendRequest,
   FriendshipRecord,
   LibraryWatchStatus,
@@ -244,18 +245,18 @@ export async function toggleFollow(actor: PublicProfile, target: PublicProfile, 
   }
 }
 
-const relationshipRecord = (profile: PublicProfile): FriendshipRecord => ({ uid: profile.uid, displayName: profile.displayName, username: profile.username, ...(profile.avatar ? { avatar: profile.avatar } : {}), createdAt: Date.now() })
+const relationshipRecord = (profile: DirectoryProfile): FriendshipRecord => ({ uid: profile.uid, displayName: profile.displayName, username: profile.username, ...(profile.avatar ? { avatar: profile.avatar } : {}), createdAt: Date.now() })
 
-export async function sendFriendRequest(actor: PublicProfile, target: PublicProfile) {
+export async function sendFriendRequest(actor: PublicProfile, target: DirectoryProfile) {
   if (actor.uid === target.uid) throw new Error('Bạn không thể tự kết bạn với chính mình.')
-  const db = requireDatabase(); const blocked = await get(ref(db, `blocks/${target.uid}/${actor.uid}`)); if (blocked.exists()) throw new Error('Không thể gửi lời mời tới người dùng này.')
+  const db = requireDatabase()
   const request = relationshipRecord(actor); const sent = relationshipRecord(target)
-  const notificationRef = push(ref(db, `notifications/${target.uid}`))
   await update(ref(db), {
     [`friendRequests/${target.uid}/${actor.uid}`]: request,
     [`sentFriendRequests/${actor.uid}/${target.uid}`]: sent,
-    [`notifications/${target.uid}/${notificationRef.key}`]: { id: notificationRef.key, type: 'friend_request', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, read: false, createdAt: Date.now() },
   })
+  const notificationRef = push(ref(db, `notifications/${target.uid}`))
+  await set(notificationRef, { id: notificationRef.key, type: 'friend_request', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, read: false, createdAt: Date.now() }).catch(() => undefined)
 }
 
 export async function cancelFriendRequest(actorUid: string, targetUid: string) {
@@ -268,10 +269,12 @@ export async function respondFriendRequest(actor: PublicProfile, requester: Frie
     const now = Date.now()
     updates[`friendships/${actor.uid}/${requester.uid}`] = { ...requester, createdAt: now }
     updates[`friendships/${requester.uid}/${actor.uid}`] = { ...relationshipRecord(actor), createdAt: now }
-    const notificationRef = push(ref(db, `notifications/${requester.uid}`))
-    updates[`notifications/${requester.uid}/${notificationRef.key}`] = { id: notificationRef.key, type: 'friend_accepted', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, read: false, createdAt: now }
   }
   await update(ref(db), updates)
+  if (accept) {
+    const notificationRef = push(ref(db, `notifications/${requester.uid}`))
+    await set(notificationRef, { id: notificationRef.key, type: 'friend_accepted', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, read: false, createdAt: Date.now() }).catch(() => undefined)
+  }
 }
 
 export async function removeFriend(actorUid: string, friendUid: string) {

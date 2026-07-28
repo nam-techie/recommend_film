@@ -1,8 +1,9 @@
+
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, Clock3, Globe2, Laptop, Radio } from 'lucide-react'
-import { AccountSession, SocialActivity } from '@/lib/account-types'
+import { AccountSession, FriendPresence, SocialActivity } from '@/lib/account-types'
 import { ActivityHeatmap } from '@/components/account/ActivityHeatmap'
 
 const formatMoment = (time: number) => new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(time)
@@ -14,7 +15,7 @@ const formatDuration = (milliseconds: number) => {
   return rest ? `${hours} giờ ${rest} phút` : `${hours} giờ`
 }
 
-export function AccountActivityPanel({ sessions, activities }: { sessions: AccountSession[]; activities: SocialActivity[] }) {
+export function AccountActivityPanel({ sessions, activities, presence }: { sessions: AccountSession[]; activities: SocialActivity[]; presence: FriendPresence }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(timer) }, [])
   const ordered = useMemo(() => [...sessions].sort((a, b) => b.startedAt - a.startedAt), [sessions])
@@ -24,7 +25,7 @@ export function AccountActivityPanel({ sessions, activities }: { sessions: Accou
   return <div className="space-y-6">
     <header><p className="text-sm text-accent-soft">Riêng tư · chỉ bạn nhìn thấy phiên đăng nhập</p><h1 className="mt-1 text-3xl font-bold">Hoạt động</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-fg-secondary">Theo dõi dấu ấn xem phim và các lần tài khoản online. CineMind chỉ lưu loại thiết bị, trình duyệt và múi giờ; không thu thập địa chỉ nhà hay GPS chính xác.</p></header>
     <div className="grid gap-3 sm:grid-cols-3">
-      <Stat icon={Radio} label="Trạng thái" value={current ? 'Đang online' : 'Đã offline'} accent={Boolean(current)} />
+      <Stat icon={Radio} label="Trạng thái" value={presence.state === 'online' ? 'Đang online' : presence.state === 'loading' ? 'Đang kiểm tra' : presence.state === 'unavailable' ? 'Không xác định' : 'Đã offline'} accent={presence.state === 'online'} />
       <Stat icon={Activity} label="Hoạt động 30 ngày" value={`${totalThisMonth} lần`} />
       <Stat icon={Globe2} label="Khu vực thiết bị" value={current?.timezone || ordered[0]?.timezone || 'Chưa xác định'} />
     </div>
