@@ -47,7 +47,7 @@ export function CatalogFilters({ query, genres, countries, extended = false }: C
         <ChevronDown className={`h-4 w-4 text-fg-muted transition-transform md:hidden ${mobileOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      <div className={`${mobileOpen ? 'grid' : 'hidden'} gap-4 border-t border-white/[0.07] p-5 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6`}>
+      <div className={`${mobileOpen ? 'grid' : 'hidden'} min-w-0 gap-4 border-t border-white/[0.07] p-5 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4`}>
         {extended && <FilterSelect label="Loại phim" value={filters.type} onChange={(value) => update({ type: value })} options={[["all", 'Tất cả'], ['phim-le', 'Phim lẻ'], ['phim-bo', 'Phim bộ'], ['hoat-hinh', 'Hoạt hình'], ['tv-shows', 'TV Shows']]} />}
         {genres.length > 0 && <FilterSelect label="Thể loại" value={filters.genre} onChange={(value) => update({ genre: value })} options={[["all", 'Tất cả thể loại'], ...genres.map((item) => [item.slug, item.name])]} />}
         {countries.length > 0 && <FilterSelect label="Quốc gia" value={filters.country} onChange={(value) => update({ country: value })} options={[["all", 'Tất cả quốc gia'], ...countries.map((item) => [item.slug, item.name])]} />}
@@ -56,10 +56,10 @@ export function CatalogFilters({ query, genres, countries, extended = false }: C
         <FilterSelect label="Sắp xếp" value={filters.sortField} onChange={(value) => update({ sortField: value })} options={[["modified.time", 'Mới cập nhật'], ['year', 'Năm phát hành'], ['_id', 'Mới thêm'], ['name', 'Tên phim A–Z']]} />
         <FilterSelect label="Số phim" value={String(filters.limit)} onChange={(value) => update({ limit: Number(value) })} options={[['16', '16 phim'], ['24', '24 phim'], ['32', '32 phim'], ['48', '48 phim']]} />
 
-        <div className="flex items-end gap-2 md:col-span-2 lg:col-span-3 xl:col-span-6">
+        <div className="flex min-w-0 flex-wrap items-end gap-2 md:col-span-2 lg:col-span-3 2xl:col-span-4">
           <Button type="button" onClick={() => apply()} className="h-11 flex-1 rounded-xl bg-gradient-to-r from-accent to-accent-strong font-bold text-fg shadow-lg shadow-accent hover:brightness-110 sm:flex-none sm:px-8"><Check className="h-4 w-4" /> Áp dụng bộ lọc</Button>
           <Button type="button" variant="ghost" onClick={clear} className="h-11 rounded-xl px-4 text-fg-secondary hover:bg-white/[0.06] hover:text-fg"><RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Đặt lại</span></Button>
-          <span className="ml-auto hidden items-center gap-1.5 text-xs text-fg-muted lg:flex"><Sparkles className="h-3.5 w-3.5 text-accent" /> URL sẽ ghi nhớ lựa chọn của bạn</span>
+          <span className="min-w-0 items-center gap-1.5 text-xs text-fg-muted lg:ml-auto lg:flex"><Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" /> URL sẽ ghi nhớ lựa chọn của bạn</span>
         </div>
       </div>
     </section>
