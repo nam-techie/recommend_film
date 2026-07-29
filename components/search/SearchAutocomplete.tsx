@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
+import { FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { LoaderCircle, Search, X } from 'lucide-react'
@@ -33,11 +33,12 @@ export function SearchAutocomplete({ initialValue = '', variant = 'hero', autoFo
   useEffect(() => setValue(initialValue), [initialValue])
   useEffect(() => { setPanelOpen(false); setActiveIndex(-1) }, [pathname])
   useEffect(() => {
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setPanelOpen(false)
+    const closeOnOutsideClick = (event: Event) => {
+      const root = rootRef.current
+      if (root && !event.composedPath().includes(root)) setPanelOpen(false)
     }
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('click', closeOnOutsideClick)
+    return () => document.removeEventListener('click', closeOnOutsideClick)
   }, [])
 
   useEffect(() => {
@@ -78,6 +79,11 @@ export function SearchAutocomplete({ initialValue = '', variant = 'hero', autoFo
     closePanel()
   }
   const chooseMovie = (movie: Movie) => { router.push(`/movie/${movie.slug}`); closePanel() }
+  const clickMovie = (event: ReactMouseEvent<HTMLAnchorElement>, movie: Movie) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    chooseMovie(movie)
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -136,7 +142,7 @@ export function SearchAutocomplete({ initialValue = '', variant = 'hero', autoFo
           key={movie._id || movie.slug}
           href={`/movie/${movie.slug}`}
           onPointerMove={() => setActiveIndex(index)}
-          onClick={closePanel}
+          onClick={(event) => clickMovie(event, movie)}
           className={cn('flex items-center gap-3 rounded-xl p-2.5 outline-none transition-colors hover:bg-white/[0.065]', activeIndex === index && 'bg-accent/10')}
         >
           <span className="relative h-[62px] w-11 shrink-0 overflow-hidden rounded-lg bg-slate-900 ring-1 ring-white/10"><MovieImage src={getImageUrl(movie.poster_url || movie.thumb_url)} alt="" fill sizes="44px" className="object-cover" /></span>

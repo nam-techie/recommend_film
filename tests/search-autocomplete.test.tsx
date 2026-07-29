@@ -37,6 +37,7 @@ describe('SearchAutocomplete', () => {
     await act(async () => { vi.advanceTimersByTime(300) })
     expect(screen.getByRole('option', { name: /Dragon/i })).toHaveAttribute('href', '/movie/dragon')
     fireEvent.click(option)
+    expect(push).toHaveBeenCalledWith('/movie/dragon')
     expect(screen.queryByRole('option', { name: /Dragon/i })).not.toBeInTheDocument()
   })
 
@@ -64,7 +65,18 @@ describe('SearchAutocomplete', () => {
     await act(async () => { resolveOld({ items: [{ ...dragon, slug: 'old', name: 'Old result' }] }); await Promise.resolve() })
     expect(screen.getByRole('option', { name: /New result/i })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /Old result/i })).not.toBeInTheDocument()
-    fireEvent.pointerDown(screen.getByText('Outside'))
+    fireEvent.click(screen.getByText('Outside'))
     expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('navigates “xem tất cả” and preserves catalog filters while resetting page', async () => {
+    searchMovies.mockResolvedValue({ items: [dragon] })
+    render(<SearchAutocomplete preservedQuery="type=phim-le&page=3" />)
+    const input = screen.getByRole('combobox')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'drag' } })
+    await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve() })
+    fireEvent.click(screen.getByRole('button', { name: /Xem tất cả kết quả/i }))
+    expect(push).toHaveBeenCalledWith('/search?type=phim-le&keyword=drag')
   })
 })
