@@ -1,3 +1,5 @@
+import type { SearchParams } from '@/lib/api'
+
 export interface CatalogQuery {
   keyword: string
   type: string
@@ -17,20 +19,41 @@ function one(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
 
+const allowedTypes = new Set(['all', 'phim-le', 'phim-bo', 'hoat-hinh', 'tv-shows'])
+const allowedLanguages = new Set(['all', 'vietsub', 'thuyet-minh', 'long-tieng'])
+const allowedSortFields = new Set(['modified.time', 'year', '_id', 'name'])
+const safeSlug = (value: string) => value === 'all' || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+const allowedYear = (value: string) => value === 'all' || /^(19|20)\d{2}$/.test(value)
+
 export function parseCatalogQuery(params: RawParams): CatalogQuery {
   const page = Number(one(params.page))
   const limit = Number(one(params.limit))
   return {
     keyword: one(params.keyword).trim().slice(0, 100),
-    type: one(params.type) || 'all',
-    genre: one(params.genre) || 'all',
-    country: one(params.country) || 'all',
-    year: one(params.year) || 'all',
-    language: one(params.language) || 'all',
-    sortField: one(params.sort_field) || 'modified.time',
+    type: allowedTypes.has(one(params.type)) ? one(params.type) : 'all',
+    genre: safeSlug(one(params.genre)) ? one(params.genre) : 'all',
+    country: safeSlug(one(params.country)) ? one(params.country) : 'all',
+    year: allowedYear(one(params.year)) ? one(params.year) : 'all',
+    language: allowedLanguages.has(one(params.language)) ? one(params.language) : 'all',
+    sortField: allowedSortFields.has(one(params.sort_field)) ? one(params.sort_field) : 'modified.time',
     sortType: one(params.sort_type) === 'asc' ? 'asc' : 'desc',
     page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
     limit: [16, 24, 32, 48].includes(limit) ? limit : 24,
+  }
+}
+
+export function catalogSearchParams(query: CatalogQuery): SearchParams {
+  return {
+    keyword: query.keyword || undefined,
+    type_list: query.type !== 'all' ? query.type : undefined,
+    category: query.genre !== 'all' ? query.genre : undefined,
+    country: query.country !== 'all' ? query.country : undefined,
+    year: query.year !== 'all' ? query.year : undefined,
+    sort_lang: query.language !== 'all' ? query.language : undefined,
+    sort_field: query.sortField,
+    sort_type: query.sortType,
+    page: query.page,
+    limit: query.limit,
   }
 }
 

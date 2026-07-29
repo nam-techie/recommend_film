@@ -56,6 +56,8 @@ CLIENT_ORIGINS=https://your-vercel-domain.vercel.app
 MEDIA_ALLOWED_HOSTS=s3.phim1280.tv
 WATCH_PARTY_TOKEN_SECRET=use-a-long-random-secret
 FIREBASE_SERVICE_ACCOUNT_JSON={...single-line service account JSON...}
+FIREBASE_PROJECT_ID=moviewiser-watch-party-77fb3
+FIREBASE_DATABASE_URL=https://moviewiser-watch-party-77fb3-default-rtdb.asia-southeast1.firebasedatabase.app
 ROOM_TTL_SECONDS=14400
 EMPTY_ROOM_TTL_SECONDS=300
 HOST_GRACE_SECONDS=15
@@ -76,6 +78,8 @@ Trên Vercel, đặt cả hai URL xem chung thành cùng origin HTTPS rồi rede
 NEXT_PUBLIC_WATCH_PARTY_API_URL=https://moviewiser-socket.onrender.com
 NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL=https://moviewiser-socket.onrender.com
 ```
+
+Ba biến Firebase Admin ở trên chỉ đặt trên Render; không đưa service account vào Vercel, Git hoặc biến `NEXT_PUBLIC_*`. `GET /ready` phải trả `firebaseAuthConfigured`, `socialDatabaseConfigured` và `socialDatabaseHealthy` là `true` trước khi thử tìm bạn bằng email.
 
 Voice dùng LiveKit Cloud SFU. Chỉ cấu hình `LIVEKIT_URL`, `LIVEKIT_API_KEY` và `LIVEKIT_API_SECRET` trên Render; không cấu hình STUN/TURN hoặc secret LiveKit trên frontend. `GET /ready` trả thêm `voiceConfigured` để xác nhận máy chủ đã nhận đủ ba biến này.
 

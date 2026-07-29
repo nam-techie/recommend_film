@@ -30,7 +30,7 @@ CLIENT_ORIGINS=https://your-vercel-domain.vercel.app
 MEDIA_ALLOWED_HOSTS=s3.phim1280.tv
 WATCH_PARTY_TOKEN_SECRET=<random-secret-at-least-32-bytes>
 FIREBASE_PROJECT_ID=moviewiser-watch-party-77fb3
-FIREBASE_DATABASE_URL=https://moviewiser-watch-party-77fb3-default-rtdb.firebaseio.com
+FIREBASE_DATABASE_URL=https://moviewiser-watch-party-77fb3-default-rtdb.asia-southeast1.firebasedatabase.app
 FIREBASE_SERVICE_ACCOUNT_JSON=<single-line-service-account-json>
 APP_BASE_URL=https://your-vercel-domain.vercel.app
 MAIL_HOST=smtp.gmail.com
@@ -53,7 +53,7 @@ LIVEKIT_API_SECRET=<server-only-api-secret>
 
 `MEDIA_ALLOWED_HOSTS` nhận hostname CDN bổ sung, phân cách bằng dấu phẩy; có thể dùng dạng `*.example.com`. Các host KKPhim và `s3.phim1280.tv` đã có trong allowlist mặc định. Cùng một chính sách được áp dụng cho probe, tạo phòng, proxy và từng bước redirect.
 
-`FIREBASE_SERVICE_ACCOUNT_JSON`, `MAIL_PASSWORD` và thông tin SMTP là secret chỉ đặt trên Render. Gmail gửi mail cần bật 2-Step Verification rồi tạo App Password; không dùng mật khẩu Google thật. Nếu mail chưa cấu hình, notification mời xem chung và chat trong phòng vẫn hoạt động, còn `/ready` trả `"mailConfigured": false`.
+`FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID` và `FIREBASE_DATABASE_URL` là biến server-only: chỉ đặt trên Render, không sao chép sang Vercel hoặc biến `NEXT_PUBLIC_*`. `FIREBASE_SERVICE_ACCOUNT_JSON`, `MAIL_PASSWORD` và thông tin SMTP là secret. Gmail gửi mail cần bật 2-Step Verification rồi tạo App Password; không dùng mật khẩu Google thật. Nếu mail chưa cấu hình, notification mời xem chung và chat trong phòng vẫn hoạt động, còn `/ready` trả `"mailConfigured": false`; điều này không chặn chức năng tìm tài khoản bằng email.
 
 Vercel và `.env` local cần trỏ hai biến sau tới public Render URL, không có dấu `/` cuối:
 
@@ -73,7 +73,7 @@ Khi host bật voice, các thành viên online tự kết nối SFU với mic m�
 ## Operational endpoints
 
 - `GET /health`: process đang chạy.
-- `GET /ready`: Redis/store sẵn sàng nhận traffic, đồng thời báo trạng thái voice, social database và SMTP.
+- `GET /ready`: Redis/store sẵn sàng nhận traffic và báo riêng `firebaseAuthConfigured`, `socialDatabaseConfigured`, `socialDatabaseHealthy`, voice và SMTP. Chỉ thử lookup email khi cả ba trạng thái Firebase đều sẵn sàng/healthy.
 - `GET /api/rooms`: danh sách phòng public.
 - `POST /api/friends/lookup-email`: tìm chính xác tài khoản bằng email, yêu cầu Firebase Bearer token và giới hạn 10 lần/phút.
 - `POST /api/rooms/:roomId/invites`: tạo notification/email invite cho một người bạn, yêu cầu Firebase Bearer token.

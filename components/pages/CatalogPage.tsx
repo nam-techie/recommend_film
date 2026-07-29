@@ -25,10 +25,10 @@ export function CatalogPage({ title, description, movies, query, totalItems = mo
     {showSearch ? (
       <section className="relative mb-9 overflow-visible rounded-xl border border-white/[0.06] bg-[radial-gradient(circle_at_top_left,rgba(192,38,211,.12),transparent_40%)] px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
         <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-accent-soft"><Sparkles className="h-4 w-4" /> Kho phim CineMind</div>
-        <h1 className="text-3xl font-black tracking-tight text-fg sm:text-5xl">{query.keyword ? `Kết quả cho “${query.keyword}”` : 'Thư viện Điện ảnh'}</h1>
+        <h1 className="font-sans text-3xl font-bold tracking-tight text-fg sm:text-5xl">{query.keyword ? `Kết quả cho “${query.keyword}”` : 'Thư viện Điện ảnh'}</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-fg-secondary sm:text-base">{description || 'Gõ từ khóa và kết hợp bộ lọc thông minh để tìm bộ phim hợp gu nhất.'}</p>
         <p className="mt-2 text-xs font-semibold text-fg-muted">{totalItems.toLocaleString('vi-VN')} phim trong kho</p>
-        <div className="relative z-30 mt-7"><SearchAutocomplete initialValue={query.keyword} variant="hero" /></div>
+        <div className="relative z-30 mt-7"><SearchAutocomplete initialValue={query.keyword} variant="hero" preservedQuery={catalogQueryString(query, { keyword: '', page: 1 })} /></div>
       </section>
     ) : (
       <div className="mb-8 flex items-start gap-4"><span className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent-soft"><Clapperboard className="h-5 w-5" /></span><div><h1 className="text-3xl font-black tracking-tight text-fg sm:text-4xl">{title}</h1>{description && <p className="mt-2 max-w-3xl text-sm leading-6 text-fg-muted sm:text-base">{description}</p>}<p className="mt-2 text-xs text-fg-muted">{totalItems.toLocaleString('vi-VN')} phim</p></div></div>

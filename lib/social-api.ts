@@ -1,4 +1,4 @@
-import { PublicProfile, WatchPartyInviteResult } from '@/lib/account-types'
+import { DirectoryProfile, WatchPartyInviteResult } from '@/lib/account-types'
 
 const serviceUrl = () => (process.env.NEXT_PUBLIC_WATCH_PARTY_API_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:4001' : '')).trim().replace(/\/$/, '')
 
@@ -36,7 +36,7 @@ async function request<T>(path: string, token: string, body: unknown): Promise<T
 }
 
 export async function lookupProfileByEmail(email: string, token: string) {
-  return request<{ found: boolean; profile?: PublicProfile }>('/api/friends/lookup-email', token, { email })
+  return request<{ found: boolean; profile?: DirectoryProfile }>('/api/friends/lookup-email', token, { email })
 }
 
 export async function inviteFriendToRoom(roomId: string, friendUid: string, token: string) {
