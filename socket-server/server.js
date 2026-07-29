@@ -5,13 +5,15 @@ import { createClient } from 'redis'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { Server } from 'socket.io'
 import { z } from 'zod'
-import { cert, getApps, initializeApp } from 'firebase-admin/app'
+import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import nodemailer from 'nodemailer'
 import { applyVoicePermission, attachDeviceSocket, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, createPairingRecord, detachDeviceSocket, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPairingUsable, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, normalizeRemoteCommand, remoteDeviceCount, REMOTE_PAIRING_TTL_MS, sanitizeScreenState, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import { directoryProfile, isAnonymousFirebaseActor, requestIp } from './social-core.js'
+import { buildWatchPartyInviteEmail } from './email-templates.js'
+import { firebaseAdminConfig } from './service-config.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -40,7 +42,15 @@ const MAIL_PASSWORD = process.env.MAIL_PASSWORD || ''
 const MAIL_FROM = process.env.MAIL_FROM || MAIL_USERNAME
 const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'CineMind'
 const mailConfigured = Boolean(MAIL_USERNAME && MAIL_PASSWORD && MAIL_FROM)
-const mailTransporter = mailConfigured ? nodemailer.createTransport({ host: MAIL_HOST, port: MAIL_PORT, secure: MAIL_SECURE, auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD } }) : null
+const mailTransporter = mailConfigured ? nodemailer.createTransport({
+  host: MAIL_HOST,
+  port: MAIL_PORT,
+  secure: MAIL_SECURE,
+  auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD },
+  connectionTimeout: 5_000,
+  greetingTimeout: 5_000,
+  socketTimeout: 10_000,
+}) : null
 const voiceConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
 const livekitRooms = voiceConfigured ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) : null
 
@@ -50,35 +60,99 @@ if (IS_PRODUCTION && CLIENT_ORIGINS.length === 0) throw new Error('CLIENT_ORIGIN
 
 let adminAuth = null
 let adminDb = null
+let adminCredential = null
 let firebaseAdminError = null
+let firebaseCredentialSource = null
 try {
-  const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-  const serviceAccount = rawServiceAccount ? JSON.parse(rawServiceAccount) : null
-  const projectId = serviceAccount?.project_id || process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  const databaseURL = process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL
-  if (serviceAccount || projectId) {
-    const app = getApps()[0] || initializeApp({ ...(serviceAccount ? { credential: cert(serviceAccount) } : { projectId }), ...(databaseURL ? { databaseURL } : {}) })
+  const config = firebaseAdminConfig(process.env)
+  if (!config.credentialSource) firebaseAdminError = 'CREDENTIALS_NOT_CONFIGURED'
+  else {
+    firebaseCredentialSource = config.credentialSource
+    adminCredential = config.serviceAccount ? cert(config.serviceAccount) : applicationDefault()
+    const app = getApps()[0] || initializeApp({ credential: adminCredential, ...(config.projectId ? { projectId: config.projectId } : {}), ...(config.databaseURL ? { databaseURL: config.databaseURL } : {}) })
     adminAuth = getAuth(app)
-    if (databaseURL) adminDb = getDatabase(app)
+    if (config.databaseURL) adminDb = getDatabase(app)
+    else firebaseAdminError = 'DATABASE_URL_NOT_CONFIGURED'
   }
 } catch (error) {
-  firebaseAdminError = 'INITIALIZATION_FAILED'
+  firebaseAdminError = error?.code || 'INITIALIZATION_FAILED'
   console.error('Firebase Admin initialization failed:', error instanceof Error ? error.message : String(error))
 }
-if (!adminAuth) firebaseAdminError ||= 'AUTH_NOT_CONFIGURED'
-else if (!adminDb) firebaseAdminError ||= 'DATABASE_URL_NOT_CONFIGURED'
 
+let firebaseAuthHealthCache = { value: false, expiresAt: 0 }
+let firebaseAuthHealthInFlight = null
+const firebaseAuthHealth = async () => {
+  if (!adminAuth || !adminCredential) return false
+  if (firebaseAuthHealthCache.expiresAt > Date.now()) return firebaseAuthHealthCache.value
+  if (firebaseAuthHealthInFlight) return firebaseAuthHealthInFlight
+  firebaseAuthHealthInFlight = (async () => {
+    try {
+      await Promise.race([
+        // This verifies the credential can actually call Firebase Auth for the
+        // configured project, which is stronger than merely minting OAuth.
+        adminAuth.listUsers(1),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('FIREBASE_AUTH_HEALTH_TIMEOUT')), 4000)),
+      ])
+      firebaseAuthHealthCache = { value: true, expiresAt: Date.now() + 60_000 }
+    } catch (error) {
+      firebaseAuthHealthCache = { value: false, expiresAt: Date.now() + 15_000 }
+      log('firebase_admin_health_failed', { error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      firebaseAuthHealthInFlight = null
+    }
+    return firebaseAuthHealthCache.value
+  })()
+  return firebaseAuthHealthInFlight
+}
+
+let socialDatabaseHealthCache = { value: false, expiresAt: 0 }
+let socialDatabaseHealthInFlight = null
 const socialDatabaseHealth = async () => {
   if (!adminDb) return false
-  try {
-    await Promise.race([
-      adminDb.ref('publicProfiles').limitToFirst(1).get(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('DATABASE_HEALTH_TIMEOUT')), 3000)),
-    ])
-    return true
-  } catch {
-    return false
+  if (socialDatabaseHealthCache.expiresAt > Date.now()) return socialDatabaseHealthCache.value
+  if (socialDatabaseHealthInFlight) return socialDatabaseHealthInFlight
+  socialDatabaseHealthInFlight = (async () => {
+    try {
+      await Promise.race([
+        adminDb.ref('publicProfiles').limitToFirst(1).get(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DATABASE_HEALTH_TIMEOUT')), 3000)),
+      ])
+      socialDatabaseHealthCache = { value: true, expiresAt: Date.now() + 60_000 }
+    } catch {
+      socialDatabaseHealthCache = { value: false, expiresAt: Date.now() + 15_000 }
+    } finally {
+      socialDatabaseHealthInFlight = null
+    }
+    return socialDatabaseHealthCache.value
+  })()
+  return socialDatabaseHealthInFlight
+}
+
+let mailHealthCache = { value: false, expiresAt: 0 }
+let mailHealthInFlight = null
+const mailHealth = async () => {
+  if (!mailTransporter) return false
+  if (mailHealthCache.expiresAt > Date.now()) return mailHealthCache.value
+  if (!mailHealthInFlight) {
+    mailHealthInFlight = (async () => {
+      try {
+        await mailTransporter.verify()
+        mailHealthCache = { value: true, expiresAt: Date.now() + 300_000 }
+      } catch (error) {
+        mailHealthCache = { value: false, expiresAt: Date.now() + 30_000 }
+        log('mail_health_failed', { error: error instanceof Error ? error.message : String(error) })
+      } finally {
+        mailHealthInFlight = null
+      }
+      return mailHealthCache.value
+    })()
   }
+  // SMTP is optional. Never let a slow Gmail handshake make Render's readiness
+  // endpoint miss its health-check deadline; the in-flight verification stays deduped.
+  return Promise.race([
+    mailHealthInFlight,
+    new Promise((resolve) => setTimeout(() => resolve(false), 4_000)),
+  ])
 }
 
 const allowedReactions = new Set(['❤️', '😂', '🔥', '😮', '👏', '😢'])
@@ -198,7 +272,6 @@ const deleteVoiceRoom = async (roomId, attempt = 1) => {
   }
 }
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
-const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character])
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
 const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
 const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
@@ -209,9 +282,48 @@ const createVoiceToken = async (room, member) => {
   token.addGrant(buildVoiceGrant(room.id))
   return token.toJwt()
 }
+const clientFirebaseTokenErrors = new Set([
+  'auth/argument-error',
+  'auth/id-token-expired',
+  'auth/id-token-revoked',
+  'auth/invalid-id-token',
+  'auth/user-disabled',
+])
+const firebaseAdminErrorCodes = new Set([
+  'auth/insufficient-permission',
+  'auth/internal-error',
+  'auth/invalid-credential',
+  'auth/project-not-found',
+  'auth/quota-exceeded',
+  'database/permission-denied',
+  'permission_denied',
+])
+const isFirebaseAdminFailure = (error) => {
+  const code = String(error?.code || '').toLowerCase()
+  const message = String(error?.message || '').toLowerCase()
+  return firebaseAdminErrorCodes.has(code)
+    || code.startsWith('app/')
+    || code.includes('credential')
+    || message.includes('default credentials')
+    || message.includes('oauth2 access token')
+    || message.includes('credential implementation')
+}
+const firebaseAdminUnavailable = () => Object.assign(
+  new Error('Dịch vụ tài khoản trên máy chủ chưa có Firebase Admin credential hợp lệ.'),
+  { statusCode: 503, code: 'FIREBASE_ADMIN_UNAVAILABLE' },
+)
 const verifyFirebaseToken = async (token) => {
-  if (!adminAuth) throw Object.assign(new Error('Firebase Admin is not configured'), { statusCode: 503, code: 'AUTH_NOT_CONFIGURED' })
-  try { return await adminAuth.verifyIdToken(token) } catch { throw Object.assign(new Error('Bạn cần đăng nhập Google để tạo phòng.'), { statusCode: 401, code: 'AUTH_REQUIRED' }) }
+  if (!adminAuth || !adminCredential) throw firebaseAdminUnavailable()
+  try {
+    return await adminAuth.verifyIdToken(token)
+  } catch (error) {
+    if (clientFirebaseTokenErrors.has(String(error?.code || ''))) {
+      throw Object.assign(new Error('Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.'), { statusCode: 401, code: 'AUTH_REQUIRED' })
+    }
+    firebaseAuthHealthCache = { value: false, expiresAt: Date.now() + 15_000 }
+    log('firebase_token_verification_failed', { code: error?.code || undefined, error: error instanceof Error ? error.message : String(error) })
+    throw firebaseAdminUnavailable()
+  }
 }
 const bearer = (req) => String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]
 const publicRoom = (room) => ({
@@ -331,16 +443,25 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
     if (url.pathname === '/ready') {
       await store.ping()
-      const socialDatabaseHealthy = await socialDatabaseHealth()
+      const [firebaseAuthHealthy, socialDatabaseHealthy, mailHealthy] = await Promise.all([
+        firebaseAuthHealth(),
+        socialDatabaseHealth(),
+        mailHealth(),
+      ])
+      const runtimeFirebaseError = firebaseAdminError
+        || (!firebaseAuthHealthy ? 'CREDENTIALS_UNAVAILABLE' : !socialDatabaseHealthy ? 'DATABASE_UNAVAILABLE' : null)
       return json(res, 200, {
         ok: true,
         store: redisClient ? 'redis' : 'memory',
         voiceConfigured,
         mailConfigured,
-        firebaseAuthConfigured: Boolean(adminAuth),
+        mailHealthy,
+        firebaseCredentialSource,
+        firebaseAuthConfigured: Boolean(adminAuth && adminCredential),
+        firebaseAuthHealthy,
         socialDatabaseConfigured: Boolean(adminDb),
         socialDatabaseHealthy,
-        ...(firebaseAdminError ? { firebaseAdminError } : {}),
+        ...(runtimeFirebaseError ? { firebaseAdminError: runtimeFirebaseError } : {}),
       })
     }
     if (req.method === 'GET' && url.pathname === '/api/media/proxy') {
@@ -414,21 +535,46 @@ const server = http.createServer(async (req, res) => {
       const movieTitle = room.movie.title
       const updates = {
         [`watchPartyInvites/${inviteId}`]: { id: inviteId, roomId, inviterUid: actor.uid, recipientUid: friendUid, movieSlug: room.movie.slug, movieTitle, status: 'pending', createdAt: now, expiresAt: room.expiresAt },
-        [`notifications/${friendUid}/${notificationId}`]: { id: notificationId, type: 'watch_party_invite', actorUid: actor.uid, actorName: actorProfile.displayName || actorMember.displayName, actorUsername: actorProfile.username || '', actorAvatar: actorProfile.avatar || null, roomId, movieSlug: room.movie.slug, read: false, createdAt: now },
+        [`notifications/${friendUid}/${notificationId}`]: { id: notificationId, inviteId, type: 'watch_party_invite', actorUid: actor.uid, actorName: actorProfile.displayName || actorMember.displayName, actorUsername: actorProfile.username || '', actorAvatar: actorProfile.avatar || null, roomId, movieSlug: room.movie.slug, movieTitle, expiresAt: room.expiresAt, read: false, createdAt: now },
       }
       await adminDb.ref().update(updates)
       let emailStatus = 'skipped'
+      let emailReason = !mailTransporter ? 'not_configured' : targetSettings.emailNotifications === false ? 'disabled' : 'no_email'
       if (mailTransporter && targetSettings.emailNotifications !== false) {
         try {
           const targetAccount = await adminAuth.getUser(friendUid)
-          if (targetAccount.email && targetAccount.emailVerified) {
-            const joinUrl = `${APP_BASE_URL}/watch-party/${roomId}`; const safeActor = escapeHtml(actorProfile.displayName || actorMember.displayName); const safeMovie = escapeHtml(movieTitle)
-            await mailTransporter.sendMail({ from: `"${MAIL_FROM_NAME}" <${MAIL_FROM}>`, to: targetAccount.email, subject: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle}`, text: `${actorProfile.displayName || actorMember.displayName} mời bạn xem ${movieTitle} trên CineMind. Mã phòng: ${roomId}. Tham gia: ${joinUrl}`, html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827"><h2>${safeActor} mời bạn xem chung</h2><p>Hai bạn có một buổi xem <strong>${safeMovie}</strong> đang chờ trên CineMind.</p><p>Mã phòng: <strong>${roomId}</strong></p><p><a href="${joinUrl}" style="display:inline-block;padding:12px 18px;background:#7c3aed;color:white;text-decoration:none;border-radius:10px">Tham gia xem chung</a></p><p style="color:#6b7280;font-size:13px">Phòng hết hạn lúc ${new Date(room.expiresAt).toISOString()}.</p></div>` })
+          if (!targetAccount.email) emailReason = 'no_email'
+          else if (!targetAccount.emailVerified) emailReason = 'unverified'
+          else {
+            const joinUrl = `${APP_BASE_URL}/watch-party/${roomId}`
+            const email = buildWatchPartyInviteEmail({
+              actorName: actorProfile.displayName || actorMember.displayName,
+              movieTitle,
+              roomId,
+              joinUrl,
+              expiresAt: room.expiresAt,
+            })
+            await mailTransporter.sendMail({ from: `"${MAIL_FROM_NAME}" <${MAIL_FROM}>`, to: targetAccount.email, ...email })
             emailStatus = 'sent'
+            emailReason = undefined
           }
-        } catch (error) { emailStatus = 'failed'; log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, error: error instanceof Error ? error.message : String(error) }) }
+        } catch (error) {
+          if (String(error?.code || '').includes('user-not-found')) {
+            emailStatus = 'skipped'
+            emailReason = 'no_email'
+          } else {
+            emailStatus = 'failed'
+            emailReason = isFirebaseAdminFailure(error) ? 'firebase_admin' : 'smtp_error'
+            log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, reason: emailReason, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
       }
-      return json(res, 200, { inviteId, inAppStatus: 'sent', emailStatus })
+      try {
+        await adminDb.ref(`watchPartyInvites/${inviteId}`).update({ emailStatus, emailReason: emailReason || null, emailUpdatedAt: Date.now() })
+      } catch (error) {
+        log('invite_email_status_persist_failed', { roomId, inviteId, error: error instanceof Error ? error.message : String(error) })
+      }
+      return json(res, 200, { inviteId, inAppStatus: 'sent', emailStatus, ...(emailReason ? { emailReason } : {}) })
     }
     const voiceTokenMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/voice-token$/i)
     if (req.method === 'POST' && voiceTokenMatch) {
@@ -549,9 +695,13 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { code: 'NOT_FOUND', error: 'Không tìm thấy tài nguyên.' })
   } catch (error) {
     const validation = error instanceof z.ZodError
-    log('http_error', { path: url.pathname, error: validation ? 'VALIDATION_ERROR' : error.message })
-    const status = validation ? 400 : error.statusCode || (error.message === 'PAYLOAD_TOO_LARGE' ? 413 : 500)
-    return json(res, status, { code: validation ? 'VALIDATION_ERROR' : error.code || 'INTERNAL_ERROR', error: validation ? 'Dữ liệu không hợp lệ.' : error.statusCode ? error.message : 'Máy chủ gặp sự cố.' })
+    const adminFailure = !validation && isFirebaseAdminFailure(error)
+    log('http_error', { path: url.pathname, code: adminFailure ? 'FIREBASE_ADMIN_UNAVAILABLE' : error?.code, error: validation ? 'VALIDATION_ERROR' : error.message })
+    const status = validation ? 400 : adminFailure ? 503 : error.statusCode || (error.message === 'PAYLOAD_TOO_LARGE' ? 413 : 500)
+    return json(res, status, {
+      code: validation ? 'VALIDATION_ERROR' : adminFailure ? 'FIREBASE_ADMIN_UNAVAILABLE' : error.code || 'INTERNAL_ERROR',
+      error: validation ? 'Dữ liệu không hợp lệ.' : adminFailure ? 'Firebase Admin trên máy chủ chưa có credential hợp lệ.' : error.statusCode ? error.message : 'Máy chủ gặp sự cố.',
+    })
   }
 })
 

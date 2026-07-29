@@ -29,6 +29,8 @@ async function request<T>(path: string, token: string, body: unknown): Promise<T
       ? 'Server Render đang chạy bản cũ, chưa có tính năng tìm email. Cần deploy lại watch-party service.'
       : response.status === 503 && code === 'SOCIAL_DATABASE_NOT_CONFIGURED'
         ? 'Server chưa cấu hình Firebase Admin nên chưa thể tìm bằng email.'
+        : response.status === 503 && code === 'FIREBASE_ADMIN_UNAVAILABLE'
+          ? 'Firebase Admin trên Render chưa có credential hợp lệ. Kiểm tra Secret File hoặc service-account rồi deploy lại.'
         : typeof payload.error === 'string' ? payload.error : 'Không thể kết nối dịch vụ cộng đồng.'
     throw new SocialApiError(message, response.status, code)
   }

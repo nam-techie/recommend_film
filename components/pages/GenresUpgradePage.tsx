@@ -55,14 +55,15 @@ export default function GenresUpgradePage() {
     // Run cleanup first to remove expired rooms
     cleanupExpiredRooms()
     
-    if (!database) {
+    const firebaseDatabase = database
+    if (!firebaseDatabase) {
       console.log('Firebase not initialized, using demo rooms')
       setActiveRooms(demoRooms)
       setIsLoading(false)
       return
     }
 
-    const roomsRef = ref(database, 'rooms')
+    const roomsRef = ref(firebaseDatabase!, 'rooms')
     const unsubscribe = onValue(roomsRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {

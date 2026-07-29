@@ -191,7 +191,7 @@ export function useAccount() {
   const answerFriend = useCallback(async (request: FriendRequest, accept: boolean) => { if (!profile) return; await respondFriendRequest(profile, request, accept) }, [profile])
   const unfriend = useCallback(async (friendUid: string) => { if (!user) return; await removeFriend(user.uid, friendUid) }, [user])
   const blockUser = useCallback(async (targetUid: string, blocked = true) => { if (!user) return; await setUserBlocked(user.uid, targetUid, blocked) }, [user])
-  const inviteFriend = useCallback(async (friend: FriendshipRecord, roomId: string, _movieSlug?: string) => { const token = await getIdToken(); if (!token) throw new Error('Bạn cần đăng nhập để mời bạn bè.'); const result = await inviteFriendToRoom(roomId, friend.uid, token); if (result.emailStatus === 'failed') throw new Error('Đã gửi trong ứng dụng, nhưng email chưa gửi được.'); return result }, [getIdToken])
+  const inviteFriend = useCallback(async (friend: FriendshipRecord, roomId: string, _movieSlug?: string) => { const token = await getIdToken(); if (!token) throw new Error('Bạn cần đăng nhập để mời bạn bè.'); return inviteFriendToRoom(roomId, friend.uid, token) }, [getIdToken])
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications])
   const retry = useCallback(() => setRetryVersion((value) => value + 1), [])
 

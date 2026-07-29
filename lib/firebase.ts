@@ -1,48 +1,46 @@
-import { initializeApp } from 'firebase/app'
-import { getDatabase } from 'firebase/database'
-import { getAuth } from 'firebase/auth'
+import { getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app'
+import { getDatabase, type Database } from 'firebase/database'
+import { getAuth, type Auth } from 'firebase/auth'
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_API_KEY",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "YOUR_AUTH_DOMAIN",
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "YOUR_DATABASE_URL",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "YOUR_STORAGE_BUCKET",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_MESSAGING_SENDER_ID",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "YOUR_APP_ID"
+const firebaseConfig: FirebaseOptions = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 }
 
-// Initialize Firebase only if all config values are provided
-let app: any = null
-let database: any = null
-let auth: ReturnType<typeof getAuth> | null = null
+const hasAuthConfig = Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId)
+const hasDatabaseConfig = Boolean(firebaseConfig.databaseURL)
 
-try {
-  // Check if environment variables are properly configured
-  const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && 
-                      firebaseConfig.authDomain !== "YOUR_AUTH_DOMAIN" &&
-                      firebaseConfig.databaseURL !== "YOUR_DATABASE_URL" &&
-                      firebaseConfig.projectId !== "YOUR_PROJECT_ID"
-  
-  if (isConfigured) {
-    app = initializeApp(firebaseConfig)
-    database = getDatabase(app)
+let app: FirebaseApp | null = null
+let auth: Auth | null = null
+let database: Database | null = null
+
+if (hasAuthConfig) {
+  try {
+    app = getApps()[0] || initializeApp(firebaseConfig)
     auth = getAuth(app)
-    console.log('✅ Firebase initialized successfully')
-    console.log('🔥 Database URL:', firebaseConfig.databaseURL)
-  } else {
-    console.log('⚠️ Firebase config not provided - Watch Party will use demo mode')
-    console.log('💡 To enable Firebase: Create .env.local with NEXT_PUBLIC_FIREBASE_* variables')
+  } catch (error) {
+    console.error('Firebase Auth initialization failed:', error)
   }
-} catch (error) {
-  console.error('❌ Firebase initialization failed:', error)
-  console.log('🔄 Watch Party will fallback to demo mode')
 }
 
+// Realtime Database is optional for Firebase Auth. A missing/invalid database URL
+// must not disable Google or email/password sign-in.
+if (app && hasDatabaseConfig) {
+  try {
+    database = getDatabase(app)
+  } catch (error) {
+    console.error('Firebase Realtime Database initialization failed:', error)
+  }
+}
+
+export const firebaseAuthConfigured = Boolean(auth)
+export const firebaseDatabaseConfigured = Boolean(database)
 export { database, auth }
 export default app
 
-// Helper function to check if Firebase is available
-export const isFirebaseAvailable = () => {
-  return database !== null
-}
+export const isFirebaseAvailable = () => database !== null

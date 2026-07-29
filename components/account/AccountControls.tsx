@@ -40,10 +40,10 @@ export default function AccountControls({ user, logout }: { user: User; logout: 
               { href: account.profile && !account.degraded ? `/u/${account.profile.username}` : '/account', label: 'Xem hồ sơ', icon: UserRound },
               { href: '/account', label: 'Tài khoản', icon: Settings },
               { href: '/history', label: 'Lịch sử xem', icon: History },
-              { href: '/account', label: 'Danh sách phim', icon: Bookmark },
+              { href: '/account?tab=movies', label: 'Danh sách phim', icon: Bookmark },
             ].map((item) => <Link key={`${item.href}:${item.label}`} href={item.href} role="menuitem" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg"><item.icon className="h-4 w-4" />{item.label}</Link>)}
           </div>
-          <Link href="/account" className="flex min-h-10 items-center gap-3 rounded-xl border-t border-white/10 px-3 pt-2 text-sm text-fg-secondary hover:text-fg"><Bell className="h-4 w-4" />Thông báo{account.unreadCount > 0 && <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-xs font-bold">{account.unreadCount}</span>}</Link>
+          <Link href="/account?tab=notifications" className="flex min-h-10 items-center gap-3 rounded-xl border-t border-white/10 px-3 pt-2 text-sm text-fg-secondary hover:text-fg"><Bell className="h-4 w-4" />Thông báo{account.unreadCount > 0 && <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-xs font-bold">{account.unreadCount}</span>}</Link>
           <button type="button" role="menuitem" onClick={() => void logout()} className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-bad hover:bg-bad/10"><LogOut className="h-4 w-4" />Đăng xuất</button>
         </div>
       )}
