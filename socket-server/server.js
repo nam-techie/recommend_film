@@ -10,7 +10,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import nodemailer from 'nodemailer'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyVoicePermission, attachDeviceSocket, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, createPairingRecord, detachDeviceSocket, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPairingUsable, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, normalizeRemoteCommand, remoteDeviceCount, REMOTE_PAIRING_TTL_MS, sanitizeScreenState, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import dotenv from 'dotenv'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
@@ -69,6 +69,7 @@ const publicRoomsKey = 'watch-party:rooms:public'
 const allRoomsKey = 'watch-party:rooms:all'
 const ownerRoomKey = (uid) => `watch-party:owner-room:${uid}`
 const dedupeKey = (roomId, eventId) => `watch-party:dedupe:${roomId}:${eventId}`
+const pairingKey = (code) => `watch-party:remote-pairing:${code}`
 
 const episodeSchema = z.object({
   id: z.string().trim().min(1).max(120), name: z.string().trim().min(1).max(120),
@@ -99,10 +100,11 @@ const episodeChangeSchema = z.object({
   clientEventId: z.string().min(8).max(100).optional()
 })
 const policySchema = z.object({ autoNext: z.boolean(), clientEventId: z.string().min(8).max(100) })
+const remotePairSchema = z.object({ pairingCode: z.string().trim().length(6).transform((value) => value.toUpperCase()) })
 const emailLookupSchema = z.object({ email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()) })
 const roomInviteSchema = z.object({ friendUid: z.string().trim().min(1).max(128) })
 class MemoryStore {
-  constructor() { this.rooms = new Map(); this.dedupe = new Map(); this.ownerRooms = new Map() }
+  constructor() { this.rooms = new Map(); this.dedupe = new Map(); this.ownerRooms = new Map(); this.pairings = new Map() }
   async ping() { return 'PONG' }
   async getRoom(id) { const room = this.rooms.get(id); return room ? structuredClone(room) : null }
   async setRoom(room) { this.rooms.set(room.id, structuredClone(room)); if (room.ownerUid && room.status !== 'closed') this.ownerRooms.set(room.ownerUid, room.id) }
@@ -111,6 +113,8 @@ class MemoryStore {
   async listRooms() { return [...this.rooms.values()].filter((room) => isPublicRoomDiscoverable(room) && room.expiresAt > Date.now()).map((room) => structuredClone(room)) }
   async listAllRooms() { return [...this.rooms.values()].map((room) => structuredClone(room)) }
   async dedupeEvent(roomId, eventId) { const key = `${roomId}:${eventId}`; if (this.dedupe.has(key)) return false; this.dedupe.set(key, Date.now()); return true }
+  async setPairing(code, record) { const existing = this.pairings.get(code); if (existing && existing.expiresAt > Date.now()) return false; this.pairings.set(code, record); return true }
+  async consumePairing(code) { const record = this.pairings.get(code) || null; this.pairings.delete(code); return record }
   async allow(key, limit, windowMs) { return rateLimit(key, limit, windowMs) }
 }
 
@@ -146,6 +150,8 @@ class RedisStore {
     return rooms.filter(Boolean)
   }
   async dedupeEvent(roomId, eventId) { return Boolean(await this.client.set(dedupeKey(roomId, eventId), '1', { NX: true, EX: 60 })) }
+  async setPairing(code, record) { return Boolean(await this.client.set(pairingKey(code), JSON.stringify(record), { NX: true, EX: Math.max(1, Math.ceil((record.expiresAt - Date.now()) / 1000)) })) }
+  async consumePairing(code) { const value = await this.client.getDel(pairingKey(code)); return value ? JSON.parse(value) : null }
   async allow(key, limit, windowMs) {
     const redisKey = `watch-party:rate:${key}:${Math.floor(Date.now() / windowMs)}`
     const count = await this.client.incr(redisKey)
@@ -178,7 +184,7 @@ const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (character
 const roomCode = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => chars[crypto.randomInt(chars.length)]).join('') }
 const originAllowed = (origin) => isAllowedClientOrigin(origin, CLIENT_ORIGINS)
 const corsOrigin = (origin, callback) => callback(null, originAllowed(origin))
-const signToken = (room, member) => jwt.sign({ roomId: room.id, memberId: member.memberId, roleAtIssue: member.role, sessionId: id('session') }, TOKEN_SECRET, { expiresIn: Math.max(1, Math.floor((room.expiresAt - Date.now()) / 1000)) })
+const signToken = (room, member, deviceRole = 'screen') => jwt.sign({ roomId: room.id, memberId: member.memberId, roleAtIssue: member.role, deviceRole, sessionId: id('session') }, TOKEN_SECRET, { expiresIn: Math.max(1, Math.floor((room.expiresAt - Date.now()) / 1000)) })
 const verifyToken = (token) => jwt.verify(token, TOKEN_SECRET)
 const createVoiceToken = async (room, member) => {
   const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: member.memberId, name: member.displayName, ttl: '10m' })
@@ -203,14 +209,15 @@ const publicRoom = (room) => ({
 })
 const clientMember = (member) => {
   const copy = structuredClone(member)
-  delete copy.uid; delete copy.socketIds
+  copy.remoteCount = remoteDeviceCount(member)
+  delete copy.uid; delete copy.socketIds; delete copy.remoteSocketIds
   return copy
 }
 const clientRoom = (room) => {
   const copy = structuredClone(room)
   copy.playbackPolicy ||= { autoNext: true }
   delete copy.passwordHash
-  for (const member of Object.values(copy.members)) { delete member.uid; delete member.socketIds }
+  for (const memberId of Object.keys(copy.members)) copy.members[memberId] = clientMember(room.members[memberId])
   return copy
 }
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)) }
@@ -408,6 +415,18 @@ const server = http.createServer(async (req, res) => {
         return json(res, 502, { code: 'VOICE_TOKEN_FAILED', error: 'Không thể tạo quyền truy cập LiveKit.' })
       }
     }
+    const remotePairMatch = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/remote\/pair$/i)
+    if (req.method === 'POST' && remotePairMatch) {
+      const roomId = remotePairMatch[1].toUpperCase()
+      if (!(await store.allow(`remote-pair:${ip}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn nhập mã ghép nối quá nhiều lần. Hãy thử lại sau một phút.' })
+      const { pairingCode } = remotePairSchema.parse(await readBody(req))
+      const record = await store.consumePairing(pairingCode)
+      if (!isPairingUsable(record, roomId, Date.now())) return json(res, 404, { code: 'PAIRING_INVALID', error: 'Mã ghép nối không đúng hoặc đã hết hạn.' })
+      const room = await store.getRoom(roomId); const member = room?.members?.[record.memberId]
+      if (!room || !member) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không còn tồn tại.' })
+      log('remote_paired', { roomId, memberId: member.memberId })
+      return json(res, 200, { roomToken: signToken(room, member, 'remote'), member: clientMember(member), room: publicRoom(room), expiresAt: room.expiresAt })
+    }
     if (req.method === 'GET' && url.pathname === '/api/users/me/active-room') {
       const authToken = bearer(req); if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập.' })
       const owner = await verifyFirebaseToken(authToken); const activeRoom = await store.getActiveRoomByOwner(owner.uid)
@@ -512,7 +531,7 @@ io.use(async (socket, next) => {
     const claims = verifyToken(socket.handshake.auth?.roomToken || '')
     const room = await store.getRoom(claims.roomId); const member = room?.members?.[claims.memberId]
     if (!room || !member) return next(new Error('UNAUTHORIZED'))
-    socket.data.identity = { roomId: room.id, memberId: member.memberId }; next()
+    socket.data.identity = { roomId: room.id, memberId: member.memberId, deviceRole: claims.deviceRole === 'remote' ? 'remote' : 'screen' }; next()
   } catch { next(new Error('UNAUTHORIZED')) }
 })
 
@@ -535,21 +554,38 @@ async function transferHost(roomId) {
 }
 
 io.on('connection', async (socket) => {
-  const { roomId, memberId } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
-  const wasEmptyRoom = room.status === 'empty_grace' || connectedMemberCount(room) === 0
-  const member = room.members[memberId]; member.connected = true; member.lastSeenAt = Date.now(); member.socketIds = [...new Set([...member.socketIds, socket.id])]; markRoomOccupied(room)
-  const currentHost = room.members[room.hostMemberId]
-  const claimedHost = (!room.hostMemberId || (wasEmptyRoom && !currentHost?.connected)) && claimVacantHost(room, memberId)
-  if (claimedHost) { clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId) }
-  if (memberId === room.hostMemberId && room.status === 'host_reconnecting') { room.status = 'active'; room.hostReconnectDeadline = null; clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId); log('host_resumed', { roomId }) }
-  socket.join(roomId); socket.join(`${roomId}:${memberId}`); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', clientMember(member)); io.emit('room:list_changed')
-  if (claimedHost) { io.to(roomId).emit('host:changed', { previousHostMemberId: '', hostMemberId: memberId, room: clientRoom(room) }); log('host_claimed', { roomId, hostMemberId: memberId }) }
+  const { roomId, memberId, deviceRole } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
+  const isRemote = deviceRole === 'remote'
+
+  // A paired handset rides on its member's identity but never counts as presence:
+  // it joins the fan-out channels, then only relays commands to its own screen.
+  if (isRemote) {
+    const handsetMember = room.members[memberId]
+    attachDeviceSocket(handsetMember, socket.id, 'remote'); handsetMember.lastSeenAt = Date.now()
+    socket.join(roomId); socket.join(`${roomId}:${memberId}`)
+    await store.setRoom(room)
+    socket.emit('room:snapshot', clientRoom(room))
+    socket.to(`${roomId}:${memberId}`).emit('remote:attached', { remoteCount: remoteDeviceCount(handsetMember) })
+    log('remote_attached', { roomId, memberId, remoteCount: remoteDeviceCount(handsetMember) })
+  } else {
+    const wasEmptyRoom = room.status === 'empty_grace' || connectedMemberCount(room) === 0
+    const member = room.members[memberId]; attachDeviceSocket(member, socket.id, 'screen'); member.lastSeenAt = Date.now(); markRoomOccupied(room)
+    const currentHost = room.members[room.hostMemberId]
+    const claimedHost = (!room.hostMemberId || (wasEmptyRoom && !currentHost?.connected)) && claimVacantHost(room, memberId)
+    if (claimedHost) { clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId) }
+    if (memberId === room.hostMemberId && room.status === 'host_reconnecting') { room.status = 'active'; room.hostReconnectDeadline = null; clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId); log('host_resumed', { roomId }) }
+    socket.join(roomId); socket.join(`${roomId}:${memberId}`); await store.setRoom(room); socket.emit('room:snapshot', clientRoom(room)); socket.to(roomId).emit('room:member_joined', clientMember(member)); io.emit('room:list_changed')
+    if (claimedHost) { io.to(roomId).emit('host:changed', { previousHostMemberId: '', hostMemberId: memberId, room: clientRoom(room) }); log('host_claimed', { roomId, hostMemberId: memberId }) }
+  }
 
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
   socket.on('sync:request', async (payload, ack) => { const fresh = await store.getRoom(roomId); const response = { serverTime: Date.now(), clientSentAt: payload?.clientSentAt, playback: fresh?.playback }; ack?.(response); socket.emit('sync:pong', response) })
-  socket.on('heartbeat:user', async () => { const fresh = await store.getRoom(roomId); if (fresh?.members[memberId]) { fresh.members[memberId].lastSeenAt = Date.now(); fresh.members[memberId].connected = true; await store.setRoom(fresh) } })
+  socket.on('heartbeat:user', async () => { const fresh = await store.getRoom(roomId); if (fresh?.members[memberId]) { fresh.members[memberId].lastSeenAt = Date.now(); if (!isRemote) fresh.members[memberId].connected = true; await store.setRoom(fresh) } })
   socket.on('playback:update', async (payload, ack) => {
     const parsed = playbackSchema.safeParse(payload); const fresh = await store.getRoom(roomId)
+    // Handsets steer playback through remote:command so the screen stays the single
+    // source of truth for what its <video> element is actually doing.
+    if (isRemote) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
     if (!parsed.success) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
     if (!fresh || fresh.hostMemberId !== memberId || fresh.status !== 'active') { log('playback_rejected', { roomId, memberId }); return ack?.({ ok: false, code: 'HOST_ONLY' }) }
     if (!(await store.allow(`playback:${memberId}`, 10, 1000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
@@ -605,8 +641,36 @@ io.on('connection', async (socket) => {
     if (!enabled) void deleteVoiceRoom(roomId)
     ack?.({ ok: true })
   })
+  socket.on('remote:pair_code', async (_payload, ack) => {
+    if (isRemote) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
+    if (!(await store.allow(`remote-code:${memberId}`, 5, 60_000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+    const fresh = await store.getRoom(roomId)
+    if (!fresh?.members[memberId]) return ack?.({ ok: false, code: 'ROOM_NOT_FOUND' })
+    const record = createPairingRecord(roomId, memberId, Date.now(), REMOTE_PAIRING_TTL_MS)
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = roomCode()
+      if (await store.setPairing(code, record)) return ack?.({ ok: true, pairingCode: code, expiresAt: record.expiresAt })
+    }
+    ack?.({ ok: false, code: 'PAIRING_UNAVAILABLE' })
+  })
+  socket.on('remote:command', async (payload, ack) => {
+    if (!isRemote) return ack?.({ ok: false, code: 'REMOTE_ONLY' })
+    const command = normalizeRemoteCommand(payload)
+    if (!command) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    if (!(await store.allow(`remote-cmd:${memberId}`, 25, 2000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+    socket.to(`${roomId}:${memberId}`).emit('remote:command', { ...command, commandId: id('command'), issuedAt: Date.now() })
+    ack?.({ ok: true })
+  })
+  socket.on('remote:screen_state', async (payload, ack) => {
+    if (isRemote) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
+    const state = sanitizeScreenState(payload)
+    if (!state) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    socket.to(`${roomId}:${memberId}`).emit('remote:screen_state', { ...state, serverTime: Date.now() })
+    ack?.({ ok: true })
+  })
   socket.on('room:close', async (ack) => {
     const fresh = await store.getRoom(roomId)
+    if (isRemote) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
     if (!fresh || (fresh.hostMemberId !== memberId && fresh.ownerUid !== fresh.members[memberId]?.uid)) return ack?.({ ok: false, code: 'HOST_ONLY' })
     ack?.({ ok: true })
     setTimeout(() => { void closeRoom(roomId, 'host_closed') }, 0)
@@ -614,7 +678,12 @@ io.on('connection', async (socket) => {
 
   const disconnectMember = async () => {
     const fresh = await store.getRoom(roomId); if (!fresh?.members[memberId]) return
-    const current = fresh.members[memberId]; current.socketIds = current.socketIds.filter((socketId) => socketId !== socket.id); current.connected = current.socketIds.length > 0; current.lastSeenAt = Date.now()
+    const current = fresh.members[memberId]; detachDeviceSocket(current, socket.id); current.lastSeenAt = Date.now()
+    if (isRemote) {
+      await store.setRoom(fresh)
+      socket.to(`${roomId}:${memberId}`).emit('remote:detached', { remoteCount: remoteDeviceCount(current) })
+      return
+    }
     if (!current.connected) socket.to(roomId).emit('room:member_left', { memberId })
     if (memberId === fresh.hostMemberId && !current.connected) {
       fresh.status = 'host_reconnecting'; fresh.hostReconnectDeadline = Date.now() + HOST_GRACE_SECONDS * 1000; io.to(roomId).emit('host:reconnecting', { graceSeconds: HOST_GRACE_SECONDS }); clearTimeout(hostTimers.get(roomId)); hostTimers.set(roomId, setTimeout(() => transferHost(roomId), HOST_GRACE_SECONDS * 1000))
