@@ -129,3 +129,63 @@ export function buildVoiceGrant(roomId) {
 export function findEligibleInvitingMember(room, uid) {
   return Object.values(room?.members || {}).find((member) => member.uid === uid && !member.isAnonymous) || null
 }
+
+export const REMOTE_PAIRING_TTL_MS = 120_000
+const REMOTE_COMMANDS = new Set(['play', 'pause', 'toggle', 'seek', 'seek_relative', 'volume', 'mute', 'fullscreen', 'resync'])
+const clampNumber = (value, min, max, fallback = 0) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback
+}
+
+export function createPairingRecord(roomId, memberId, now, ttlMs = REMOTE_PAIRING_TTL_MS) {
+  return { roomId, memberId, createdAt: now, expiresAt: now + ttlMs }
+}
+
+export function isPairingUsable(record, roomId, now) {
+  return Boolean(record && record.roomId === roomId && record.memberId && record.expiresAt > now)
+}
+
+export function sanitizeScreenState(payload) {
+  const episodeId = String(payload?.episodeId || '').slice(0, 120)
+  if (!episodeId) return null
+  return {
+    episodeId,
+    currentTime: clampNumber(payload?.currentTime, 0, 86_400),
+    duration: clampNumber(payload?.duration, 0, 86_400),
+    isPlaying: Boolean(payload?.isPlaying),
+    volume: clampNumber(payload?.volume, 0, 1, 1),
+    muted: Boolean(payload?.muted),
+    volumeWritable: payload?.volumeWritable !== false,
+    playerState: String(payload?.playerState || 'idle').slice(0, 32),
+  }
+}
+
+export function normalizeRemoteCommand(payload) {
+  const type = String(payload?.type || '')
+  if (!REMOTE_COMMANDS.has(type)) return null
+  if (type === 'seek') return { type, value: clampNumber(payload?.value, 0, 86_400) }
+  if (type === 'seek_relative') return { type, value: clampNumber(payload?.value, -600, 600) }
+  if (type === 'volume') return { type, value: clampNumber(payload?.value, 0, 1, 1) }
+  if (type === 'mute' || type === 'fullscreen') return { type, value: Boolean(payload?.value) }
+  return { type }
+}
+
+// Remote handsets share their member's identity but must never keep that member
+// marked as present: a room with only handsets attached has nothing playing.
+export function attachDeviceSocket(member, socketId, deviceRole) {
+  const key = deviceRole === 'remote' ? 'remoteSocketIds' : 'socketIds'
+  member[key] = [...new Set([...(member[key] || []), socketId])]
+  member.connected = (member.socketIds || []).length > 0
+  return member
+}
+
+export function detachDeviceSocket(member, socketId) {
+  member.socketIds = (member.socketIds || []).filter((value) => value !== socketId)
+  member.remoteSocketIds = (member.remoteSocketIds || []).filter((value) => value !== socketId)
+  member.connected = member.socketIds.length > 0
+  return member
+}
+
+export function remoteDeviceCount(member) {
+  return (member?.remoteSocketIds || []).length
+}
