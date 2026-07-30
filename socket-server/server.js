@@ -9,10 +9,10 @@ import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin
 import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
-import nodemailer from 'nodemailer'
 import { applyVoicePermission, attachDeviceSocket, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, createPairingRecord, detachDeviceSocket, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPairingUsable, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, normalizeRemoteCommand, remoteDeviceCount, REMOTE_PAIRING_TTL_MS, sanitizeScreenState, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
 import { directoryProfile, isAnonymousFirebaseActor, requestIp } from './social-core.js'
 import { buildWatchPartyInviteEmail } from './email-templates.js'
+import { createEmailDelivery } from './email-delivery.js'
 import { firebaseAdminConfig } from './service-config.js'
 import dotenv from 'dotenv'
 
@@ -34,23 +34,9 @@ const LIVEKIT_URL = process.env.LIVEKIT_URL || ''
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || ''
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || ''
 const APP_BASE_URL = (process.env.APP_BASE_URL || CLIENT_ORIGINS[0] || 'http://localhost:3000').replace(/\/$/, '')
-const MAIL_HOST = process.env.MAIL_HOST || 'smtp.gmail.com'
-const MAIL_PORT = Number(process.env.MAIL_PORT || 587)
-const MAIL_SECURE = String(process.env.MAIL_SECURE || 'false').toLowerCase() === 'true'
-const MAIL_USERNAME = process.env.MAIL_USERNAME || ''
-const MAIL_PASSWORD = process.env.MAIL_PASSWORD || ''
-const MAIL_FROM = process.env.MAIL_FROM || MAIL_USERNAME
-const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'CineMind'
-const mailConfigured = Boolean(MAIL_USERNAME && MAIL_PASSWORD && MAIL_FROM)
-const mailTransporter = mailConfigured ? nodemailer.createTransport({
-  host: MAIL_HOST,
-  port: MAIL_PORT,
-  secure: MAIL_SECURE,
-  auth: { user: MAIL_USERNAME, pass: MAIL_PASSWORD },
-  connectionTimeout: 5_000,
-  greetingTimeout: 5_000,
-  socketTimeout: 10_000,
-}) : null
+const emailDelivery = createEmailDelivery(process.env)
+const mailConfigured = emailDelivery.configured
+const mailProvider = emailDelivery.provider
 const voiceConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
 const livekitRooms = voiceConfigured ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) : null
 
@@ -131,12 +117,12 @@ const socialDatabaseHealth = async () => {
 let mailHealthCache = { value: false, expiresAt: 0 }
 let mailHealthInFlight = null
 const mailHealth = async () => {
-  if (!mailTransporter) return false
+  if (!mailConfigured) return false
   if (mailHealthCache.expiresAt > Date.now()) return mailHealthCache.value
   if (!mailHealthInFlight) {
     mailHealthInFlight = (async () => {
       try {
-        await mailTransporter.verify()
+        await emailDelivery.health()
         mailHealthCache = { value: true, expiresAt: Date.now() + 300_000 }
       } catch (error) {
         mailHealthCache = { value: false, expiresAt: Date.now() + 30_000 }
@@ -455,6 +441,7 @@ const server = http.createServer(async (req, res) => {
         store: redisClient ? 'redis' : 'memory',
         voiceConfigured,
         mailConfigured,
+        mailProvider,
         mailHealthy,
         firebaseCredentialSource,
         firebaseAuthConfigured: Boolean(adminAuth && adminCredential),
@@ -539,8 +526,8 @@ const server = http.createServer(async (req, res) => {
       }
       await adminDb.ref().update(updates)
       let emailStatus = 'skipped'
-      let emailReason = !mailTransporter ? 'not_configured' : targetSettings.emailNotifications === false ? 'disabled' : 'no_email'
-      if (mailTransporter && targetSettings.emailNotifications !== false) {
+      let emailReason = !mailConfigured ? 'not_configured' : targetSettings.emailNotifications === false ? 'disabled' : 'no_email'
+      if (mailConfigured && targetSettings.emailNotifications !== false) {
         try {
           const targetAccount = await adminAuth.getUser(friendUid)
           if (!targetAccount.email) emailReason = 'no_email'
@@ -554,7 +541,7 @@ const server = http.createServer(async (req, res) => {
               joinUrl,
               expiresAt: room.expiresAt,
             })
-            await mailTransporter.sendMail({ from: `"${MAIL_FROM_NAME}" <${MAIL_FROM}>`, to: targetAccount.email, ...email })
+            await emailDelivery.send({ to: targetAccount.email, ...email })
             emailStatus = 'sent'
             emailReason = undefined
           }
@@ -564,8 +551,8 @@ const server = http.createServer(async (req, res) => {
             emailReason = 'no_email'
           } else {
             emailStatus = 'failed'
-            emailReason = isFirebaseAdminFailure(error) ? 'firebase_admin' : 'smtp_error'
-            log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, reason: emailReason, error: error instanceof Error ? error.message : String(error) })
+            emailReason = isFirebaseAdminFailure(error) ? 'firebase_admin' : mailProvider === 'resend' ? 'email_api_error' : 'smtp_error'
+            log('invite_email_failed', { roomId, inviteId, recipientUid: friendUid, provider: mailProvider || undefined, reason: emailReason, error: error instanceof Error ? error.message : String(error) })
           }
         }
       }
