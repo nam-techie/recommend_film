@@ -158,7 +158,11 @@ const episodeSchema = z.object({
 }).refine((episode) => episode.linkM3u8 || episode.linkEmbed, 'Episode source is required')
 const movieSchema = z.object({
   slug: z.string().trim().min(1).max(140), title: z.string().trim().min(1).max(180),
-  originalTitle: z.string().trim().max(180).optional(), poster: z.string().url().optional(), episodes: z.array(episodeSchema).min(1).max(500)
+  originalTitle: z.string().trim().max(180).optional(), poster: z.string().url().optional(),
+  year: z.coerce.number().int().min(1888).max(2200).optional(), duration: z.string().trim().max(80).optional(),
+  type: z.enum(['single', 'series', 'hoathinh']).optional(), genres: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
+  quality: z.string().trim().max(30).optional(), language: z.string().trim().max(60).optional(), rating: z.coerce.number().min(0).max(10).optional(),
+  episodes: z.array(episodeSchema).min(1).max(500)
 }).refine((movie) => new Set(movie.episodes.map((episode) => episode.id)).size === movie.episodes.length, 'Episode IDs must be unique')
 const createRoomSchema = z.object({
   roomName: z.string().trim().max(80).optional(), accessMode: z.enum(['public', 'link_only', 'password']).default('link_only'),
@@ -537,6 +541,15 @@ const server = http.createServer(async (req, res) => {
             const email = buildWatchPartyInviteEmail({
               actorName: actorProfile.displayName || actorMember.displayName,
               movieTitle,
+              movieOriginalTitle: room.movie.originalTitle,
+              moviePosterUrl: room.movie.poster,
+              movieYear: room.movie.year,
+              movieDuration: room.movie.duration,
+              movieType: room.movie.type,
+              movieGenres: room.movie.genres,
+              movieQuality: room.movie.quality,
+              movieLanguage: room.movie.language,
+              movieRating: room.movie.rating,
               roomId,
               joinUrl,
               expiresAt: room.expiresAt,
