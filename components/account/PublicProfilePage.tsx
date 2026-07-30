@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Activity, Ban, Bookmark, CalendarDays, Check, Film, Flag, Heart, Loader2, LockKeyhole, MoreHorizontal, Share2, Star, UserPlus, Users } from 'lucide-react'
@@ -24,6 +24,7 @@ interface RecentItem { movieSlug: string; movieTitle: string; poster?: string; e
 export function PublicProfilePage({ username }: { username: string }) {
   const { records: ownProgressRecords } = useWatchProgress()
   const router = useRouter(); const account = useAccount(); const [profile, setProfile] = useState<PublicProfile | null>(null); const [loading, setLoading] = useState(true); const [notFound, setNotFound] = useState(false); const [following, setFollowing] = useState(false); const [followers, setFollowers] = useState(0); const [followingCount, setFollowingCount] = useState(0); const [recent, setRecent] = useState<RecentItem[]>([]); const [watchlist, setWatchlist] = useState<WatchlistMovie[]>([]); const [reviews, setReviews] = useState<SocialReview[]>([]); const [activities, setActivities] = useState<SocialActivity[]>([]); const [tab, setTab] = useState<ProfileTab>('overview'); const [menuOpen, setMenuOpen] = useState(false); const [copied, setCopied] = useState(false); const [friendActionLoading, setFriendActionLoading] = useState(false); const [friendActionError, setFriendActionError] = useState('')
+  const profileMenuRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     if (!database) { setLoading(false); setNotFound(true); return }
@@ -38,6 +39,23 @@ export function PublicProfilePage({ username }: { username: string }) {
     setLoading(false)
   }, [account.profile, username])
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePress)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
 
   const ownProfile = account.profile?.uid === profile?.uid; const visible = Boolean(profile && (profile.isPublic || ownProfile))
   const profileRecent = ownProfile ? Object.values(ownProgressRecords).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12) : recent
@@ -64,7 +82,76 @@ export function PublicProfilePage({ username }: { username: string }) {
 
   const profileTabs: Array<{ id: ProfileTab; label: string; show: boolean }> = [{ id: 'overview', label: 'Tổng quan', show: true }, { id: 'recent', label: 'Phim gần đây', show: profile.showRecentMovies || ownProfile }, { id: 'watchlist', label: 'Danh sách phim', show: profile.showWatchlist || ownProfile }, { id: 'reviews', label: 'Đánh giá', show: true }, { id: 'activity', label: 'Hoạt động', show: profile.showActivity || ownProfile }]
   return <main className="min-h-screen bg-[#070912] text-fg"><div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-5 sm:py-10">
-    <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0d111d]"><div className="h-36 bg-gradient-to-br from-accent-strong/70 via-slate-900 to-surface-2 sm:h-52" style={profile.cover ? { backgroundImage: `linear-gradient(rgba(4,6,12,.25),rgba(4,6,12,.7)),url(${profile.cover})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined} /><div className="px-4 pb-5 sm:px-7"><div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end"><AccountAvatar name={profile.displayName} src={profile.avatar} className="h-24 w-24 border-4 border-[#0d111d] text-xl sm:h-28 sm:w-28" /><div className="min-w-0 flex-1 sm:pb-1"><h1 className="truncate text-2xl font-bold sm:text-3xl">{profile.displayName}</h1><p className="mt-1 text-sm text-accent-soft">@{profile.username}</p></div><div className="flex flex-wrap items-center gap-2">{ownProfile ? <Button onClick={() => router.push('/account')}><UserPlus className="mr-2 h-4 w-4" />Chỉnh sửa hồ sơ</Button> : <><Button disabled={!account.profile} onClick={() => void toggle()} variant={following ? 'outline' : 'default'}>{following ? <Check className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}{following ? 'Đang theo dõi' : 'Theo dõi'}</Button><Button disabled={!account.profile || friendActionLoading} variant={isFriend || incomingFriendRequest ? 'default' : 'outline'} onClick={() => void handleFriend()}>{friendActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}{isFriend ? 'Bạn bè' : incomingFriendRequest ? 'Chấp nhận kết bạn' : friendRequestSent ? 'Hủy lời mời' : 'Kết bạn'}</Button></>}<Button size="icon" variant="outline" aria-label="Chia sẻ hồ sơ" onClick={() => void share()}>{copied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}</Button>{!ownProfile && account.profile && <div className="relative"><Button size="icon" variant="ghost" aria-label="Tùy chọn hồ sơ" onClick={() => setMenuOpen((value) => !value)}><MoreHorizontal className="h-5 w-5" /></Button>{menuOpen && <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#111522] p-1 shadow-2xl"><button onClick={() => void report('block')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-fg-secondary hover:bg-white/5"><Ban className="h-4 w-4" />Chặn</button><button onClick={() => void report('report')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-bad hover:bg-bad/10"><Flag className="h-4 w-4" />Báo cáo</button></div>}</div>}</div></div>{isFriend && profile && <PresenceBadge presence={account.friendPresence[profile.uid]} className="mt-4" />}{friendActionError && <p role="alert" className="mt-4 text-sm text-bad">{friendActionError}</p>}{profile.bio && <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-secondary">{profile.bio}</p>}<div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"><span><strong>{followers}</strong> <span className="text-fg-muted">người theo dõi</span></span><span><strong>{followingCount}</strong> <span className="text-fg-muted">đang theo dõi</span></span><span className="flex items-center gap-1.5 text-fg-muted"><CalendarDays className="h-4 w-4" />Tham gia {new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(profile.createdAt)}</span></div></div></section>
+    <section className="relative isolate rounded-3xl border border-white/10 bg-[#0d111d]">
+      <div
+        className="h-36 rounded-t-[calc(1.5rem-1px)] bg-gradient-to-br from-accent-strong/70 via-slate-900 to-surface-2 sm:h-52"
+        style={profile.cover ? { backgroundImage: `linear-gradient(rgba(4,6,12,.25),rgba(4,6,12,.7)),url(${profile.cover})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+      />
+      <div className="px-4 pb-5 sm:px-7">
+        <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 lg:flex-row lg:items-end">
+          <AccountAvatar name={profile.displayName} src={profile.avatar} className="h-24 w-24 border-4 border-[#0d111d] text-xl sm:h-28 sm:w-28" />
+          <div className="min-w-0 flex-1 lg:pb-1">
+            <h1 className="truncate text-2xl font-bold sm:text-3xl">{profile.displayName}</h1>
+            <p className="mt-1 truncate text-sm text-accent-soft">@{profile.username}</p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
+            {ownProfile ? (
+              <Button className="w-full sm:w-auto" onClick={() => router.push('/account')}>
+                <UserPlus className="mr-2 h-4 w-4" />Chỉnh sửa hồ sơ
+              </Button>
+            ) : (
+              <div className="grid w-full grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:w-auto">
+                <Button className="w-full sm:w-auto" disabled={!account.profile} onClick={() => void toggle()} variant={following ? 'outline' : 'default'}>
+                  {following ? <Check className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                  {following ? 'Đang theo dõi' : 'Theo dõi'}
+                </Button>
+                <Button className="w-full sm:w-auto" disabled={!account.profile || friendActionLoading} variant={isFriend || incomingFriendRequest ? 'default' : 'outline'} onClick={() => void handleFriend()}>
+                  {friendActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                  {isFriend ? 'Bạn bè' : incomingFriendRequest ? 'Chấp nhận kết bạn' : friendRequestSent ? 'Hủy lời mời' : 'Kết bạn'}
+                </Button>
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-2 sm:ml-0">
+              <Button className="shrink-0" size="icon" variant="outline" aria-label="Chia sẻ hồ sơ" onClick={() => void share()}>
+                {copied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+              </Button>
+              {!ownProfile && account.profile && (
+                <div ref={profileMenuRef} className="relative shrink-0">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Tùy chọn hồ sơ"
+                    aria-expanded={menuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setMenuOpen((value) => !value)}
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </Button>
+                  {menuOpen && (
+                    <div role="menu" className="absolute bottom-full right-0 z-50 mb-2 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#111522] p-1 shadow-2xl">
+                      <button role="menuitem" onClick={() => void report('block')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-fg-secondary hover:bg-white/5">
+                        <Ban className="h-4 w-4" />Chặn
+                      </button>
+                      <button role="menuitem" onClick={() => void report('report')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-bad hover:bg-bad/10">
+                        <Flag className="h-4 w-4" />Báo cáo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        {isFriend && profile && <PresenceBadge presence={account.friendPresence[profile.uid]} className="mt-4" />}
+        {friendActionError && <p role="alert" className="mt-4 text-sm text-bad">{friendActionError}</p>}
+        {profile.bio && <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fg-secondary">{profile.bio}</p>}
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <span><strong>{followers}</strong> <span className="text-fg-muted">người theo dõi</span></span>
+          <span><strong>{followingCount}</strong> <span className="text-fg-muted">đang theo dõi</span></span>
+          <span className="flex min-w-0 items-center gap-1.5 text-fg-muted"><CalendarDays className="h-4 w-4 shrink-0" />Tham gia {new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(profile.createdAt)}</span>
+        </div>
+      </div>
+    </section>
     <nav className="mt-5 flex gap-2 overflow-x-auto border-b border-white/10" aria-label="Nội dung hồ sơ">{profileTabs.filter((item) => item.show).map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={cn('shrink-0 border-b-2 px-3 py-3 text-sm transition', tab === item.id ? 'border-accent-strong text-fg' : 'border-transparent text-fg-muted hover:text-fg')}>{item.label}</button>)}</nav>
     <section className="py-6">{tab === 'overview' && <div className="grid gap-5 lg:grid-cols-[1fr_340px]"><div><h2 className="mb-3 text-lg font-semibold">Đánh giá gần đây</h2>{reviews.length ? <div className="space-y-3">{reviews.slice(0, 3).map((review) => <SocialReviewCard key={review.id} review={review} actor={account.profile} onReviewDeleted={(deleted) => setReviews((items) => items.filter((item) => item.id !== deleted.id))} />)}</div> : <Empty icon={Star} text="Chưa có đánh giá công khai." />}</div><aside><h2 className="mb-3 text-lg font-semibold">Gu phim</h2><div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">{profile.favoriteGenres?.length ? <div className="flex flex-wrap gap-2">{profile.favoriteGenres.map((genre) => <span key={genre} className="rounded-full bg-accent/10 px-3 py-1.5 text-xs text-accent-soft">{genre}</span>)}</div> : <p className="text-sm text-fg-muted">Chưa chọn thể loại yêu thích.</p>}</div></aside></div>}
       {tab === 'recent' && <MovieGrid items={profileRecent.map((item) => ({ slug: item.movieSlug, title: item.movieTitle, poster: item.poster, meta: item.episodeName }))} empty={ownProfile ? 'Bạn chưa xem phim nào gần đây.' : 'Chưa có phim gần đây được công khai.'} />}
