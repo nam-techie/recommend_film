@@ -8,6 +8,7 @@ type AccountApi = typeof import('@/lib/account-service')
 
 interface FirebaseRuntime {
   auth: Auth | null
+  configured: boolean
   authApi: AuthApi
   accountApi: AccountApi
 }
@@ -20,7 +21,7 @@ function loadFirebaseRuntime() {
       import('@/lib/firebase'),
       import('firebase/auth'),
       import('@/lib/account-service'),
-    ]).then(([firebase, authApi, accountApi]) => ({ auth: firebase.auth, authApi, accountApi }))
+    ]).then(([firebase, authApi, accountApi]) => ({ auth: firebase.auth, configured: firebase.firebaseAuthConfigured, authApi, accountApi }))
   }
   return firebaseRuntime
 }
@@ -54,7 +55,7 @@ interface AuthContextValue {
   signInWithEmail: (email: string, password: string) => Promise<User>
   /** Danh tính tạm cho khách vào phòng xem chung bằng link, không cần tài khoản. */
   signInAsGuest: () => Promise<User>
-  registerWithEmail: (name: string, email: string, password: string) => Promise<User>
+  registerWithEmail: (name: string, email: string, password: string) => Promise<{ user: User; verificationEmailSent: boolean }>
   resetPassword: (email: string) => Promise<void>
   sendVerification: () => Promise<void>
   updateIdentity: (displayName: string, photoURL?: string | null) => Promise<void>
@@ -76,15 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [authVersion, setAuthVersion] = useState(0)
-  const configured = Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY)
+  const [configured, setConfigured] = useState(false)
 
   useEffect(() => {
     let active = true
     let unsubscribe: (() => void) | undefined
     const timeout = window.setTimeout(() => { if (active) setLoading(false) }, 4000)
 
-    void loadFirebaseRuntime().then(({ auth, authApi }) => {
+    void loadFirebaseRuntime().then(({ auth, authApi, configured: runtimeConfigured }) => {
       if (!active) return
+      setConfigured(runtimeConfigured)
       if (!auth) {
         window.clearTimeout(timeout)
         setLoading(false)
@@ -102,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       if (active) {
         window.clearTimeout(timeout)
+        setConfigured(false)
         setLoading(false)
       }
     })
@@ -111,6 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(timeout)
       unsubscribe?.()
     }
+  }, [])
+
+  const provisionProfile = useCallback((accountApi: AccountApi, signedInUser: User, displayName?: string) => {
+    void accountApi.ensureAccountProfile(signedInUser, displayName).catch((error) => {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : undefined
+      console.warn('account_profile_provision_failed', { code })
+    })
   }, [])
 
   /**
@@ -138,31 +148,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const provider = new authApi.GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
       const signedInUser = (await authApi.signInWithPopup(auth, provider)).user
-      await accountApi.ensureAccountProfile(signedInUser)
+      provisionProfile(accountApi, signedInUser)
       return signedInUser
     } catch (error) { throw firebaseAuthError(error) }
-  }, [])
+  }, [provisionProfile])
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     try {
       const { auth, authApi, accountApi } = await requireRuntime()
       const signedInUser = (await authApi.signInWithEmailAndPassword(auth, email.trim(), password)).user
-      await accountApi.ensureAccountProfile(signedInUser)
+      provisionProfile(accountApi, signedInUser)
       return signedInUser
     } catch (error) { throw firebaseAuthError(error) }
-  }, [])
+  }, [provisionProfile])
 
   const registerWithEmail = useCallback(async (name: string, email: string, password: string) => {
     try {
       const { auth, authApi, accountApi } = await requireRuntime()
       const result = await authApi.createUserWithEmailAndPassword(auth, email.trim(), password)
       const displayName = name.trim().slice(0, 40)
-      if (displayName) await authApi.updateProfile(result.user, { displayName })
-      await accountApi.ensureAccountProfile(result.user, displayName)
-      await authApi.sendEmailVerification(result.user).catch(() => undefined)
-      return result.user
+      if (displayName) {
+        try { await authApi.updateProfile(result.user, { displayName }) }
+        catch (error) {
+          const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : undefined
+          console.warn('auth_registration_identity_update_failed', { code })
+        }
+      }
+      provisionProfile(accountApi, result.user, displayName)
+      let verificationEmailSent = true
+      try { await authApi.sendEmailVerification(result.user) }
+      catch (error) {
+        verificationEmailSent = false
+        const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : undefined
+        console.warn('auth_verification_email_failed', { code })
+      }
+      return { user: result.user, verificationEmailSent }
     } catch (error) { throw firebaseAuthError(error) }
-  }, [])
+  }, [provisionProfile])
 
   const resetPassword = useCallback(async (email: string) => {
     try {

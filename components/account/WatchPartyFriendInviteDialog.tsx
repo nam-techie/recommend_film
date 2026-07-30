@@ -8,6 +8,25 @@ import { FriendSearchPanel } from '@/components/account/FriendSearchPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAccount } from '@/hooks/useAccount'
+import { WatchPartyInviteResult } from '@/lib/account-types'
+import { cn } from '@/lib/utils'
+
+function resultNotice(friendName: string, result: WatchPartyInviteResult) {
+  if (result.emailStatus === 'sent') return { tone: 'success' as const, text: `Đã gửi thông báo trên web và email cho ${friendName}.` }
+  if (result.emailStatus === 'failed') {
+    const detail = result.emailReason === 'firebase_admin' ? 'Firebase Admin chưa sẵn sàng' : 'Gmail SMTP chưa gửi được'
+    return { tone: 'warning' as const, text: `Thông báo trên web đã gửi; email chưa gửi (${detail}).` }
+  }
+  const details: Record<NonNullable<WatchPartyInviteResult['emailReason']>, string> = {
+    not_configured: 'SMTP chưa được cấu hình trên Render',
+    disabled: 'người nhận đã tắt thông báo email',
+    no_email: 'tài khoản người nhận không có email',
+    unverified: 'email người nhận chưa được xác minh',
+    firebase_admin: 'Firebase Admin chưa sẵn sàng',
+    smtp_error: 'Gmail SMTP chưa gửi được',
+  }
+  return { tone: 'warning' as const, text: `Thông báo trên web đã gửi; không gửi email vì ${result.emailReason ? details[result.emailReason] : 'email không khả dụng'}.` }
+}
 
 export function WatchPartyFriendInviteDialog({
   open,
@@ -24,7 +43,7 @@ export function WatchPartyFriendInviteDialog({
   const [query, setQuery] = useState('')
   const [showFindNew, setShowFindNew] = useState(false)
   const [sendingUid, setSendingUid] = useState<string | null>(null)
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<{ tone: 'success' | 'warning' | 'error'; text: string } | null>(null)
   const normalizedQuery = query.trim().replace(/^@/, '').toLocaleLowerCase('vi')
   const friends = useMemo(() => Object.values(account.friends)
     .filter((friend) => !normalizedQuery
@@ -36,12 +55,12 @@ export function WatchPartyFriendInviteDialog({
 
   const invite = async (friend: (typeof friends)[number]) => {
     setSendingUid(friend.uid)
-    setNotice('')
+    setNotice(null)
     try {
-      await account.inviteFriend(friend, roomId, movieSlug)
-      setNotice(`Đã mời ${friend.displayName} vào phòng.`)
+      const result = await account.inviteFriend(friend, roomId, movieSlug)
+      setNotice(resultNotice(friend.displayName, result))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Không gửi được lời mời.')
+      setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Không gửi được lời mời.' })
     } finally {
       setSendingUid(null)
     }
@@ -70,12 +89,12 @@ export function WatchPartyFriendInviteDialog({
           </div>}
         </div>
 
-        {notice && <p role="status" className="mt-3 rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent-soft">{notice}</p>}
+        {notice && <p role={notice.tone === 'error' ? 'alert' : 'status'} className={cn('mt-3 rounded-xl border px-3 py-2 text-xs', notice.tone === 'success' ? 'border-ok/25 bg-ok/10 text-ok' : notice.tone === 'warning' ? 'border-rating/25 bg-rating/10 text-rating' : 'border-bad/25 bg-bad/10 text-bad')}>{notice.text}</p>}
 
         <div className="my-4 flex items-center gap-3 text-xs text-fg-muted"><span className="h-px flex-1 bg-white/10" />Chưa có trong danh sách?<span className="h-px flex-1 bg-white/10" /></div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => setShowFindNew((value) => !value)}><UserPlus className="h-4 w-4" />{showFindNew ? 'Ẩn tìm bạn mới' : 'Tìm và kết bạn ngay'}</Button>
-          <Button asChild type="button" variant="ghost"><Link href="/account">Mở trang Bạn bè</Link></Button>
+          <Button asChild type="button" variant="ghost"><Link href="/account?tab=friends">Mở trang Bạn bè</Link></Button>
         </div>
         {showFindNew && <div className="mt-4"><FriendSearchPanel /></div>}
       </div>

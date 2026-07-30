@@ -31,7 +31,7 @@ MEDIA_ALLOWED_HOSTS=s3.phim1280.tv
 WATCH_PARTY_TOKEN_SECRET=<random-secret-at-least-32-bytes>
 FIREBASE_PROJECT_ID=moviewiser-watch-party-77fb3
 FIREBASE_DATABASE_URL=https://moviewiser-watch-party-77fb3-default-rtdb.asia-southeast1.firebasedatabase.app
-FIREBASE_SERVICE_ACCOUNT_JSON=<single-line-service-account-json>
+GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json
 APP_BASE_URL=https://your-vercel-domain.vercel.app
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
@@ -53,7 +53,11 @@ LIVEKIT_API_SECRET=<server-only-api-secret>
 
 `MEDIA_ALLOWED_HOSTS` nhận hostname CDN bổ sung, phân cách bằng dấu phẩy; có thể dùng dạng `*.example.com`. Các host KKPhim và `s3.phim1280.tv` đã có trong allowlist mặc định. Cùng một chính sách được áp dụng cho probe, tạo phòng, proxy và từng bước redirect.
 
-`FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID` và `FIREBASE_DATABASE_URL` là biến server-only: chỉ đặt trên Render, không sao chép sang Vercel hoặc biến `NEXT_PUBLIC_*`. `FIREBASE_SERVICE_ACCOUNT_JSON`, `MAIL_PASSWORD` và thông tin SMTP là secret. Gmail gửi mail cần bật 2-Step Verification rồi tạo App Password; không dùng mật khẩu Google thật. Nếu mail chưa cấu hình, notification mời xem chung và chat trong phòng vẫn hoạt động, còn `/ready` trả `"mailConfigured": false`; điều này không chặn chức năng tìm tài khoản bằng email.
+Firebase Admin không cần nâng Firebase lên Blaze. Cách ít lỗi nhất trên Render là tạo **Secret File** tên `firebase-service-account.json`, dán nguyên JSON tải từ Firebase Console → Project settings → Service accounts, rồi đặt `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json`. Có thể dùng một trong ba phương án thay thế: `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_SERVICE_ACCOUNT_BASE64`, hoặc bộ `FIREBASE_PROJECT_ID` + `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`; không cấu hình nhiều phương án cùng lúc.
+
+Tất cả Firebase Admin credential và biến `MAIL_*` là server-only: chỉ đặt trên Render, không sao chép sang Vercel, Git hoặc biến `NEXT_PUBLIC_*`. Gmail gửi mail cần bật 2-Step Verification rồi tạo App Password; không dùng mật khẩu Google thật. Firebase Authentication vẫn tự gửi email xác minh/reset mật khẩu miễn phí, còn Gmail SMTP chỉ gửi email mời xem chung. Không cần cài Firebase Trigger Email Extension (extension này yêu cầu billing).
+
+Một lần mời luôn ghi notification trên web trước, sau đó mới thử Gmail. Vì vậy lỗi SMTP không xóa lời mời đã ghi. API trả riêng `inAppStatus`, `emailStatus` và `emailReason`; email chỉ gửi tới địa chỉ đã xác minh. Nếu mail chưa cấu hình, notification và chat vẫn hoạt động.
 
 Vercel và `.env` local cần trỏ hai biến sau tới public Render URL, không có dấu `/` cuối:
 
@@ -73,7 +77,7 @@ Khi host bật voice, các thành viên online tự kết nối SFU với mic m�
 ## Operational endpoints
 
 - `GET /health`: process đang chạy.
-- `GET /ready`: Redis/store sẵn sàng nhận traffic và báo riêng `firebaseAuthConfigured`, `socialDatabaseConfigured`, `socialDatabaseHealthy`, voice và SMTP. Chỉ thử lookup email khi cả ba trạng thái Firebase đều sẵn sàng/healthy.
+- `GET /ready`: Redis/store sẵn sàng nhận traffic và báo riêng `firebaseCredentialSource`, `firebaseAuthConfigured`, `firebaseAuthHealthy`, `socialDatabaseConfigured`, `socialDatabaseHealthy`, `mailConfigured`, `mailHealthy` và voice. Chỉ thử lookup email khi cả bốn trạng thái Firebase configured/healthy đều là `true`.
 - `GET /api/rooms`: danh sách phòng public.
 - `POST /api/friends/lookup-email`: tìm chính xác tài khoản bằng email, yêu cầu Firebase Bearer token và giới hạn 10 lần/phút.
 - `POST /api/rooms/:roomId/invites`: tạo notification/email invite cho một người bạn, yêu cầu Firebase Bearer token.

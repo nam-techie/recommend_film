@@ -92,14 +92,17 @@ export interface SocialActivity {
 
 export interface AccountNotification {
   id: string
+  inviteId?: string
   type: 'follow' | 'friend_request' | 'friend_accepted' | 'review_like' | 'review_reply' | 'watch_party_invite'
   actorUid: string
   actorName: string
   actorUsername?: string
   actorAvatar?: string
   movieSlug?: string
+  movieTitle?: string
   reviewId?: string
   roomId?: string
+  expiresAt?: number
   read: boolean
   createdAt: number
 }
@@ -137,6 +140,7 @@ export interface WatchPartyInviteResult {
   inviteId: string
   inAppStatus: 'sent'
   emailStatus: 'sent' | 'skipped' | 'failed'
+  emailReason?: 'not_configured' | 'disabled' | 'no_email' | 'unverified' | 'firebase_admin' | 'smtp_error'
 }
 
 export const DEFAULT_PRIVACY: AccountPrivacy = {

@@ -282,10 +282,11 @@ export interface WatchRoom {
 
 // Clean up expired rooms (run periodically)
 export const cleanupExpiredRooms = async () => {
-  if (!database) return
+  const firebaseDatabase = database
+  if (!firebaseDatabase) return
   
   try {
-    const roomsRef = ref(database, 'rooms')
+    const roomsRef = ref(firebaseDatabase, 'rooms')
     
     onValue(roomsRef, (snapshot) => {
       const data = snapshot.val()
@@ -298,7 +299,7 @@ export const cleanupExpiredRooms = async () => {
         
         if (isExpired) {
           console.log(`🗑️ Cleaning up expired room: ${roomId} (${room.movie.title})`)
-          remove(ref(database, `rooms/${roomId}`))
+          remove(ref(firebaseDatabase, `rooms/${roomId}`))
             .catch(error => console.error('Failed to remove expired room:', error))
         }
       })
@@ -328,4 +329,4 @@ export const getRoomTimeRemaining = (room: WatchRoom): string | null => {
     return `${hours}h ${minutes}m còn lại`
   }
   return `${minutes}m còn lại`
-} 
+}

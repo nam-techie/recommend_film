@@ -11,18 +11,20 @@ Firebase Authentication tiếp tục tự gửi email xác minh và reset mật 
 
 ## Render backend
 
-Backend cần Firebase service account để lookup email và ghi invite bằng Admin SDK. Cấu hình đủ ba biến server-only trên Render; không đưa chúng vào Vercel frontend hoặc biến `NEXT_PUBLIC_*`:
+Backend cần Firebase service account để lookup email và ghi invite bằng Admin SDK. Tính năng này dùng được ở Firebase Spark, không cần mở billing. Khuyến nghị tạo Render Secret File `firebase-service-account.json`, sau đó cấu hình:
 
 ```env
-FIREBASE_SERVICE_ACCOUNT_JSON=<single-line-service-account-json>
+GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json
 FIREBASE_PROJECT_ID=moviewiser-watch-party-77fb3
 FIREBASE_DATABASE_URL=https://moviewiser-watch-party-77fb3-default-rtdb.asia-southeast1.firebasedatabase.app
 ```
 
+Không gửi service-account JSON hoặc App Password qua chat, không commit vào Git. Nếu không dùng Secret File, backend cũng hỗ trợ `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_SERVICE_ACCOUNT_BASE64`, hoặc ba biến tách rời `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`.
+
 ## Xử lý lỗi 404 và permission denied
 
 - Nếu `POST /api/friends/lookup-email` trả `404`, frontend đã trỏ đúng service nhưng Render đang chạy phiên bản cũ chưa có route này. Deploy lại thư mục `socket-server`, sau đó kiểm tra `/ready` trước khi thử lại.
-- `/ready` cần trả `firebaseAuthConfigured: true`, `socialDatabaseConfigured: true` và `socialDatabaseHealthy: true`. Nếu configured là `false`, kiểm tra đủ ba biến trên rồi restart service; nếu chỉ healthy là `false`, kiểm tra URL regional, quyền service account và project ID.
+- `/ready` cần trả `firebaseAuthConfigured: true`, `firebaseAuthHealthy: true`, `socialDatabaseConfigured: true` và `socialDatabaseHealthy: true`. Nếu configured là `false`, credential chưa được nhận; nếu healthy là `false`, file/key không đọc được, key bị thu hồi, URL regional hoặc project ID đang sai.
 - Nếu console báo `presenceConnections` hoặc `presenceLastSeen: permission_denied`, deploy file `firebase-database.rules.json` lên đúng project `moviewiser-watch-party-77fb3`. Sửa rules trong Git nhưng chưa deploy sẽ không thay đổi quyền của Realtime Database production.
 - `NEXT_PUBLIC_WATCH_PARTY_API_URL` trên Vercel/local hiện vẫn dùng URL gốc của service (ví dụ `https://moviewiser-socket.onrender.com`); không cần thêm URL riêng cho endpoint tìm email.
 
@@ -30,8 +32,8 @@ Thiết lập các biến `FIREBASE_DATABASE_URL`, `APP_BASE_URL` và nhóm `MAI
 
 Kiểm tra sau deploy:
 
-1. `GET /ready` trả ba trạng thái Firebase là `true`. `mailConfigured` có thể là `false` mà lookup email vẫn hoạt động.
+1. `GET /ready` trả bốn trạng thái Firebase là `true`. `mailConfigured`/`mailHealthy` có thể là `false` mà lookup email và notification web vẫn hoạt động.
 2. Đăng nhập production bằng Google và xác nhận profile được tạo.
 3. Tìm email đúng/sai; request thứ 11 trong một phút phải bị giới hạn.
-4. Gửi lời mời từ một thành viên phòng đã đăng nhập; người nhận thấy notification và email. Chat chỉ hoạt động bên trong phòng xem chung.
+4. Gửi lời mời từ một thành viên phòng đã đăng nhập; người nhận thấy notification có link vào phòng. API báo email `sent`, hoặc báo lý do `not_configured`, `disabled`, `no_email`, `unverified`, `firebase_admin`, `smtp_error` mà không làm mất notification web.
 5. Tắt **Email mời xem chung** trong Quyền riêng tư; lần mời sau chỉ xuất hiện trong ứng dụng.

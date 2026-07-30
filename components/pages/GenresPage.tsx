@@ -122,7 +122,8 @@ export function GenresPage() {
         }).catch(() => { if (active) { setActiveRooms([]); setRoomsLoading(false) } })
         return () => { active = false }
         /* Legacy Firebase room reader retained below only for data migration reference; it is unreachable at runtime. */
-        if (!database) {
+        const firebaseDatabase = database
+        if (!firebaseDatabase) {
             // Demo rooms if Firebase not available
             const demoRooms: WatchRoom[] = [
                 {
@@ -167,7 +168,7 @@ export function GenresPage() {
             return
         }
 
-        const roomsRef = ref(database, 'rooms')
+        const roomsRef = ref(firebaseDatabase!, 'rooms')
         const unsubscribe = onValue(roomsRef, (snapshot) => {
             const data = snapshot.val()
             if (data) {
