@@ -13,9 +13,25 @@ import { Label } from '@/components/ui/label'
 import { createWatchParty, getActiveWatchParty, probeWatchPartyMedia, WatchPartyApiError } from '@/hooks/useWatchParty'
 import { WatchPartyAccessMode, WatchPartyEpisode, WatchPartyRoomPreview } from '@/lib/watch-party-types'
 
-interface Props { children: ReactNode; movieSlug: string; movieTitle: string; moviePoster?: string; movieVideoUrl?: string; episodes?: WatchPartyEpisode[]; initialEpisodeId?: string }
+interface Props {
+  children: ReactNode
+  movieSlug: string
+  movieTitle: string
+  movieOriginalTitle?: string
+  moviePoster?: string
+  movieYear?: number
+  movieDuration?: string
+  movieType?: 'single' | 'series' | 'hoathinh'
+  movieGenres?: string[]
+  movieQuality?: string
+  movieLanguage?: string
+  movieRating?: number
+  movieVideoUrl?: string
+  episodes?: WatchPartyEpisode[]
+  initialEpisodeId?: string
+}
 
-export function CreateWatchPartyDialog({ children, movieSlug, movieTitle, moviePoster, movieVideoUrl, episodes = [], initialEpisodeId }: Props) {
+export function CreateWatchPartyDialog({ children, movieSlug, movieTitle, movieOriginalTitle, moviePoster, movieYear, movieDuration, movieType, movieGenres, movieQuality, movieLanguage, movieRating, movieVideoUrl, episodes = [], initialEpisodeId }: Props) {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [open, setOpen] = useState(false)
@@ -52,7 +68,7 @@ export function CreateWatchPartyDialog({ children, movieSlug, movieTitle, movieP
     setIsCreating(true); setError(null)
     try {
       const firebaseIdToken = await user.getIdToken()
-      const result = await createWatchParty({ roomName: roomName.trim() || undefined, accessMode, password: accessMode === 'password' ? password : undefined, movie: { slug: movieSlug, title: movieTitle, poster: moviePoster, episodes: availableEpisodes }, initialEpisodeId: selected.id, replaceActiveRoom, expectedActiveRoomId: activeRoom?.id }, firebaseIdToken)
+      const result = await createWatchParty({ roomName: roomName.trim() || undefined, accessMode, password: accessMode === 'password' ? password : undefined, movie: { slug: movieSlug, title: movieTitle, originalTitle: movieOriginalTitle, poster: moviePoster, year: movieYear, duration: movieDuration, type: movieType, genres: movieGenres, quality: movieQuality, language: movieLanguage, rating: movieRating, episodes: availableEpisodes }, initialEpisodeId: selected.id, replaceActiveRoom, expectedActiveRoomId: activeRoom?.id }, firebaseIdToken)
       setOpen(false); router.push(`/watch-party/${result.roomId}`)
     } catch (nextError) {
       if (nextError instanceof WatchPartyApiError && nextError.code === 'ACTIVE_ROOM_EXISTS') setActiveRoom(nextError.details?.activeRoom as WatchPartyRoomPreview)

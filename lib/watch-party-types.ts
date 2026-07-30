@@ -58,7 +58,12 @@ export interface WatchPartyReaction {
 export interface WatchPartyRoom {
   id: string; roomName: string; accessMode: WatchPartyAccessMode; syncCapability: WatchPartySyncCapability
   ownerUid: string; ownerDisplayName: string; ownerAvatar?: string
-  movie: { slug: string; title: string; originalTitle?: string; poster?: string; episodes: WatchPartyEpisode[] }
+  movie: {
+    slug: string; title: string; originalTitle?: string; poster?: string
+    year?: number; duration?: string; type?: 'single' | 'series' | 'hoathinh'
+    genres?: string[]; quality?: string; language?: string; rating?: number
+    episodes: WatchPartyEpisode[]
+  }
   playback: WatchPartyPlayback; members: Record<string, WatchPartyMember>; messages: WatchPartyMessage[]
   playbackPolicy: WatchPartyPlaybackPolicy
   hostMemberId: string; controlMode: 'host_only'; createdAt: number; expiresAt: number
