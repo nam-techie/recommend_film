@@ -14,15 +14,16 @@ import { cn } from '@/lib/utils'
 function resultNotice(friendName: string, result: WatchPartyInviteResult) {
   if (result.emailStatus === 'sent') return { tone: 'success' as const, text: `Đã gửi thông báo trên web và email cho ${friendName}.` }
   if (result.emailStatus === 'failed') {
-    const detail = result.emailReason === 'firebase_admin' ? 'Firebase Admin chưa sẵn sàng' : 'Gmail SMTP chưa gửi được'
+    const detail = result.emailReason === 'firebase_admin' ? 'Firebase Admin chưa sẵn sàng' : 'dịch vụ email chưa gửi được'
     return { tone: 'warning' as const, text: `Thông báo trên web đã gửi; email chưa gửi (${detail}).` }
   }
   const details: Record<NonNullable<WatchPartyInviteResult['emailReason']>, string> = {
-    not_configured: 'SMTP chưa được cấu hình trên Render',
+    not_configured: 'dịch vụ email chưa được cấu hình trên Render',
     disabled: 'người nhận đã tắt thông báo email',
     no_email: 'tài khoản người nhận không có email',
     unverified: 'email người nhận chưa được xác minh',
     firebase_admin: 'Firebase Admin chưa sẵn sàng',
+    email_api_error: 'dịch vụ email chưa gửi được',
     smtp_error: 'Gmail SMTP chưa gửi được',
   }
   return { tone: 'warning' as const, text: `Thông báo trên web đã gửi; không gửi email vì ${result.emailReason ? details[result.emailReason] : 'email không khả dụng'}.` }

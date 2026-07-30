@@ -13,14 +13,22 @@ async function request<T>(path: string, token: string, body: unknown): Promise<T
   const baseUrl = serviceUrl()
   if (!baseUrl) throw new SocialApiError('Dịch vụ cộng đồng chưa được cấu hình.', 0, 'SERVICE_NOT_CONFIGURED')
   let response: Response
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 20_000)
   try {
     response = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new SocialApiError('Dịch vụ phản hồi quá lâu. Hãy thử lại.', 0, 'TIMEOUT')
+    }
     throw new SocialApiError('Không kết nối được dịch vụ cộng đồng. Hãy kiểm tra watch-party server.', 0, 'NETWORK_ERROR')
+  } finally {
+    window.clearTimeout(timeout)
   }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {

@@ -140,7 +140,7 @@ export interface WatchPartyInviteResult {
   inviteId: string
   inAppStatus: 'sent'
   emailStatus: 'sent' | 'skipped' | 'failed'
-  emailReason?: 'not_configured' | 'disabled' | 'no_email' | 'unverified' | 'firebase_admin' | 'smtp_error'
+  emailReason?: 'not_configured' | 'disabled' | 'no_email' | 'unverified' | 'firebase_admin' | 'email_api_error' | 'smtp_error'
 }
 
 export const DEFAULT_PRIVACY: AccountPrivacy = {
