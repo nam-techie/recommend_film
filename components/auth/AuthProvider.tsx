@@ -150,7 +150,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const signedInUser = (await authApi.signInWithPopup(auth, provider)).user
       provisionProfile(accountApi, signedInUser)
       return signedInUser
-    } catch (error) { throw firebaseAuthError(error) }
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+      if (code === 'auth/multi-factor-auth-required') throw error
+      throw firebaseAuthError(error)
+    }
   }, [provisionProfile])
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
@@ -159,7 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const signedInUser = (await authApi.signInWithEmailAndPassword(auth, email.trim(), password)).user
       provisionProfile(accountApi, signedInUser)
       return signedInUser
-    } catch (error) { throw firebaseAuthError(error) }
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+      if (code === 'auth/multi-factor-auth-required') throw error
+      throw firebaseAuthError(error)
+    }
   }, [provisionProfile])
 
   const registerWithEmail = useCallback(async (name: string, email: string, password: string) => {

@@ -11,6 +11,7 @@ export interface WatchPartyEpisode {
 export interface WatchPartyMember {
   memberId: string; displayName: string; role: 'host' | 'viewer'
   avatar?: string; isAnonymous?: boolean
+  accountPlan?: 'normal' | 'premium' | 'ultra'
   joinedAt: number; lastSeenAt: number; connected: boolean; socketIds?: string[]
 }
 
@@ -58,6 +59,7 @@ export interface WatchPartyReaction {
 export interface WatchPartyRoom {
   id: string; roomName: string; accessMode: WatchPartyAccessMode; syncCapability: WatchPartySyncCapability
   ownerUid: string; ownerDisplayName: string; ownerAvatar?: string
+  ownerPlan?: 'premium' | 'ultra'; maxMembers?: number
   movie: {
     slug: string; title: string; originalTitle?: string; poster?: string
     year?: number; duration?: string; type?: 'single' | 'series' | 'hoathinh'
@@ -74,6 +76,7 @@ export interface WatchPartyRoomPreview {
   movie: { slug: string; title: string; poster?: string }; episode?: WatchPartyEpisode
   playback: { currentTime: number; isPlaying: boolean }; hostName: string; userCount: number
   playbackPolicy?: WatchPartyPlaybackPolicy
+  maxMembers?: number
   createdAt: number; expiresAt: number; status: WatchPartyRoomStatus; deleteAt?: number | null
 }
 export interface WatchPartySession {

@@ -30,6 +30,7 @@ import {
 import { useAuth } from '@/components/auth/AuthProvider'
 import { WatchPartyFriendInviteDialog } from '@/components/account/WatchPartyFriendInviteDialog'
 import { Badge } from '@/components/ui/badge'
+import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -48,6 +49,8 @@ import {
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 import { useAccount } from '@/hooks/useAccount'
 import { useWatchPartyVoice } from '@/hooks/useWatchPartyVoice'
+import { useEntitlement } from '@/hooks/useEntitlement'
+import { PLAN_CAPABILITIES } from '@/lib/monetization'
 import { createAnonymousName } from '@/lib/anonymous-name'
 import {
   WatchPartyEpisode,
@@ -105,6 +108,7 @@ interface ChatPanelProps {
   currentMemberId: string
   userCount: number
   isConnected: boolean
+  canChat: boolean
   sending: boolean
   message: string
   messageError: string | null
@@ -123,6 +127,7 @@ const ChatPanel = memo(function ChatPanel({
   currentMemberId,
   userCount,
   isConnected,
+  canChat,
   sending,
   message,
   messageError,
@@ -155,8 +160,8 @@ const ChatPanel = memo(function ChatPanel({
     {!nearChatEnd && <Button size="sm" onClick={() => { onNearEndChange(true); endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }) }} className="absolute bottom-20 left-1/2 z-10 h-8 -translate-x-1/2 rounded-full bg-accent-strong px-3 text-xs shadow-lg hover:bg-accent">Tin nhắn mới</Button>}
     <form onSubmit={onSubmit} className="shrink-0 border-t border-white/10 bg-[#0d111d] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#080c15] p-1.5 focus-within:border-accent/70">
-        <Input value={message} onChange={(event) => onMessageChange(event.target.value)} maxLength={200} disabled={!isConnected || sending} placeholder="Nhắn gì đó…" aria-label="Tin nhắn" className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0" />
-        <Button size="icon" type="submit" aria-label="Gửi tin nhắn" title="Gửi tin nhắn" disabled={!message.trim() || !isConnected || sending} className="h-10 w-10 shrink-0 rounded-lg bg-accent-strong hover:bg-accent"><Send className="h-4 w-4" /></Button>
+        <Input value={message} onChange={(event) => onMessageChange(event.target.value)} maxLength={200} disabled={!canChat || !isConnected || sending} placeholder={canChat ? 'Nhắn gì đó…' : 'Cần CinePass Plus để chat'} aria-label="Tin nhắn" className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0" />
+        <Button size="icon" type="submit" aria-label="Gửi tin nhắn" title="Gửi tin nhắn" disabled={!canChat || !message.trim() || !isConnected || sending} className="h-10 w-10 shrink-0 rounded-lg bg-accent-strong hover:bg-accent"><Send className="h-4 w-4" /></Button>
       </div>
       {messageError && <p className="mt-2 text-xs text-bad">{messageError}</p>}
     </form>
@@ -166,6 +171,9 @@ const ChatPanel = memo(function ChatPanel({
 export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?: string }) {
   const router = useRouter()
   const { user, loading: authLoading , signInAsGuest } = useAuth()
+  const { entitlement } = useEntitlement()
+  const accountPlan = entitlement?.plan || 'normal'
+  const capabilities = PLAN_CAPABILITIES[accountPlan]
   const account = useAccount()
   const { saveProgress } = useWatchProgress()
   const endRef = useRef<HTMLDivElement>(null)
@@ -233,7 +241,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, [authLoading, roomId, user])
 
   const party = useWatchParty(normalizedRoomId, session)
-  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled), getVoiceCredentials: party.getVoiceCredentials })
+  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled && capabilities.canUseVoice), getVoiceCredentials: party.getVoiceCredentials })
   const activeEpisode = useMemo(() => party.room?.movie.episodes.find((item) => item.id === party.room?.playback.episodeId) || party.room?.movie.episodes[0], [party.room])
   const episodeGroups = useMemo(() => Object.entries((party.room?.movie.episodes || []).reduce<Record<string, WatchPartyEpisode[]>>((groups, episode) => {
     groups[episode.serverName] = [...(groups[episode.serverName] || []), episode]
@@ -320,14 +328,15 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
   const submitMessage = useCallback(async (event?: FormEvent) => {
     event?.preventDefault()
+    if (!capabilities.canChat) { setMessageError('Cần CinePass Plus hoặc CinePass Ultra để gửi tin nhắn.'); return }
     const text = message.trim()
     if (!text || sending) return
     setSending(true); setMessageError(null)
     const ack = await party.sendMessage(text)
     if (ack.ok) setMessage('')
-    else setMessageError(ack.code === 'RATE_LIMITED' ? 'Bạn gửi hơi nhanh. Hãy chờ một chút nhé.' : 'Chưa gửi được tin nhắn. Hãy thử lại.')
+    else setMessageError(ack.code === 'PLAN_REQUIRED' ? 'Cần CinePass Plus hoặc CinePass Ultra để gửi tin nhắn.' : ack.code === 'RATE_LIMITED' ? 'Bạn gửi hơi nhanh. Hãy chờ một chút nhé.' : 'Chưa gửi được tin nhắn. Hãy thử lại.')
     setSending(false)
-  }, [message, party, sending])
+  }, [capabilities.canChat, message, party, sending])
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(`${window.location.origin}/watch-party/${normalizedRoomId}`); setCopied(true); window.setTimeout(() => setCopied(false), 1800) }
@@ -360,19 +369,21 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
   const sendReaction = useCallback(async (emoji: string) => {
     setReactionError(null)
+    if (!capabilities.canReact) { setReactionError('Cần CinePass Plus'); return }
     const ack = await party.sendReaction(emoji)
     if (ack.ok) return
     setReactionError(ack.code === 'RATE_LIMITED' ? 'Chậm một nhịp nhé' : 'Chưa gửi được')
     if (reactionErrorTimerRef.current) window.clearTimeout(reactionErrorTimerRef.current)
     reactionErrorTimerRef.current = window.setTimeout(() => setReactionError(null), 1800)
-  }, [party])
+  }, [capabilities.canReact, party])
 
   const toggleVoicePermission = useCallback(async () => {
+    if (!capabilities.canUseVoice) { setVoiceControlError('Voice chat chỉ dành cho CinePass Ultra.'); return }
     const next = !party.room?.voiceEnabled
     setVoiceControlError(null)
     const ack = await party.setVoicePermission(next)
     if (!ack.ok) setVoiceControlError(ack.code === 'HOST_ONLY' ? 'Chỉ host được thay đổi quyền voice.' : ack.code === 'VOICE_NOT_CONFIGURED' ? 'LiveKit chưa được cấu hình trên máy chủ.' : 'Không cập nhật được voice của phòng.')
-  }, [party])
+  }, [capabilities.canUseVoice, party])
 
   if (authLoading) return <div className="flex min-h-[70vh] items-center justify-center text-fg"><div className="h-10 w-10 animate-spin rounded-full border-4 border-accent border-t-transparent motion-reduce:animate-none" /></div>
 
@@ -407,7 +418,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   </div>
   if (!party.room) return <div className="container mx-auto py-20 text-center text-fg"><div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-accent border-t-transparent" /><p>{party.error || 'Đang kết nối phòng…'}</p>{party.error && <Button className="mt-4" onClick={() => { clearWatchPartySession(normalizedRoomId); setSession(null) }}>Tham gia lại</Button>}</div>
 
-  const room = party.room
+  const room = capabilities.canUseVoice ? party.room : { ...party.room, voiceEnabled: false }
   const privacyLabel = room.accessMode === 'public' ? 'Công khai' : room.accessMode === 'password' ? 'Có mật khẩu' : 'Chỉ người có link'
   const focusedMode = isFullscreen || isPseudoFullscreen || isTheater
   const chatPanelClass = focusedMode
@@ -425,14 +436,14 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <div role="status" aria-live="polite" className={cn('flex items-center gap-2 rounded-full px-2.5 py-2 text-xs lg:px-3', party.isConnected ? 'bg-fg/[0.06] text-fg-secondary' : 'bg-bad/15 text-bad')}><span className={cn('h-2 w-2 shrink-0 rounded-full', party.isConnected ? 'bg-ok' : 'bg-bad')} /><span className="hidden lg:inline">{party.isConnected ? 'Đã kết nối' : 'Mất kết nối'}</span></div>
-        {party.isHost && <Button variant="ghost" size="sm" aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic'} onClick={() => void toggleVoicePermission()} className={cn('hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 md:inline-flex', room.voiceEnabled && 'bg-ok/10 text-ok')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
-        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
-        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic') : 'Voice chỉ dành cho CinePass Ultra'} onClick={() => void toggleVoicePermission()} className={cn('hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 md:inline-flex', room.voiceEnabled && 'bg-ok/10 text-ok')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
+        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!capabilities.canUseVoice ? 'Cần CinePass Ultra' : !room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={() => void voice.toggleMic()} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={!capabilities.canUseVoice ? 'Cần CinePass Ultra' : voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={voice.toggleSpeaker} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <div className="relative">
           <Button variant="ghost" size="sm" aria-label="Người tham gia" aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)} className="h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10"><Users className="h-4 w-4" /><span>{party.userCount}</span></Button>
           {showMembers && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-white/10 bg-[#111522] shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><div><h2 className="text-sm font-semibold">Người trong phòng</h2><p className="text-xs text-fg-secondary">{party.userCount} đang online</p></div><Button size="icon" variant="ghost" aria-label="Đóng danh sách" onClick={() => setShowMembers(false)} className="h-10 w-10 rounded-full"><X className="h-4 w-4" /></Button></div>
-            <div className="max-h-80 space-y-1 overflow-y-auto p-2">{members.map((member) => { const voiceMember = voice.participantsById.get(member.memberId); return <div key={member.memberId} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/[0.04]"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{member.displayName}{member.isAnonymous ? ' · Ẩn danh' : ''}</p><p className="text-xs text-fg-muted">{!member.connected ? 'Đã rời phòng' : room.voiceEnabled && !voiceMember ? 'Đang kết nối voice…' : 'Đang online'}</p></div>{voice.speakingMemberIds.has(member.memberId) && <span className="flex items-center gap-1 rounded-full bg-ok/15 px-2 py-1 text-xs font-medium text-ok"><AudioLines className="h-3.5 w-3.5" aria-hidden />Đang nói</span>}{voiceMember?.micEnabled ? <Mic className="h-4 w-4 text-ok" aria-label="Mic đang bật" /> : <MicOff className="h-4 w-4 text-fg-muted" aria-label="Mic đang tắt" />}{member.memberId === room.hostMemberId && <span className="rounded-full bg-accent/15 px-2 py-1 text-xs font-semibold text-accent-soft">Host</span>}</div> })}</div>
+            <div className="max-h-80 space-y-1 overflow-y-auto p-2">{members.map((member) => { const voiceMember = voice.participantsById.get(member.memberId); return <div key={member.memberId} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/[0.04]"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-1.5"><p className="truncate text-sm font-medium">{member.displayName}{member.isAnonymous ? ' · Ẩn danh' : ''}</p>{!member.isAnonymous && <MembershipBadge plan={member.accountPlan || 'normal'} compact />}</div><p className="text-xs text-fg-muted">{!member.connected ? 'Đã rời phòng' : room.voiceEnabled && !voiceMember ? 'Đang kết nối voice…' : 'Đang online'}</p></div>{voice.speakingMemberIds.has(member.memberId) && <span className="flex items-center gap-1 rounded-full bg-ok/15 px-2 py-1 text-xs font-medium text-ok"><AudioLines className="h-3.5 w-3.5" aria-hidden />Đang nói</span>}{voiceMember?.micEnabled ? <Mic className="h-4 w-4 text-ok" aria-label="Mic đang bật" /> : <MicOff className="h-4 w-4 text-fg-muted" aria-label="Mic đang tắt" />}{member.memberId === room.hostMemberId && <span className="rounded-full bg-accent/15 px-2 py-1 text-xs font-semibold text-accent-soft">Host</span>}</div> })}</div>
           </div>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => void copy()} className="hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 sm:inline-flex"><Copy className="h-4 w-4" />{copied ? 'Đã sao chép' : 'Mời'}</Button>
@@ -446,13 +457,13 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
     {showRoomControls && <div className="safe-x fixed inset-x-3 top-[4.5rem] z-50 rounded-2xl border border-white/10 bg-[#111522]/98 p-3 shadow-2xl backdrop-blur md:hidden">
       <div className="grid grid-cols-4 gap-2">
-        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
-        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('h-12 w-full rounded-xl', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={voice.toggleSpeaker} className={cn('h-12 w-full rounded-xl', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <Button variant="ghost" size="icon" aria-label="Mời bạn" onClick={() => void copy()} className="h-12 w-full rounded-xl"><Copy className="h-5 w-5" /></Button>
         <Button variant="ghost" size="icon" aria-label="Mở chat" onClick={() => { setShowRoomControls(false); toggleChat() }} className="relative h-12 w-full rounded-xl"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-1 top-1 rounded-full bg-accent px-1.5 text-xs font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
       </div>
-      {party.isHost && <Button variant="ghost" size="sm" onClick={() => void toggleVoicePermission()} className="mt-2 h-11 w-full justify-start rounded-xl"><Radio className="h-4 w-4" />{room.voiceEnabled ? 'Tắt voice của cả phòng' : 'Cho phép voice trong phòng'}</Button>}
-      <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">{reactions.map((emoji) => <button key={emoji} type="button" onClick={() => void sendReaction(emoji)} className="touch-target rounded-xl text-xl transition hover:bg-white/10" aria-label={`Thả cảm xúc ${emoji}`}>{emoji}</button>)}</div>
+      {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} onClick={() => void toggleVoicePermission()} className="mt-2 h-11 w-full justify-start rounded-xl"><Radio className="h-4 w-4" />{capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt voice của cả phòng' : 'Cho phép voice trong phòng') : 'Voice cần CinePass Ultra'}</Button>}
+      <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">{reactions.map((emoji) => <button key={emoji} type="button" disabled={!capabilities.canReact} onClick={() => void sendReaction(emoji)} className="touch-target rounded-xl text-xl transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35" aria-label={`Thả cảm xúc ${emoji}`}>{emoji}</button>)}</div>
     </div>}
 
     {(voice.error || voiceControlError) && <div className="bg-rating/10 px-4 py-2 text-center text-xs text-rating" role="status">{voice.error || voiceControlError}</div>}
@@ -477,7 +488,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
           {isTheater && <Button variant="secondary" size="sm" onClick={() => setIsTheater(false)} className="absolute right-3 top-3 z-[70] rounded-full bg-black/65 text-fg backdrop-blur hover:bg-black/80"><LightbulbOff className="h-4 w-4" />Bật đèn</Button>}
         </section>
         {showChat && <aside className={chatPanelClass}>
-          <ChatPanel onSeekTo={party.isHost && activeEpisode ? (time) => party.sendPlaybackUpdate({ episodeId: activeEpisode.id, currentTime: time, isPlaying: room.playback.isPlaying, action: 'seek' }) : undefined} messages={room.messages} currentMemberId={session.member.memberId} userCount={party.userCount} isConnected={party.isConnected} sending={sending} message={message} messageError={messageError} nearChatEnd={nearChatEnd} chatListRef={chatListRef} endRef={endRef} onClose={toggleChat} onMessageChange={setMessage} onSubmit={(event) => void submitMessage(event)} onNearEndChange={(value) => { setNearChatEnd(value); if (value) setUnreadCount(0) }} />
+          <ChatPanel onSeekTo={party.isHost && activeEpisode ? (time) => party.sendPlaybackUpdate({ episodeId: activeEpisode.id, currentTime: time, isPlaying: room.playback.isPlaying, action: 'seek' }) : undefined} messages={room.messages} currentMemberId={session.member.memberId} userCount={party.userCount} isConnected={party.isConnected} canChat={capabilities.canChat} sending={sending} message={message} messageError={messageError} nearChatEnd={nearChatEnd} chatListRef={chatListRef} endRef={endRef} onClose={toggleChat} onMessageChange={setMessage} onSubmit={(event) => void submitMessage(event)} onNearEndChange={(value) => { setNearChatEnd(value); if (value) setUnreadCount(0) }} />
         </aside>}
       </div>
 

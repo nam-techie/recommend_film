@@ -36,10 +36,12 @@ function startPresence(uid: string, db: Database) {
     sessionRef = push(ref(db, `accountSessions/${uid}`))
     const sessionId = sessionRef.key!
     const session: AccountSession = { id: sessionId, startedAt: Date.now(), ...sessionDevice(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Không xác định', locale: navigator.language || 'vi-VN' }
-    void onDisconnect(connectionRef).remove()
-      .then(() => onDisconnect(lastSeenRef).set(serverTimestamp()))
-      .then(() => onDisconnect(ref(db, `accountSessions/${uid}/${sessionId}/endedAt`)).set(serverTimestamp()))
-      .then(() => Promise.all([set(connectionRef!, true), set(sessionRef!, session)]))
+    void Promise.all([set(connectionRef, true), set(sessionRef, session)])
+      .then(() => Promise.all([
+        onDisconnect(connectionRef!).remove(),
+        onDisconnect(lastSeenRef).set(serverTimestamp()),
+        onDisconnect(ref(db, `accountSessions/${uid}/${sessionId}/endedAt`)).set(serverTimestamp()),
+      ]))
       .catch(() => undefined)
   })
   return () => {

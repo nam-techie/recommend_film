@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
-import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from '../watch-party-core.js'
+import { applyVoicePermission, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, resolveStoredAccountPlan, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword, WATCH_PARTY_PLAN_CAPABILITIES } from '../watch-party-core.js'
 
 test('room password is salted and validates without storing plaintext', async () => {
   const first = await hashRoomPassword('secret123')
@@ -143,4 +143,14 @@ test('room invites require a non-anonymous authenticated room member', () => {
   assert.equal(findEligibleInvitingMember(room, 'uid-a'), room.members.account)
   assert.equal(findEligibleInvitingMember(room, 'uid-b'), null)
   assert.equal(findEligibleInvitingMember(room, 'missing'), null)
+})
+
+test('fresh entitlement resolution downgrades cancelled or expired members before their next action', () => {
+  assert.equal(resolveStoredAccountPlan({ plan: 'premium', status: 'active', expiresAt: 2_000 }, 1_000), 'premium')
+  assert.equal(resolveStoredAccountPlan({ plan: 'ultra', status: 'cancelled', expiresAt: 2_000 }, 1_000), 'normal')
+  assert.equal(resolveStoredAccountPlan({ plan: 'ultra', status: 'active', expiresAt: 999 }, 1_000), 'normal')
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.normal.canChat, false)
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.canChat, true)
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.canVoice, false)
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.ultra.canVoice, true)
 })

@@ -56,3 +56,9 @@ test('only recipient accepts and presence is readable only after friendship', as
   assert.equal((await patch('', { [`friendships/${users.alice.uid}/${users.bob.uid}`]: null, [`friendships/${users.bob.uid}/${users.alice.uid}`]: null }, 'alice')).status, 200)
   assert.equal((await read(`presenceConnections/${users.alice.uid}`, 'bob')).status, 401)
 })
+
+test('monetization data stays server-only for authenticated clients', async () => {
+  assert.equal((await read('monetization/plans', 'alice')).status, 401)
+  assert.equal((await write('monetization/affiliatePolicy', { enabled: true }, 'alice')).status, 401)
+  assert.equal((await write(`monetization/entitlements/${users.alice.uid}`, { plan: 'ultra' }, 'alice')).status, 401)
+})

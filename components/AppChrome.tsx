@@ -9,7 +9,8 @@ import type { Country, Genre } from '@/lib/api'
 export function AppChrome({ children, genres, countries }: { children: ReactNode; genres: Genre[]; countries: Country[] }) {
   const pathname = usePathname()
   const isRoom = /^\/watch-party\/[^/]+/.test(pathname)
-  if (isRoom) return <main className="min-h-screen">{children}</main>
+  const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/')
+  if (isRoom || isAdmin) return <main className="min-h-screen">{children}</main>
   return (
     <>
       <a

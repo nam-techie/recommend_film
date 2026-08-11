@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyEpisodeChangeReason, WatchPartyMessage, WatchPartyReaction, WatchPartyRoom, WatchPartyRoomPreview, WatchPartySession } from '@/lib/watch-party-types'
 import { estimateClockOffset, makeEpisodeKey } from '@/lib/watch-sync'
+import { auth } from '@/lib/firebase'
 
 const DEV_URL = 'http://localhost:4001'
 const normalizeServiceUrl = (value: string) => {
@@ -71,20 +72,20 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
 
   useEffect(() => {
     if (!roomId || !session?.roomToken || !socketUrl()) return undefined
-    const socket = io(socketUrl(), { auth: { roomToken: session.roomToken }, transports: ['websocket', 'polling'] }); socketRef.current = socket
+    let socket: Socket | null = null
     let active = true; const reactionTimers = new Set<number>()
     const applyRoom = (next: WatchPartyRoom) => { if (active) setRoom((current) => !current || next.playback.revision >= current.playback.revision ? next : current) }
     const syncClock = async () => {
       const samples: Array<{ offset: number; roundTrip: number }> = []
-      for (let index = 0; index < 5 && active && socket.connected; index += 1) {
+      for (let index = 0; index < 5 && active && socket?.connected; index += 1) {
         const sent = Date.now()
-        const response = await new Promise<{ serverTime: number } | null>((resolve) => socket.timeout(2000).emit('sync:request', { clientSentAt: sent }, (error: Error | null, value: { serverTime: number }) => resolve(error ? null : value)))
+        const response = await new Promise<{ serverTime: number } | null>((resolve) => socket?.timeout(2000).emit('sync:request', { clientSentAt: sent }, (error: Error | null, value: { serverTime: number }) => resolve(error ? null : value)))
         const received = Date.now()
         if (response) samples.push({ roundTrip: received - sent, offset: response.serverTime - (sent + received) / 2 })
       }
       if (active && samples.length) setClockOffset(estimateClockOffset(samples))
     }
-    const onConnect = () => { if (active) { setIsConnected(true); setError(null); socket.emit('room:resume'); syncClock() } }
+    const onConnect = () => { if (active) { setIsConnected(true); setError(null); socket?.emit('room:resume'); syncClock() } }
     const onDisconnect = () => { if (active) setIsConnected(false) }
     const onConnectError = (next: Error) => { if (active) setError(next.message === 'UNAUTHORIZED' ? 'Phiên phòng đã hết hạn. Vui lòng tham gia lại.' : 'Không thể kết nối phòng.') }
     const onPlayback = (playback: WatchPartyRoom['playback']) => { if (active) setRoom((current) => current && playback.revision > current.playback.revision ? { ...current, playback } : current) }
@@ -98,19 +99,22 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const onVoicePermission = ({ enabled }: { enabled: boolean }) => { if (active) setRoom((current) => current ? { ...current, voiceEnabled: enabled } : current) }
     const onPolicy = ({ playbackPolicy }: Pick<WatchPartyRoom, 'playbackPolicy'>) => { if (active) setRoom((current) => current ? { ...current, playbackPolicy } : current) }
     const onExpiryWarning = ({ expiresAt }: { expiresAt: number }) => { if (active) setExpiryWarningAt(expiresAt) }
+    const onWatchBlocked = ({ error: message }: { error?: string }) => { if (active) { clearWatchPartySession(roomId); setRoom(null); setError(message || 'Bạn đã đạt giới hạn xem của gói CinePass hôm nay.') } }
     const onClosed = ({ reason }: { reason?: string } = {}) => { if (active) { clearWatchPartySession(roomId); setRoom(null); setError(reason === 'empty_timeout' ? 'Phòng đã tự đóng vì không có người xem trong 5 phút.' : reason === 'hard_expired' ? 'Phòng đã hết thời gian hoạt động tối đa.' : 'Phòng đã được host kết thúc.') } }
-    socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
-    socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
-    socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
-    socket.on('voice:permission_changed', onVoicePermission)
-    socket.on('room:policy_changed', onPolicy)
-    socket.on('room:expiry_warning', onExpiryWarning)
-    const heartbeat = window.setInterval(() => { socket.emit('heartbeat:user'); syncClock() }, 30_000)
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket.emit('room:resume'); syncClock() } }
+    const heartbeat = window.setInterval(() => { socket?.emit('heartbeat:user'); syncClock() }, 30_000)
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket?.emit('room:resume'); syncClock() } }
+    void auth?.currentUser?.getIdToken().then((firebaseIdToken) => {
+      if (!active) return
+      socket = io(socketUrl(), { auth: { roomToken: session.roomToken, firebaseIdToken }, transports: ['websocket', 'polling'] }); socketRef.current = socket
+      socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
+      socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
+      socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
+      socket.on('voice:permission_changed', onVoicePermission); socket.on('room:policy_changed', onPolicy); socket.on('room:expiry_warning', onExpiryWarning); socket.on('watch:blocked', onWatchBlocked); socket.on('account:disabled', () => onClosed({ reason: 'account_disabled' }))
+    }).catch(() => { if (active) setError('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.') })
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       active = false; document.removeEventListener('visibilitychange', onVisibilityChange); window.clearInterval(heartbeat); reactionTimers.forEach((timer) => window.clearTimeout(timer))
-      socket.removeAllListeners(); if (socket.connected) socket.disconnect(); if (socketRef.current === socket) socketRef.current = null
+      socket?.removeAllListeners(); if (socket?.connected) socket.disconnect(); if (socketRef.current === socket) socketRef.current = null
     }
   }, [roomId, session?.roomToken])
 

@@ -9,7 +9,7 @@ import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin
 import { getAuth } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
-import { applyVoicePermission, attachDeviceSocket, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, createPairingRecord, detachDeviceSocket, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPairingUsable, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, normalizeRemoteCommand, remoteDeviceCount, REMOTE_PAIRING_TTL_MS, sanitizeScreenState, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword } from './watch-party-core.js'
+import { applyVoicePermission, attachDeviceSocket, buildVoiceGrant, chooseHostSuccessor, claimVacantHost, clearRoomHost, connectedMemberCount, createPairingRecord, detachDeviceSocket, findDeniedMediaEpisode, findEligibleInvitingMember, hashRoomPassword, isAllowedClientOrigin, isAllowedMediaUrl, isPairingUsable, isPublicRoomDiscoverable, markRoomEmpty, markRoomOccupied, normalizeRemoteCommand, remoteDeviceCount, REMOTE_PAIRING_TTL_MS, resolveStoredAccountPlan, sanitizeScreenState, shouldCloseEmptyRoom, sourceCapability, verifyRoomPassword, WATCH_PARTY_PLAN_CAPABILITIES } from './watch-party-core.js'
 import { directoryProfile, isAnonymousFirebaseActor, requestIp } from './social-core.js'
 import { buildWatchPartyInviteEmail } from './email-templates.js'
 import { createEmailDelivery } from './email-delivery.js'
@@ -305,7 +305,7 @@ const firebaseAdminUnavailable = () => Object.assign(
 const verifyFirebaseToken = async (token) => {
   if (!adminAuth || !adminCredential) throw firebaseAdminUnavailable()
   try {
-    return await adminAuth.verifyIdToken(token)
+    return await adminAuth.verifyIdToken(token, true)
   } catch (error) {
     if (clientFirebaseTokenErrors.has(String(error?.code || ''))) {
       throw Object.assign(new Error('Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.'), { statusCode: 401, code: 'AUTH_REQUIRED' })
@@ -314,6 +314,41 @@ const verifyFirebaseToken = async (token) => {
     log('firebase_token_verification_failed', { code: error?.code || undefined, error: error instanceof Error ? error.message : String(error) })
     throw firebaseAdminUnavailable()
   }
+}
+const planCapabilities = WATCH_PARTY_PLAN_CAPABILITIES
+const getAccountPlan = async (uid) => {
+  if (!adminDb) throw firebaseAdminUnavailable()
+  const snapshot = await adminDb.ref(`monetization/entitlements/${uid}`).get()
+  if (!snapshot.exists()) return 'normal'
+  return resolveStoredAccountPlan(snapshot.val())
+}
+const refreshMemberPlan = async (member) => {
+  const plan = member?.uid ? await getAccountPlan(member.uid) : 'normal'
+  const changed = member?.accountPlan !== plan
+  if (member) member.accountPlan = plan
+  return { plan, changed }
+}
+const vietnamDateKey = (now = Date.now()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+const claimNormalWatchAccess = async (uid, plan, movieSlug, episodeKey) => {
+  if (plan !== 'normal') return
+  if (!adminDb) throw firebaseAdminUnavailable()
+  const now = Date.now(); const date = vietnamDateKey(now); const movieKey = Buffer.from(movieSlug).toString('base64url')
+  const usageRef = adminDb.ref(`monetization/dailyWatchUsage/${date}/${uid}`)
+  const initialSnapshot = await usageRef.get(); const initialUsage = initialSnapshot.exists() ? initialSnapshot.val() : null
+  let failure = null
+  const result = await usageRef.transaction((current) => {
+    const usage = current || initialUsage || { date, movies: [], episodesByMovie: {}, updatedAt: now }
+    const movies = Array.isArray(usage.movies) ? usage.movies : []
+    const episodes = Array.isArray(usage.episodesByMovie?.[movieKey]) ? usage.episodesByMovie[movieKey] : []
+    if (!movies.includes(movieSlug) && movies.length >= 3) { failure = Object.assign(new Error('CinePass xem tối đa 3 phim khác nhau mỗi ngày.'), { statusCode: 403, code: 'MOVIE_DAILY_LIMIT' }); return }
+    if (!episodes.includes(episodeKey) && episodes.length >= 5) { failure = Object.assign(new Error('CinePass xem tối đa 5 tập trong một phim mỗi ngày.'), { statusCode: 403, code: 'EPISODE_DAILY_LIMIT' }); return }
+    return { date, movies: movies.includes(movieSlug) ? movies : [...movies, movieSlug], episodesByMovie: { ...(usage.episodesByMovie || {}), [movieKey]: episodes.includes(episodeKey) ? episodes : [...episodes, episodeKey] }, updatedAt: now }
+  }, undefined, false)
+  if (!result.committed) throw failure || Object.assign(new Error('Không thể kiểm tra giới hạn xem.'), { statusCode: 503, code: 'WATCH_ACCESS_FAILED' })
 }
 const bearer = (req) => String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]
 const publicRoom = (room) => ({
@@ -324,6 +359,7 @@ const publicRoom = (room) => ({
   hostName: room.members[room.hostMemberId]?.displayName || 'Đang chờ host',
   userCount: Object.values(room.members).filter((member) => member.connected).length,
   createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status,
+  maxMembers: room.maxMembers || MAX_ROOM_MEMBERS,
   deleteAt: room.lifecycle?.deleteAt || null,
   playbackPolicy: room.playbackPolicy || { autoNext: true }
 })
@@ -431,6 +467,17 @@ const server = http.createServer(async (req, res) => {
   const ip = requestIp(req)
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
+    const disconnectUserMatch = url.pathname.match(/^\/internal\/admin\/users\/([^/]+)\/disconnect$/)
+    if (req.method === 'POST' && disconnectUserMatch) {
+      const configuredSecret = process.env.WATCH_PARTY_INTERNAL_ADMIN_SECRET || ''
+      if (!configuredSecret || bearer(req) !== configuredSecret) return json(res, 403, { code: 'FORBIDDEN', error: 'Internal admin secret không hợp lệ.' })
+      const uid = decodeURIComponent(disconnectUserMatch[1])
+      let disconnected = 0
+      for (const socket of io.sockets.sockets.values()) {
+        if (socket.data.identity?.uid === uid) { socket.emit('account:disabled'); socket.disconnect(true); disconnected += 1 }
+      }
+      return json(res, 200, { ok: true, disconnected })
+    }
     if (url.pathname === '/ready') {
       await store.ping()
       const [firebaseAuthHealthy, socialDatabaseHealthy, mailHealthy] = await Promise.all([
@@ -588,6 +635,9 @@ const server = http.createServer(async (req, res) => {
       const room = await store.getRoom(roomId); const member = room?.members?.[claims.memberId]
       if (!room || !member) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng hoặc thành viên không còn tồn tại.' })
       if (!room.voiceEnabled) return json(res, 403, { code: 'VOICE_DISABLED', error: 'Host chưa bật voice cho phòng.' })
+      const { plan: memberPlan, changed: memberPlanChanged } = await refreshMemberPlan(member)
+      if (memberPlanChanged) await store.setRoom(room)
+      if (!planCapabilities[memberPlan]?.canVoice) return json(res, 403, { code: 'ULTRA_REQUIRED', error: 'Voice chat chỉ dành cho CinePass Ultra.' })
       if (!(await store.allow(`voice-token:${member.memberId}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn yêu cầu kết nối voice quá nhanh.' })
       try {
         const participantToken = await createVoiceToken(room, member)
@@ -626,8 +676,12 @@ const server = http.createServer(async (req, res) => {
       const authToken = bearer(req)
       if (!authToken) return json(res, 401, { code: 'AUTH_REQUIRED', error: 'Bạn cần đăng nhập Google để tạo phòng.' })
       const owner = await verifyFirebaseToken(authToken)
+      const ownerPlan = await getAccountPlan(owner.uid)
+      const ownerCapabilities = planCapabilities[ownerPlan]
+      if (!ownerCapabilities.canCreateRoom) return json(res, 403, { code: 'PLAN_REQUIRED', error: 'CinePass Plus hoặc CinePass Ultra mới có thể tạo phòng xem chung.' })
       if (!(await store.allow(`create:${ip}`, 5, 600_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn đã tạo quá nhiều phòng.' })
       const input = createRoomSchema.parse(await readBody(req))
+      if (!ownerCapabilities.accessModes.includes(input.accessMode)) return json(res, 403, { code: 'ACCESS_MODE_LOCKED', error: 'CinePass Plus chỉ tạo phòng bằng link. Nâng lên CinePass Ultra để mở phòng công khai hoặc có mật khẩu.' })
       const previousRoom = await store.getActiveRoomByOwner(owner.uid)
       if (previousRoom) {
         const replacementConfirmed = input.replaceActiveRoom && input.expectedActiveRoomId?.toUpperCase() === previousRoom.id
@@ -640,8 +694,8 @@ const server = http.createServer(async (req, res) => {
       const deniedEpisode = findDeniedMediaEpisode(input.movie.episodes, MEDIA_ALLOWED_HOSTS)
       if (deniedEpisode) return json(res, 400, { code: 'MEDIA_HOST_DENIED', error: 'Host HLS chưa được máy chủ cho phép.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
-      const member = { memberId, displayName, role: 'host', uid: owner.uid, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
-      const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
+      const member = { memberId, displayName, role: 'host', uid: owner.uid, accountPlan: ownerPlan, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, maxMembers: ownerCapabilities.maxMembers, ownerPlan, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
         members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false,
         playbackPolicy: input.playbackPolicy || { autoNext: true }, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'empty_grace', emptySince: now,
@@ -656,9 +710,12 @@ const server = http.createServer(async (req, res) => {
       if (room?.accessMode === 'password' && !(await store.allow(`password:${ip}:${roomId}`, 5, 60_000))) return json(res, 429, { code: 'PASSWORD_RATE_LIMITED', error: 'Bạn nhập sai quá nhiều lần. Hãy thử lại sau một phút.' })
       if (room?.accessMode === 'password' && !(await verifyRoomPassword(input.password || '', room.passwordHash))) return json(res, 403, { code: 'WRONG_PASSWORD', error: 'Mật khẩu phòng không đúng.' })
       if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
-      if (Object.keys(room.members).length >= MAX_ROOM_MEMBERS) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người.' })
+      if (Object.keys(room.members).length >= (room.maxMembers || MAX_ROOM_MEMBERS)) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người theo giới hạn gói của host.' })
       const account = await verifyFirebaseToken(input.firebaseIdToken)
-      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
+      const accountPlan = await getAccountPlan(account.uid)
+      const joiningEpisode = room.movie.episodes.find((episode) => episode.id === room.playback.episodeId) || room.movie.episodes[0]
+      await claimNormalWatchAccess(account.uid, accountPlan, room.movie.slug, joiningEpisode?.slug || joiningEpisode?.id || 'episode-0')
+      const now = Date.now(); const member = { memberId: id('member'), displayName: input.displayName, role: 'viewer', uid: account?.uid, accountPlan, avatar: input.anonymous ? undefined : account?.picture, isAnonymous: input.anonymous, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
       room.members[member.memberId] = member; await store.setRoom(room)
       if (adminDb) {
         try {
@@ -717,7 +774,11 @@ io.use(async (socket, next) => {
     const claims = verifyToken(socket.handshake.auth?.roomToken || '')
     const room = await store.getRoom(claims.roomId); const member = room?.members?.[claims.memberId]
     if (!room || !member) return next(new Error('UNAUTHORIZED'))
-    socket.data.identity = { roomId: room.id, memberId: member.memberId, deviceRole: claims.deviceRole === 'remote' ? 'remote' : 'screen' }; next()
+    if (member.uid) {
+      const firebaseActor = await verifyFirebaseToken(socket.handshake.auth?.firebaseIdToken || '')
+      if (firebaseActor.uid !== member.uid) return next(new Error('UNAUTHORIZED'))
+    }
+    socket.data.identity = { roomId: room.id, memberId: member.memberId, uid: member.uid || null, deviceRole: claims.deviceRole === 'remote' ? 'remote' : 'screen' }; next()
   } catch { next(new Error('UNAUTHORIZED')) }
 })
 
@@ -741,6 +802,8 @@ async function transferHost(roomId) {
 
 io.on('connection', async (socket) => {
   const { roomId, memberId, deviceRole } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)
+  const connectingMember = room.members[memberId]
+  if (connectingMember?.uid) connectingMember.accountPlan = await getAccountPlan(connectingMember.uid).catch(() => 'normal')
   const isRemote = deviceRole === 'remote'
 
   // A paired handset rides on its member's identity but never counts as presence:
@@ -788,6 +851,19 @@ io.on('connection', async (socket) => {
     if (parsed.data.clientEventId && !(await store.dedupeEvent(roomId, parsed.data.clientEventId))) return ack?.({ ok: true, duplicate: true, revision: fresh.playback.revision })
     const episode = fresh.movie.episodes.find((item) => item.id === parsed.data.episodeId); if (!episode) return ack?.({ ok: false, code: 'EPISODE_NOT_FOUND' })
     if (!episode.linkM3u8) return ack?.({ ok: false, code: 'HLS_REQUIRED' })
+    try { await Promise.all(Object.values(fresh.members).map((member) => refreshMemberPlan(member))) }
+    catch { return ack?.({ ok: false, code: 'PLAN_CHECK_FAILED' }) }
+    const blockedMembers = []
+    for (const member of Object.values(fresh.members)) {
+      if (!member.uid || (member.accountPlan || 'normal') !== 'normal') continue
+      try { await claimNormalWatchAccess(member.uid, 'normal', fresh.movie.slug, episode.slug || episode.id) }
+      catch (error) { blockedMembers.push({ member, error }) }
+    }
+    for (const { member, error } of blockedMembers) {
+      member.connected = false
+      io.to(`${roomId}:${member.memberId}`).emit('watch:blocked', { code: error.code || 'DAILY_LIMIT', error: error.message })
+      io.in(`${roomId}:${member.memberId}`).disconnectSockets(true)
+    }
     fresh.syncCapability = 'full'; fresh.playbackPolicy ||= { autoNext: true }
     fresh.playback = { episodeId: episode.id, currentTime: 0, isPlaying: parsed.data.shouldPlay, revision: fresh.playback.revision + 1, serverUpdatedAt: Date.now(), updatedBy: memberId, action: 'episode_change' }
     await store.setRoom(fresh); io.to(roomId).emit('episode:sync', { room: clientRoom(fresh), playback: fresh.playback }); ack?.({ ok: true, revision: fresh.playback.revision })
@@ -806,6 +882,9 @@ io.on('connection', async (socket) => {
   socket.on('chat:send', async (payload, ack) => {
     const fresh = await store.getRoom(roomId); const sender = fresh?.members[memberId]; const text = String(payload?.text || '').trim().replace(/\s+/g, ' ').slice(0, 200)
     if (!fresh || !sender || !text) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    let senderPlan
+    try { senderPlan = (await refreshMemberPlan(sender)).plan } catch { return ack?.({ ok: false, code: 'PLAN_CHECK_FAILED' }) }
+    if (!planCapabilities[senderPlan]?.canChat) { await store.setRoom(fresh); return ack?.({ ok: false, code: 'PLAN_REQUIRED' }) }
     if (!(await store.allow(`chat:${memberId}`, 5, 10_000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
     const message = { id: id('message'), type: 'user', memberId, displayName: sender.displayName, text, timestamp: Date.now(), videoTime: fresh.playback.currentTime }
     fresh.messages = [...fresh.messages.slice(-99), message]; await store.setRoom(fresh); io.to(roomId).emit('chat:new', message); ack?.({ ok: true })
@@ -813,12 +892,19 @@ io.on('connection', async (socket) => {
   socket.on('reaction:send', async (payload, ack) => {
     const fresh = await store.getRoom(roomId); const sender = fresh?.members[memberId]; const emoji = String(payload?.emoji || '')
     if (!fresh || !sender || !allowedReactions.has(emoji)) return ack?.({ ok: false, code: 'VALIDATION_ERROR' })
+    let senderPlan; let senderPlanChanged = false
+    try { const refreshed = await refreshMemberPlan(sender); senderPlan = refreshed.plan; senderPlanChanged = refreshed.changed } catch { return ack?.({ ok: false, code: 'PLAN_CHECK_FAILED' }) }
+    if (!planCapabilities[senderPlan]?.canReact) { await store.setRoom(fresh); return ack?.({ ok: false, code: 'PLAN_REQUIRED' }) }
     if (!(await store.allow(`reaction:${memberId}`, 5, 5000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+    if (senderPlanChanged) await store.setRoom(fresh)
     io.to(roomId).emit('reaction:new', { id: id('reaction'), memberId, displayName: sender.displayName, emoji, timestamp: Date.now() }); ack?.({ ok: true })
   })
   socket.on('voice:permission', async (payload, ack) => {
     const fresh = await store.getRoom(roomId)
     if (!fresh || fresh.hostMemberId !== memberId) return ack?.({ ok: false, code: 'HOST_ONLY' })
+    let hostPlan
+    try { hostPlan = (await refreshMemberPlan(fresh.members[memberId])).plan } catch { return ack?.({ ok: false, code: 'PLAN_CHECK_FAILED' }) }
+    if (!planCapabilities[hostPlan]?.canVoice) { await store.setRoom(fresh); return ack?.({ ok: false, code: 'ULTRA_REQUIRED' }) }
     const enabled = Boolean(payload?.enabled)
     if (enabled && !voiceConfigured) return ack?.({ ok: false, code: 'VOICE_NOT_CONFIGURED' })
     applyVoicePermission(fresh, enabled)

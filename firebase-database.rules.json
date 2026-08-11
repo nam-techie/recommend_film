@@ -157,6 +157,10 @@
         ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid"
       }
     },
+    "monetization": {
+      ".read": false,
+      ".write": false
+    },
     ".read": false,
     ".write": false
   }

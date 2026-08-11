@@ -12,18 +12,20 @@ import { AccountAvatar } from '@/components/account/AccountAvatar'
 import { SocialReviewCard } from '@/components/account/SocialReviewCard'
 import { ActivityHeatmap } from '@/components/account/ActivityHeatmap'
 import { PresenceBadge } from '@/components/account/PresenceBadge'
+import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
 import { PublicProfile, SocialActivity, SocialReview, WatchlistMovie } from '@/lib/account-types'
 import { getProfileByUsername, toggleFollow } from '@/lib/account-service'
 import { database } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
+import type { AccountPlan } from '@/lib/monetization'
 
 type ProfileTab = 'overview' | 'recent' | 'watchlist' | 'reviews' | 'activity'
 interface RecentItem { movieSlug: string; movieTitle: string; poster?: string; episodeName?: string; percentage?: number; updatedAt: number }
 
 export function PublicProfilePage({ username }: { username: string }) {
   const { records: ownProgressRecords } = useWatchProgress()
-  const router = useRouter(); const account = useAccount(); const [profile, setProfile] = useState<PublicProfile | null>(null); const [loading, setLoading] = useState(true); const [notFound, setNotFound] = useState(false); const [following, setFollowing] = useState(false); const [followers, setFollowers] = useState(0); const [followingCount, setFollowingCount] = useState(0); const [recent, setRecent] = useState<RecentItem[]>([]); const [watchlist, setWatchlist] = useState<WatchlistMovie[]>([]); const [reviews, setReviews] = useState<SocialReview[]>([]); const [activities, setActivities] = useState<SocialActivity[]>([]); const [tab, setTab] = useState<ProfileTab>('overview'); const [menuOpen, setMenuOpen] = useState(false); const [copied, setCopied] = useState(false); const [friendActionLoading, setFriendActionLoading] = useState(false); const [friendActionError, setFriendActionError] = useState('')
+  const router = useRouter(); const account = useAccount(); const [profile, setProfile] = useState<PublicProfile | null>(null); const [membershipPlan, setMembershipPlan] = useState<AccountPlan | null>(null); const [loading, setLoading] = useState(true); const [notFound, setNotFound] = useState(false); const [following, setFollowing] = useState(false); const [followers, setFollowers] = useState(0); const [followingCount, setFollowingCount] = useState(0); const [recent, setRecent] = useState<RecentItem[]>([]); const [watchlist, setWatchlist] = useState<WatchlistMovie[]>([]); const [reviews, setReviews] = useState<SocialReview[]>([]); const [activities, setActivities] = useState<SocialActivity[]>([]); const [tab, setTab] = useState<ProfileTab>('overview'); const [menuOpen, setMenuOpen] = useState(false); const [copied, setCopied] = useState(false); const [friendActionLoading, setFriendActionLoading] = useState(false); const [friendActionError, setFriendActionError] = useState('')
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -31,9 +33,13 @@ export function PublicProfilePage({ username }: { username: string }) {
     setLoading(true); const next = await getProfileByUsername(username).catch(() => null)
     if (!next) { setNotFound(true); setLoading(false); return }
     setProfile({ ...next, favoriteGenres: Array.isArray(next.favoriteGenres) ? next.favoriteGenres : [] })
-    const [followersSnap, followingSnap, recentSnap, watchlistSnap, reviewsSnap, activitySnap, ownFollowingSnap] = await Promise.all([
+    const [followersSnap, followingSnap, recentSnap, watchlistSnap, reviewsSnap, activitySnap, ownFollowingSnap, membership] = await Promise.all([
       get(ref(database, `followers/${next.uid}`)), get(ref(database, `following/${next.uid}`)), get(ref(database, `publicRecent/${next.uid}`)), get(ref(database, `publicWatchlists/${next.uid}`)), get(ref(database, 'reviews')), get(ref(database, `activities/${next.uid}`)), account.profile ? get(ref(database, `following/${account.profile.uid}/${next.uid}`)) : Promise.resolve(null),
+      fetch(`/api/public/memberships/${encodeURIComponent(next.uid)}`, { cache: 'no-store' })
+        .then(async (response) => response.ok ? await response.json() as { plan?: AccountPlan } : null)
+        .catch(() => null),
     ])
+    setMembershipPlan(membership?.plan === 'normal' || membership?.plan === 'premium' || membership?.plan === 'ultra' ? membership.plan : null)
     setFollowers(Object.keys(followersSnap.val() || {}).length); setFollowingCount(Object.keys(followingSnap.val() || {}).length); setRecent(Object.values((recentSnap.val() || {}) as Record<string, RecentItem>).sort((a, b) => b.updatedAt - a.updatedAt)); setWatchlist(Object.values((watchlistSnap.val() || {}) as Record<string, WatchlistMovie>).sort((a, b) => b.updatedAt - a.updatedAt)); setActivities(Object.values((activitySnap.val() || {}) as Record<string, SocialActivity>).sort((a, b) => b.createdAt - a.createdAt)); setFollowing(Boolean(ownFollowingSnap?.val()))
     const allReviews = reviewsSnap.val() || {}; setReviews(Object.values(allReviews).flatMap((movieReviews) => Object.values(movieReviews as Record<string, SocialReview>)).filter((review: SocialReview) => review.authorUid === next.uid).sort((a: SocialReview, b: SocialReview) => b.updatedAt - a.updatedAt))
     setLoading(false)
@@ -91,7 +97,7 @@ export function PublicProfilePage({ username }: { username: string }) {
         <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 lg:flex-row lg:items-end">
           <AccountAvatar name={profile.displayName} src={profile.avatar} className="h-24 w-24 border-4 border-[#0d111d] text-xl sm:h-28 sm:w-28" />
           <div className="min-w-0 flex-1 lg:pb-1">
-            <h1 className="truncate text-2xl font-bold sm:text-3xl">{profile.displayName}</h1>
+            <div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-2xl font-bold sm:text-3xl">{profile.displayName}</h1>{membershipPlan && <MembershipBadge plan={membershipPlan} />}</div>
             <p className="mt-1 truncate text-sm text-accent-soft">@{profile.username}</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
