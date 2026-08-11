@@ -3,6 +3,18 @@ import { TrackSource } from 'livekit-server-sdk'
 
 const scrypt = (value, salt) => new Promise((resolve, reject) => crypto.scrypt(value, salt, 64, (error, key) => error ? reject(error) : resolve(key)))
 
+export const WATCH_PARTY_PLAN_CAPABILITIES = {
+  normal: { canCreateRoom: false, accessModes: [], maxMembers: 0, canChat: false, canReact: false, canVoice: false },
+  premium: { canCreateRoom: true, accessModes: ['link_only'], maxMembers: 8, canChat: true, canReact: true, canVoice: false },
+  ultra: { canCreateRoom: true, accessModes: ['public', 'link_only', 'password'], maxMembers: 50, canChat: true, canReact: true, canVoice: true },
+}
+
+export function resolveStoredAccountPlan(entitlement, now = Date.now()) {
+  if (!['premium', 'ultra'].includes(entitlement?.plan)) return 'normal'
+  if (entitlement.status === 'cancelled' || !Number.isFinite(entitlement.expiresAt) || entitlement.expiresAt <= now) return 'normal'
+  return entitlement.plan
+}
+
 export async function hashRoomPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex')
   const key = await scrypt(password, salt)

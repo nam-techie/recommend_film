@@ -27,6 +27,7 @@ const monoFont = Overpass_Mono({
 });
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/components/auth/AuthProvider'
+import { MonetizationProvider } from '@/components/monetization/MonetizationProvider'
 import { AppChrome } from '@/components/AppChrome'
 import { getNavigationData } from '@/lib/navigation-data'
 
@@ -69,7 +70,7 @@ export default async function RootLayout({
             <body
                 className={`antialiased ${bodyFont.variable} ${displayFont.variable} ${monoFont.variable} font-sans min-h-screen bg-bg flex flex-col`}
             >
-                <AuthProvider><ThemeProvider
+                <AuthProvider><MonetizationProvider><ThemeProvider
                     attribute="class"
                     defaultTheme="dark"
                     enableSystem={false}
@@ -77,7 +78,7 @@ export default async function RootLayout({
                     forcedTheme="dark"
                 >
                     <AppChrome genres={navigation.genres} countries={navigation.countries}>{children}</AppChrome>
-                </ThemeProvider></AuthProvider>
+                </ThemeProvider></MonetizationProvider></AuthProvider>
             </body>
         </html>
     );

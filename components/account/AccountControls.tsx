@@ -5,13 +5,16 @@ import Link from 'next/link'
 import type { User } from 'firebase/auth'
 import { Bell, Bookmark, History, LogOut, Settings, UserRound } from 'lucide-react'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
+import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
 import { useAccount } from '@/hooks/useAccount'
+import { useEntitlement } from '@/hooks/useEntitlement'
 
 export default function AccountControls({ user, logout }: { user: User; logout: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const account = useAccount()
+  const { entitlement } = useEntitlement()
 
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -33,7 +36,7 @@ export default function AccountControls({ user, logout }: { user: User; logout: 
         <div role="menu" className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#101522] p-2 text-fg shadow-2xl">
           <div className="flex items-center gap-3 border-b border-white/10 px-2 pb-3 pt-1">
             <AccountAvatar name={name} src={account.profile?.avatar || user.photoURL} className="h-10 w-10 text-xs" />
-            <div className="min-w-0"><p className="truncate text-sm font-semibold">{name}</p><p className="truncate text-xs text-fg-muted">{account.profile ? `@${account.profile.username}` : user.email}</p></div>
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{name}</p><p className="truncate text-xs text-fg-muted">{account.profile ? `@${account.profile.username}` : user.email}</p><MembershipBadge plan={entitlement?.plan || 'normal'} compact className="mt-2" /></div>
           </div>
           <div className="py-2">
             {[
