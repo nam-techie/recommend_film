@@ -62,6 +62,7 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
           <NavLink href="/search?type=phim-le">Phim lẻ</NavLink>
           <NavLink href="/tv-series">Phim bộ</NavLink>
           <NavLink href="/search?type=tv-shows">TV Shows</NavLink>
+          <span className="2xl:hidden"><NavLink href="/community"><span className="flex items-center gap-1.5"><Users className="h-4 w-4" />Cộng đồng</span></NavLink></span>
           <span className="xl:hidden"><NavLink href="/watch-party"><span className="flex items-center gap-1.5"><Users className="h-4 w-4" />Xem chung</span></NavLink></span>
           <MenuDropdown label="Thể loại" open={openDropdown === 'genres'} onToggle={() => setOpenDropdown((value) => value === 'genres' ? null : 'genres')} items={genres} base="/genre" allHref="/genres" columns="grid-cols-4" />
           <MenuDropdown label="Quốc gia" open={openDropdown === 'countries'} onToggle={() => setOpenDropdown((value) => value === 'countries' ? null : 'countries')} items={countries} base="/country" allHref="/countries" align="right" columns="grid-cols-4" />
@@ -72,13 +73,14 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
         <div className="ml-auto hidden items-center gap-1 sm:gap-2 xl:flex">
           <Link href="/ai-recommender" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent-soft hover:bg-accent/10 xl:flex"><Sparkles className="h-4 w-4" /> Gợi ý AI</Link>
           <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] xl:flex"><Users className="h-4 w-4" /> Xem chung</Link>
+          <Link href="/community" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" /> Cộng đồng</Link>
           {!authLoading && (user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="sm" className="h-10 rounded-full bg-white px-4 text-slate-950 hover:bg-slate-200">Thành viên</Button></AuthDialog>)}
         </div>
       </div>
 
       {mobileSearchOpen && <div className="border-t border-white/[0.06] px-4 py-3 xl:hidden"><div className="mx-auto max-w-xl"><SearchAutocomplete variant="mobile" initialValue={initialSearch} autoFocus /></div></div>}
 
-      {mobileMenuOpen && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/ai-recommender" icon={Sparkles}>Gợi ý AI</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink></div></nav>}
+      {mobileMenuOpen && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/ai-recommender" icon={Sparkles}>Gợi ý AI</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink></div></nav>}
     </header>
   )
 }

@@ -1,6 +1,7 @@
 import { DeferredContinueWatching } from '@/components/sections/DeferredContinueWatching'
 import { HeroSection } from '@/components/sections/HeroSection'
 import { MovieSection } from '@/components/sections/MovieSection'
+import { PersonalizedMovieSection } from '@/components/sections/PersonalizedMovieSection'
 import { ScrollToTop } from '@/components/ui/ScrollToTop'
 import type { HomePageData } from '@/lib/home-data'
 import Link from 'next/link'
@@ -13,6 +14,7 @@ export function HomePage({ data }: { data: HomePageData }) {
 
       <div className="mx-auto mt-8 max-w-shell space-y-10 px-4 sm:mt-12 sm:px-6 lg:space-y-14 lg:px-8">
         <DeferredContinueWatching />
+        <PersonalizedMovieSection />
 
         {data.sections.map((section) => (
           <MovieSection key={section.id} {...section} />

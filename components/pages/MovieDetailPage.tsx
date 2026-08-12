@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { CalendarDays, CheckCircle2, Clapperboard, Clock3, Film, Info, Lightbulb, LightbulbOff, ListVideo, Loader2, LockKeyhole, MessageSquareText, Play, PlayCircle, RectangleHorizontal, Sparkles, Star, Users } from 'lucide-react'
 import { buildWatchPartyEpisodes } from '@/hooks/useWatchParty'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { usePlaybackAnalytics } from '@/hooks/usePlaybackAnalytics'
 import { Button } from '@/components/ui/button'
 import { CreateWatchPartyDialog } from '@/components/ui/CreateWatchPartyDialog'
 import { MovieLibraryActions } from '@/components/account/MovieLibraryActions'
@@ -40,6 +41,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
   const [theaterMode, setTheaterMode] = useState(false)
   const playerContainerRef = useRef<HTMLDivElement>(null)
   const lastSavedAtRef = useRef(0)
+  const analyticsDurationRef = useRef(0)
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
   const [watchAccessState, setWatchAccessState] = useState<'idle' | 'checking' | 'allowed' | 'denied'>('idle')
@@ -58,6 +60,15 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
   const previousHlsEpisode = useMemo(() => watchPartyEpisodes.find((episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode - 1 && episode.linkM3u8), [selectedEpisode, selectedServer, watchPartyEpisodes])
   const nextHlsEpisode = useMemo(() => watchPartyEpisodes.find((episode) => episode.serverIndex === selectedServer && episode.episodeIndex === selectedEpisode + 1 && episode.linkM3u8), [selectedEpisode, selectedServer, watchPartyEpisodes])
   const [soloPlayback, setSoloPlayback] = useState<WatchPartyPlayback>({ episodeId: '', currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: Date.now(), updatedBy: 'solo', action: 'pause' })
+  const analyticsMetadata = useMemo(() => ({
+    movieSlug: movie.slug,
+    movieTitle: movie.name,
+    episodeKey: currentHlsEpisode?.episodeKey || currentHlsEpisode?.id || `${selectedServer}:${selectedEpisode}`,
+    episodeName: currentHlsEpisode?.name,
+    genres: movie.category?.map((item) => item.name) || [],
+    source: 'solo' as const,
+  }), [currentHlsEpisode, movie.category, movie.name, movie.slug, selectedEpisode, selectedServer])
+  const { signal: trackPlayback, finalize: finalizePlayback } = usePlaybackAnalytics(analyticsMetadata)
 
   const requestWatchAccess = useCallback(async (serverIndex: number, episodeIndex: number, requestId = crypto.randomUUID()): Promise<WatchAccessResult> => {
     if (authLoading) return { allowed: false, affiliate: null }
@@ -97,8 +108,10 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
 
   useEffect(() => {
     if (!currentHlsEpisode) return
+    void finalizePlayback()
+    analyticsDurationRef.current = 0
     setSoloPlayback((current) => ({ ...current, episodeId: currentHlsEpisode.id, currentTime: 0, isPlaying: false, revision: current.revision + 1, serverUpdatedAt: Date.now(), action: 'episode_change' }))
-  }, [currentHlsEpisode])
+  }, [currentHlsEpisode, finalizePlayback])
 
   useEffect(() => {
     if (searchParams.get('watch') !== '1' || !episodes?.length || authLoading) return
@@ -185,7 +198,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
   return (
     <div className="min-w-0 max-w-full overflow-x-clip bg-[#070912] pb-14">
       {lightsOff && <button type="button" aria-label="Bật đèn trở lại" onClick={() => setLightsOff(false)} className="fixed inset-0 z-[60] cursor-default bg-black/90" />}
-      <section className="relative min-h-[690px] overflow-hidden border-b border-white/[0.06] bg-[#080911] lg:min-h-[760px]">
+      <section className="relative min-h-[690px] overflow-hidden bg-[#080911] lg:min-h-[760px]">
         <MovieImage src={getImageUrl(movie.thumb_url || movie.poster_url)} alt="" fill priority quality={72} sizes="100vw" className="object-cover object-top" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_35%,transparent_0%,rgba(8,9,17,.24)_34%,rgba(8,9,17,.94)_88%)]" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#080911] via-[#080911]/76 to-[#080911]/20" />
@@ -238,7 +251,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
         {showPlayer && currentEpisode && currentHlsEpisode && (
           <section className={cn('overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_30px_90px_rgba(0,0,0,.55)]', (lightsOff || theaterMode) && 'relative z-[70]', theaterMode && 'left-1/2 w-screen -translate-x-1/2 rounded-none border-x-0 sm:w-[min(100vw,1800px)] sm:rounded-3xl sm:border-x')}>
             <div ref={playerContainerRef} className={cn('relative w-full bg-black', (pseudoFullscreen || playerFullscreen) && 'watch-party-pseudo-fullscreen h-[100dvh]')}>
-              <SyncedHlsPlayer poster={getImageUrl(movie.thumb_url || movie.poster_url)} onRequestServerChange={() => { if (!episodes?.length) return; const next = (selectedServer + 1) % episodes.length; void selectEpisode(next, 0, true) }} episode={currentHlsEpisode} previousEpisode={previousHlsEpisode} nextEpisode={nextHlsEpisode} playback={soloPlayback} isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback autoNextEnabled={autoNext} isFullscreen={playerFullscreen} fillContainer={playerFullscreen || pseudoFullscreen} onToggleFullscreen={() => void toggleFullscreen()} onToggleAutoNext={() => setAutoNext((value) => !value)} onPreviousEpisode={previousHlsEpisode ? () => selectEpisode(selectedServer, previousHlsEpisode.episodeIndex, true) : undefined} onNextEpisode={nextHlsEpisode ? () => selectEpisode(selectedServer, nextHlsEpisode.episodeIndex, true) : undefined} onPlaybackUpdate={(payload) => setSoloPlayback((current) => ({ ...current, ...payload, revision: current.revision + 1, serverUpdatedAt: Date.now(), updatedBy: 'solo' }))} onProgress={(time, duration, reason) => { if (!Number.isFinite(duration) || duration <= 0) return; const now = Date.now(); if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return; lastSavedAtRef.current = now; void saveProgress({ movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentHlsEpisode.id, episodeName: currentHlsEpisode.name, serverName: currentHlsEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now, episodeKey: currentHlsEpisode.episodeKey, sourceId: currentHlsEpisode.sourceId }) }} />
+              <SyncedHlsPlayer poster={getImageUrl(movie.thumb_url || movie.poster_url)} onRequestServerChange={() => { if (!episodes?.length) return; const next = (selectedServer + 1) % episodes.length; void selectEpisode(next, 0, true) }} episode={currentHlsEpisode} previousEpisode={previousHlsEpisode} nextEpisode={nextHlsEpisode} playback={soloPlayback} isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback autoNextEnabled={autoNext} isFullscreen={playerFullscreen} fillContainer={playerFullscreen || pseudoFullscreen} onToggleFullscreen={() => void toggleFullscreen()} onToggleAutoNext={() => setAutoNext((value) => !value)} onPreviousEpisode={previousHlsEpisode ? () => selectEpisode(selectedServer, previousHlsEpisode.episodeIndex, true) : undefined} onNextEpisode={nextHlsEpisode ? () => selectEpisode(selectedServer, nextHlsEpisode.episodeIndex, true) : undefined} onPlaybackUpdate={(payload) => { setSoloPlayback((current) => ({ ...current, ...payload, revision: current.revision + 1, serverUpdatedAt: Date.now(), updatedBy: 'solo' })); void trackPlayback({ action: payload.action === 'seek' ? 'seek' : payload.action === 'heartbeat' ? 'heartbeat' : payload.action, position: payload.currentTime, duration: analyticsDurationRef.current, isPlaying: payload.isPlaying }) }} onProgress={(time, duration, reason) => { if (!Number.isFinite(duration) || duration <= 0) return; analyticsDurationRef.current = duration; const now = Date.now(); if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return; lastSavedAtRef.current = now; void saveProgress({ movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentHlsEpisode.id, episodeName: currentHlsEpisode.name, serverName: currentHlsEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now, episodeKey: currentHlsEpisode.episodeKey, sourceId: currentHlsEpisode.sourceId }) }} />
             </div>
             <div className="flex flex-col gap-3 border-t border-white/10 bg-[#0e1019] p-4 lg:flex-row lg:items-center lg:justify-between"><div><p className="font-bold text-fg">Đang xem: {currentEpisode.name}</p><p className="mt-1 text-xs text-fg-muted">{episodes[selectedServer]?.server_name}</p></div><div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" aria-pressed={lightsOff} onClick={() => setLightsOff((value) => !value)} className="border-white/15 bg-white/[0.035] text-fg-secondary hover:bg-white/10">{lightsOff ? <Lightbulb className="h-4 w-4" /> : <LightbulbOff className="h-4 w-4" />}{lightsOff ? 'Bật đèn' : 'Tắt đèn'}</Button><Button type="button" size="sm" variant="outline" aria-pressed={theaterMode} onClick={() => setTheaterMode((value) => !value)} className="border-white/15 bg-white/[0.035] text-fg-secondary hover:bg-white/10"><RectangleHorizontal className="h-4 w-4" />{theaterMode ? 'Thu gọn' : 'Chiếu rạp'}</Button><MovieLibraryActions movie={libraryMovie} /></div></div>
           </section>

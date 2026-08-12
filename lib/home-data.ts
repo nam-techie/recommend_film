@@ -14,6 +14,8 @@ import {
   type Genre,
   type Movie,
 } from '@/lib/api'
+import { getPublicHomeContent } from '@/lib/server/content'
+import type { ContentMovieSnapshot } from '@/lib/content'
 
 export interface HomeMovieSection {
   id: string
@@ -41,7 +43,9 @@ async function safeMovies(load: () => Promise<Movie[]>): Promise<Movie[]> {
 export async function getHomePageData(): Promise<HomePageData> {
   const latestPromise = safeMovies(async () => (await fetchNewMovies(1)).items || [])
 
-  const [latest, featured, korean, chinese, usuk, vietnamese, action, anime, genres] = await Promise.all([
+  const editorialPromise = getPublicHomeContent().catch(() => ({ generatedAt: Date.now(), collections: [] }))
+
+  const [latest, featuredFallback, korean, chinese, usuk, vietnamese, action, anime, genres, editorial] = await Promise.all([
     latestPromise,
     safeMovies(async () => (await fetchFeaturedMovies(1)).items || []),
     safeMovies(async () => (await fetchKoreanMovies(1, 10)).data?.items || []),
@@ -54,9 +58,20 @@ export async function getHomePageData(): Promise<HomePageData> {
       console.error('Unable to load genres', error)
       return []
     }),
+    editorialPromise,
   ])
 
-  const heroBase = latest.slice(0, 5)
+  const toMovie = (movie: ContentMovieSnapshot): Movie => ({
+    _id: movie.providerId || movie.slug, name: movie.title, slug: movie.slug, origin_name: movie.originalTitle,
+    type: 'series', poster_url: movie.poster, thumb_url: movie.thumbnail, is_copyright: false, sub_docquyen: false,
+    chieurap: false, time: '', episode_current: movie.episodeLabel, quality: '', lang: '', year: movie.year || 0,
+    category: movie.genres.map((name) => ({ id: name, name, slug: name.toLocaleLowerCase('vi-VN').replace(/\s+/g, '-') })), country: [],
+  })
+  const editorialFeatured = editorial.collections.find((collection) => collection.placement === 'featured_rail')
+  const editorialHero = editorial.collections.find((collection) => collection.placement === 'hero')
+  const featured = editorialFeatured?.movies.map(toMovie) || featuredFallback
+
+  const heroBase = editorialHero?.movies.map(toMovie).slice(0, 5) || latest.slice(0, 5)
   const hero = await Promise.all(
     heroBase.map(async (movie) => {
       try {

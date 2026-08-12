@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { MovieCard } from '@/components/ui/MovieCard'
@@ -8,9 +10,10 @@ interface MovieSectionProps {
   subtitle?: string
   href?: string
   movies: Movie[]
+  onMovieClick?: (movie: Movie) => void
 }
 
-export function MovieSection({ title, subtitle, href, movies }: MovieSectionProps) {
+export function MovieSection({ title, subtitle, href, movies, onMovieClick }: MovieSectionProps) {
   if (!movies.length) return null
 
   return (
@@ -23,7 +26,7 @@ export function MovieSection({ title, subtitle, href, movies }: MovieSectionProp
         {href && <Link href={href} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-fg-secondary hover:text-fg">Xem tất cả <ArrowRight className="h-4 w-4" /></Link>}
       </div>
       <div className="movie-rail">
-        {movies.map((movie) => <MovieCard key={movie._id || movie.slug} movie={movie} />)}
+        {movies.map((movie) => <div key={movie._id || movie.slug} onClick={() => onMovieClick?.(movie)}><MovieCard movie={movie} /></div>)}
       </div>
     </section>
   )

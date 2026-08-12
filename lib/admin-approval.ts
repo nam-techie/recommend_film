@@ -9,6 +9,10 @@ export const ADMIN_APPROVAL_ACTIONS = [
   'affiliate_policy_update',
   'discount_code_create',
   'discount_code_update',
+  'content_publish',
+  'content_unpublish',
+  'community_moderate',
+  'analytics_sensitive_read',
 ] as const
 
 export type AdminApprovalAction = typeof ADMIN_APPROVAL_ACTIONS[number]

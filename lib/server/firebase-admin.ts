@@ -3,7 +3,7 @@ import 'server-only'
 import { applicationDefault, cert, getApps, initializeApp, type App } from 'firebase-admin/app'
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth'
 import { getDatabase } from 'firebase-admin/database'
-import { isAllowedAdmin, parseAdminUidAllowlist } from '@/lib/admin-access'
+import { hasAdminPermission, isAllowedAdmin, parseAdminUidAllowlist, type AdminPermission } from '@/lib/admin-access'
 
 function serviceAccountCredential() {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()
@@ -32,6 +32,13 @@ export async function requireAdmin(request: Request): Promise<DecodedIdToken> {
   const identity = await requireUser(request)
   const allowlist = parseAdminUidAllowlist(process.env.ADMIN_FIREBASE_UIDS)
   if (!isAllowedAdmin(identity, allowlist)) throw new AdminAccessError(403, 'Tài khoản này không có quyền quản trị.')
+  return identity
+}
+
+export async function requireAdminPermission(request: Request, permission: AdminPermission): Promise<DecodedIdToken> {
+  const identity = await requireAdmin(request)
+  const allowlist = parseAdminUidAllowlist(process.env.ADMIN_FIREBASE_UIDS)
+  if (!hasAdminPermission(identity, allowlist, permission)) throw new AdminAccessError(403, `Tài khoản thiếu quyền ${permission}.`)
   return identity
 }
 

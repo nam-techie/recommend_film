@@ -96,6 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.clearTimeout(timeout)
         setUser(nextUser)
         setLoading(false)
+        if (nextUser) {
+          void nextUser.getIdToken().then((token) => fetch('/api/me/bootstrap', {
+            method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+          })).catch(() => undefined)
+        }
       }, () => {
         window.clearTimeout(timeout)
         setUser(null)
@@ -229,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const deleteCurrentAccount = useCallback(async (password?: string, beforeDelete?: () => Promise<void>) => {
     if (!user) return
     try {
-      const { authApi, accountApi } = await requireRuntime()
+      const { authApi } = await requireRuntime()
       if (user.providerData.some((provider) => provider.providerId === 'password')) {
         if (!password || !user.email) throw new Error('Hãy nhập mật khẩu để xác nhận.')
         await authApi.reauthenticateWithCredential(user, authApi.EmailAuthProvider.credential(user.email, password))
@@ -237,7 +242,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await authApi.reauthenticateWithPopup(user, new authApi.GoogleAuthProvider())
       }
       if (beforeDelete) await beforeDelete()
-      else await accountApi.deleteAccountData(await accountApi.ensureAccountProfile(user))
+      const deletionToken = await user.getIdToken()
+      const deletionResponse = await fetch('/api/me/account-data', { method: 'DELETE', headers: { Authorization: `Bearer ${deletionToken}` } })
+      if (!deletionResponse.ok) throw new Error((await deletionResponse.json().catch(() => ({})) as { error?: string }).error || 'Không thể xóa toàn bộ dữ liệu tài khoản trên server.')
       await authApi.deleteUser(user)
       setUser(null)
     } catch (error) { throw firebaseAuthError(error) }

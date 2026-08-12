@@ -19,6 +19,9 @@ export function useAdminApi() {
     const isStepUpMutation = new Headers(init?.headers).has('x-admin-approval')
     if ((response.status === 401 || response.status === 403) && !isStepUpMutation) setDenied(true)
     if (!response.ok) throw new Error(payload.error || 'Yêu cầu không thành công.')
+    if ((init?.method || 'GET').toUpperCase() !== 'GET') {
+      window.dispatchEvent(new Event('cinemind:admin-audit-changed'))
+    }
     return payload as T
   }, [auth.user])
 

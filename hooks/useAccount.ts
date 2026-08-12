@@ -96,7 +96,7 @@ function acquirePresence(uid: string, db: Database) {
 export function useAccount() {
   const { user, getIdToken } = useAuth()
   const [profile, setProfile] = useState<PublicProfile | null>(null)
-  const [settings, setSettings] = useState<AccountSettings>({ privacy: DEFAULT_PRIVACY, emailNotifications: true, updatedAt: 0 })
+  const [settings, setSettings] = useState<AccountSettings>({ privacy: DEFAULT_PRIVACY, emailNotifications: true, personalizationEnabled: true, updatedAt: 0 })
   const [watchlist, setWatchlist] = useState<Record<string, WatchlistMovie>>({})
   const [notifications, setNotifications] = useState<AccountNotification[]>([])
   const [friends, setFriends] = useState<Record<string, FriendshipRecord>>({})
@@ -145,7 +145,7 @@ export function useAccount() {
         setLoading(false)
         window.clearTimeout(timeout)
       }, failGracefully),
-      onValue(ref(database, `users/${user.uid}/settings`), (snapshot) => { if (active && snapshot.exists()) setSettings({ ...snapshot.val(), privacy: { ...DEFAULT_PRIVACY, ...snapshot.val().privacy } }) }, () => undefined),
+      onValue(ref(database, `users/${user.uid}/settings`), (snapshot) => { if (active && snapshot.exists()) setSettings({ personalizationEnabled: true, ...snapshot.val(), privacy: { ...DEFAULT_PRIVACY, ...snapshot.val().privacy } }) }, () => undefined),
       onValue(ref(database, `watchlists/${user.uid}`), (snapshot) => { if (active) setWatchlist(Object.fromEntries(Object.entries((snapshot.val() || {}) as Record<string, WatchlistMovie>).map(([slug, item]) => [slug, normalizeLibraryItem(item)]))) }, () => undefined),
       onValue(ref(database, `notifications/${user.uid}`), (snapshot) => { if (active) setNotifications(Object.values((snapshot.val() || {}) as Record<string, AccountNotification>).sort((a, b) => b.createdAt - a.createdAt)) }, () => undefined),
       onValue(ref(database, `friendships/${user.uid}`), (snapshot) => { if (active) setFriends(snapshot.val() || {}) }, () => undefined),
