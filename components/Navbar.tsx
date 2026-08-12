@@ -62,6 +62,7 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
           <NavLink href="/search?type=phim-le">Phim lẻ</NavLink>
           <NavLink href="/tv-series">Phim bộ</NavLink>
           <NavLink href="/search?type=tv-shows">TV Shows</NavLink>
+          <span className="xl:hidden"><NavLink href="/watch-party"><span className="flex items-center gap-1.5"><Users className="h-4 w-4" />Xem chung</span></NavLink></span>
           <MenuDropdown label="Thể loại" open={openDropdown === 'genres'} onToggle={() => setOpenDropdown((value) => value === 'genres' ? null : 'genres')} items={genres} base="/genre" allHref="/genres" columns="grid-cols-4" />
           <MenuDropdown label="Quốc gia" open={openDropdown === 'countries'} onToggle={() => setOpenDropdown((value) => value === 'countries' ? null : 'countries')} items={countries} base="/country" allHref="/countries" align="right" columns="grid-cols-4" />
         </nav>
@@ -70,7 +71,7 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
 
         <div className="ml-auto hidden items-center gap-1 sm:gap-2 xl:flex">
           <Link href="/ai-recommender" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent-soft hover:bg-accent/10 xl:flex"><Sparkles className="h-4 w-4" /> Gợi ý AI</Link>
-          <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" /> Xem chung</Link>
+          <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] xl:flex"><Users className="h-4 w-4" /> Xem chung</Link>
           {!authLoading && (user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="sm" className="h-10 rounded-full bg-white px-4 text-slate-950 hover:bg-slate-200">Thành viên</Button></AuthDialog>)}
         </div>
       </div>

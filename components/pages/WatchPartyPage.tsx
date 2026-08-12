@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Play,
   Radio,
+  RefreshCw,
   Send,
   UserRound,
   Users,
@@ -214,6 +215,8 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [expandedServer, setExpandedServer] = useState('')
   const [publicRooms, setPublicRooms] = useState<WatchPartyRoomPreview[]>([])
   const [roomsLoading, setRoomsLoading] = useState(!roomId)
+  const [roomsError, setRoomsError] = useState<string | null>(null)
+  const [roomsUpdatedAt, setRoomsUpdatedAt] = useState<number | null>(null)
   const [activeOwnedRoom, setActiveOwnedRoom] = useState<WatchPartyRoomPreview | null>(null)
 
   // Không còn redirect sang /login. Khách mở link phòng phải xem được phòng có gì
@@ -226,12 +229,29 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     return () => { active = false }
   }, [authLoading, normalizedRoomId])
 
+  const refreshPublicRooms = useCallback(async (showLoading = false) => {
+    if (roomId || document.visibilityState === 'hidden') return
+    if (showLoading) setRoomsLoading(true)
+    try {
+      const result = await listWatchParties()
+      setPublicRooms(result.rooms)
+      setRoomsError(null)
+      setRoomsUpdatedAt(Date.now())
+    } catch {
+      setRoomsError('Chưa thể cập nhật danh sách phòng. CineMind sẽ tự thử lại.')
+    } finally { setRoomsLoading(false) }
+  }, [roomId])
+
   useEffect(() => {
     if (roomId || authLoading) return undefined
-    let active = true
-    void listWatchParties().then((result) => { if (active) setPublicRooms(result.rooms) }).catch(() => { if (active) setPublicRooms([]) }).finally(() => { if (active) setRoomsLoading(false) })
-    return () => { active = false }
-  }, [authLoading, roomId])
+    void refreshPublicRooms(true)
+    const timer = window.setInterval(() => void refreshPublicRooms(), 15_000)
+    const onFocus = () => void refreshPublicRooms()
+    const onVisibility = () => { if (document.visibilityState === 'visible') void refreshPublicRooms() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [authLoading, refreshPublicRooms, roomId])
 
   useEffect(() => {
     if (roomId || authLoading || !user) return
@@ -391,10 +411,10 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     <SectionHeader title="Xem chung" subtitle="Phát đồng bộ, trò chuyện và tương tác cùng bạn bè" icon={Users} showViewAll={false} />
     <div className="mx-auto mt-10 grid max-w-5xl gap-6 md:grid-cols-2">
       <Card className="border-white/10 bg-black/40"><CardContent className="space-y-5 p-6"><h2 className="text-2xl font-bold text-fg">Tham gia bằng link hoặc mã phòng</h2><div className="flex gap-2"><Input value={joinInput} onChange={(event) => setJoinInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && router.push(`/watch-party/${normalizeRoom(joinInput)}`)} placeholder="Ví dụ: ABC123" /><Button disabled={!joinInput.trim()} onClick={() => router.push(`/watch-party/${normalizeRoom(joinInput)}`)}>Vào phòng</Button></div></CardContent></Card>
-      <Card className="border-white/10 bg-black/40"><CardContent className="space-y-4 p-6"><Film className="h-9 w-9 text-accent-strong" /><h2 className="text-xl font-bold text-fg">Tạo phòng mới</h2><p className="text-sm text-fg-secondary">Mở trang phim, chọn đúng tập rồi bấm “Xem chung”. Host cần đăng nhập Google.</p><Button asChild variant="outline"><Link href="/">Khám phá phim</Link></Button></CardContent></Card>
+      <Card className="border-white/10 bg-black/40"><CardContent className="space-y-4 p-6"><Film className="h-9 w-9 text-accent-strong" /><h2 className="text-xl font-bold text-fg">Tạo phòng mới</h2><p className="text-sm text-fg-secondary">Mở trang phim, chọn đúng tập rồi bấm “Xem chung”. Host cần đăng nhập và dùng CinePass Plus hoặc Ultra.</p><Button asChild variant="outline"><Link href="/">Khám phá phim</Link></Button></CardContent></Card>
     </div>
     {user && activeOwnedRoom && <section className="mx-auto mt-10 max-w-5xl"><h2 className="mb-3 text-xl font-bold text-fg">Phòng của tôi</h2><div className="flex flex-col gap-4 rounded-2xl border border-accent-strong/25 bg-accent/[0.08] p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-semibold text-fg">{activeOwnedRoom.roomName}</p><p className="mt-1 truncate text-sm text-fg-secondary">{activeOwnedRoom.movie.title} · {activeOwnedRoom.userCount} người đang xem</p><p className="mt-1 text-xs text-fg-muted">Mã phòng {activeOwnedRoom.id}</p></div><div className="flex gap-2"><Button asChild><Link href={`/watch-party/${activeOwnedRoom.id}`}>Vào lại phòng</Link></Button><Button variant="destructive" onClick={async () => { const token = await user.getIdToken(); await closeOwnedWatchParty(activeOwnedRoom.id, token); setActiveOwnedRoom(null) }}>Kết thúc</Button></div></div></section>}
-    <section className="mx-auto mt-12 max-w-5xl"><h2 className="mb-4 text-xl font-bold text-fg">Phòng công khai đang hoạt động</h2>{roomsLoading ? <p className="text-fg-secondary">Đang tải danh sách phòng…</p> : publicRooms.length === 0 ? <p className="rounded-lg border border-white/10 bg-black/30 p-6 text-center text-fg-secondary">Chưa có phòng công khai nào.</p> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{publicRooms.map((item) => <Link key={item.id} href={`/watch-party/${item.id}`} className="rounded-xl border border-white/10 bg-black/40 p-4 transition hover:border-accent/60"><div className="mb-3 flex gap-3">{item.movie.poster && <img src={item.movie.poster} alt="" className="h-20 w-14 rounded object-cover" />}<div><h3 className="font-semibold text-fg">{item.roomName}</h3><p className="mt-1 line-clamp-1 text-sm text-fg-secondary">{item.movie.title} · {item.episode?.name}</p></div></div><p className="text-xs text-fg-muted">Host {item.hostName} · {item.userCount} người · {item.playback.isPlaying ? 'Đang phát' : 'Tạm dừng'}</p></Link>)}</div>}</section>
+    <section className="mx-auto mt-12 max-w-5xl"><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-bold text-fg">Phòng công khai đang hoạt động</h2><p className="mt-1 text-xs text-fg-muted" aria-live="polite">{roomsUpdatedAt ? `${publicRooms.length} phòng · cập nhật lúc ${new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(roomsUpdatedAt)}` : 'Tự cập nhật mỗi 15 giây'}</p></div><Button type="button" size="sm" variant="outline" disabled={roomsLoading} onClick={() => void refreshPublicRooms(true)}><RefreshCw className={cn('h-4 w-4', roomsLoading && 'animate-spin')} />Làm mới</Button></div>{roomsError && <p role="status" className="mb-4 rounded-lg border border-warn/25 bg-warn/10 px-4 py-3 text-sm text-warn">{roomsError}</p>}{roomsLoading && !roomsUpdatedAt ? <p className="text-fg-secondary">Đang tải danh sách phòng…</p> : publicRooms.length === 0 ? <p className="rounded-lg border border-white/10 bg-black/30 p-6 text-center text-fg-secondary">Chưa có phòng công khai nào.</p> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{publicRooms.map((item) => <Link key={item.id} href={`/watch-party/${item.id}`} className="rounded-xl border border-white/10 bg-black/40 p-4 transition hover:border-accent/60"><div className="mb-3 flex gap-3">{item.movie.poster && <img src={item.movie.poster} alt="" className="h-20 w-14 rounded object-cover" />}<div><h3 className="font-semibold text-fg">{item.roomName}</h3><p className="mt-1 line-clamp-1 text-sm text-fg-secondary">{item.movie.title} · {item.episode?.name}</p></div></div><p className="text-xs text-fg-muted">Host {item.hostName} · {item.userCount}/{item.maxMembers || '?'} người · {item.playback.isPlaying ? 'Đang phát' : 'Tạm dừng'}</p></Link>)}</div>}</section>
   </div>
 
   if (!session) return <div className="container mx-auto flex min-h-[70vh] items-center justify-center px-4 py-10">
