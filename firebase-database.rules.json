@@ -167,13 +167,20 @@
     "analytics": {
       ".read": false,
       ".write": false,
-      "playbackSessions": { ".indexOn": ["uid", "finalized", "lastHeartbeatAt"] }
+      "playbackSessions": { ".indexOn": ["uid", "finalized", "lastHeartbeatAt", "startedAt"] }
     },
     "personalization": { ".read": false, ".write": false },
     "content": { ".read": false, ".write": false },
     "publicContent": { ".read": true, ".write": false },
     "community": { ".read": false, ".write": false },
     "publicCommunity": { ".read": true, ".write": false },
+    "entitlementGrantStates": { ".read": false, ".write": false },
+    "entitlementGrants": { ".read": false, ".write": false },
+    "entitlementGrantEvents": { ".read": false, ".write": false },
+    "entitlementRestrictions": { ".read": false, ".write": false },
+    "entitlementMutationReceipts": { ".read": false, ".write": false },
+    "githubStar": { ".read": false, ".write": false, "claims": { ".indexOn": ["status", "createdAt", "githubId", "uid"] } },
+    "support": { ".read": false, ".write": false, "feedback": { ".indexOn": ["status", "createdAt", "uid"] } },
     ".read": false,
     ".write": false
   }

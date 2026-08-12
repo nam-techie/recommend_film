@@ -113,7 +113,7 @@ export async function setAdminUserDisabled(targetUid: string, disabled: boolean,
   }
 }
 
-export async function revokeAdminUserSessions(targetUid: string, reasonValue: string, actor: DecodedIdToken) {
+export async function revokeAdminUserSessions(targetUid: string, reasonValue: string, actor: Pick<DecodedIdToken, 'uid'>) {
   const reason = validateAuditReason(reasonValue)
   await authService().getUser(targetUid)
   const audit = await createPendingAudit({ action: 'user_sessions_revoked', actorUid: actor.uid, targetUid, reason })

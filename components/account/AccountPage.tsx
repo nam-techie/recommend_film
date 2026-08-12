@@ -16,6 +16,8 @@ import { EmailNotificationSetting } from '@/components/account/EmailNotification
 import { AccountActivityPanel } from '@/components/account/AccountActivityPanel'
 import { PresenceBadge } from '@/components/account/PresenceBadge'
 import { PersonalizationSetting } from '@/components/account/PersonalizationSetting'
+import { GithubStarClaimPanel } from '@/components/account/GithubStarClaimPanel'
+import { FeedbackHistoryPanel } from '@/components/account/FeedbackHistoryPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -148,7 +150,7 @@ export function AccountPage() {
 
       <section className="min-w-0">
         {tab === 'privacy' && <PersonalizationSetting enabled={account.settings.personalizationEnabled} />}
-        {tab === 'overview' && <div className="mb-6 space-y-4"><AccountPlanCard /></div>}
+        {tab === 'overview' && <div className="mb-6 space-y-4"><AccountPlanCard /><GithubStarClaimPanel /><FeedbackHistoryPanel /></div>}
         {account.error && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-2xl border border-rating/20 bg-rating/[0.07] p-4 text-sm text-rating sm:flex-row sm:items-center"><span className="flex min-w-0 flex-1 items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rating" /><span><strong className="block font-semibold">Đang hiển thị hồ sơ từ tài khoản Google</strong><span className="mt-1 block text-xs leading-5 text-rating/70">{account.error} Dữ liệu phim và thông báo sẽ đồng bộ lại khi kết nối được khôi phục.</span></span></span><Button type="button" size="sm" variant="outline" onClick={account.retry} className="shrink-0 border-rating/30 bg-transparent hover:bg-rating/10"><RefreshCcw className="mr-2 h-4 w-4" />Thử lại</Button></div>}
         {tab === 'security' && <div className="mb-5 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.035] p-5"><h2 className="font-semibold">Phương thức đăng nhập</h2><div className="mt-3 flex flex-wrap gap-2">{user.providerData.map((provider) => <span key={provider.providerId} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs text-fg-secondary">{provider.providerId === 'google.com' ? <span className="font-black text-info">G</span> : <KeyRound className="h-3.5 w-3.5 text-accent-soft" />}{provider.providerId === 'google.com' ? 'Google' : 'Email và mật khẩu'}</span>)}</div></div>}
         {tab === 'profile' && <div className="mb-5 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-6"><h2 className="font-semibold">Thể loại yêu thích</h2><p className="mt-1 text-xs text-fg-muted">Chọn tối đa 8 thể loại để thể hiện gu phim trên hồ sơ.</p><div className="mt-4 flex flex-wrap gap-2">{['Hành động', 'Tình cảm', 'Hài', 'Kinh dị', 'Khoa học viễn tưởng', 'Hoạt hình', 'Tâm lý', 'Hình sự', 'Phiêu lưu', 'Cổ trang', 'Tài liệu', 'Gia đình'].map((genre) => { const selected = draft.favoriteGenres.includes(genre); return <button key={genre} type="button" onClick={() => setDraft({ ...draft, favoriteGenres: selected ? draft.favoriteGenres.filter((item) => item !== genre) : draft.favoriteGenres.length < 8 ? [...draft.favoriteGenres, genre] : draft.favoriteGenres })} className={cn('rounded-full border px-3 py-2 text-xs transition', selected ? 'border-accent-strong bg-accent/15 text-accent-soft' : 'border-white/10 text-fg-secondary hover:border-white/25 hover:text-fg')}>{selected && <Check className="mr-1 inline h-3 w-3" />}{genre}</button> })}</div></div>}

@@ -1,5 +1,6 @@
 {
   "database": { "rules": "firebase-database.rules.json" },
+  "storage": { "rules": "firebase-storage.rules" },
   "emulators": {
     "auth": { "port": 9099 },
     "database": { "port": 9000 }

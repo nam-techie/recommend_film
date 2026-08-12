@@ -1,8 +1,8 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, CalendarClock, ChevronLeft, ChevronRight, KeyRound, Loader2, RefreshCw, Search, ShieldCheck, UserCog, Users } from 'lucide-react'
-import type { AdminUserSummary, EntitlementAdminAction } from '@/lib/admin-users'
+import { Ban, ChevronLeft, ChevronRight, KeyRound, Loader2, RefreshCw, Search, ShieldCheck, UserCog, Users } from 'lucide-react'
+import type { AdminUserSummary } from '@/lib/admin-users'
 import type { MonetizationAuditLog } from '@/lib/server/audit'
 import { useAdminApi } from '@/hooks/useAdminApi'
 import { AccessDenied, AdminLogin, AdminShell } from '@/components/admin/AdminShell'
@@ -15,6 +15,7 @@ import { FormField } from '@/components/admin/AdminPrimitives'
 import type { AdminSensitiveTimelineItem, AdminUserInsights } from '@/lib/admin-user-insights'
 import { cn } from '@/lib/utils'
 import { useAdminStepUp } from '@/components/admin/AdminStepUpDialog'
+import { EntitlementGrantAdminPanel } from '@/components/admin/EntitlementGrantAdminPanel'
 
 const date = (value: number | null | undefined) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(value) : '—'
 const planName = (plan: string) => plan === 'ultra' ? 'Ultra' : plan === 'premium' ? 'Plus' : 'CinePass'
@@ -32,9 +33,6 @@ export function UsersAdminPage() {
   const [selected, setSelected] = useState<AdminUserSummary | null>(null)
   const [audits, setAudits] = useState<MonetizationAuditLog[]>([])
   const [reason, setReason] = useState('Hỗ trợ tài khoản theo yêu cầu')
-  const [entitlementAction, setEntitlementAction] = useState<'grant' | 'replace' | 'extend' | 'cancel'>('grant')
-  const [plan, setPlan] = useState<'premium' | 'ultra'>('premium')
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [busy, setBusy] = useState(false)
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const [detailTab, setDetailTab] = useState<'overview' | 'activity' | 'preferences' | 'plan' | 'audit'>('overview')
@@ -111,23 +109,6 @@ export function UsersAdminPage() {
     finally { setBusy(false) }
   }
 
-  const mutateEntitlement = async () => {
-    if (!selected || reason.trim().length < 3) return
-    const body: EntitlementAdminAction = entitlementAction === 'cancel'
-      ? { action: 'cancel', reason }
-      : entitlementAction === 'extend'
-        ? { action: 'extend', billingCycle, reason }
-        : { action: entitlementAction, plan, billingCycle, reason }
-    const requestBody = { ...body, confirmed: true }
-    const approval = await approve({ action: 'user_entitlement_update', targetId: selected.uid, payload: requestBody, title: 'Xác nhận thay đổi gói', summary: `${selected.email || selected.uid} · ${entitlementAction === 'cancel' ? 'Hạ về CinePass ngay' : `${planName(entitlementAction === 'extend' ? selected.entitlement.plan : plan)} / ${billingCycle === 'annual' ? '1 năm' : '1 tháng'}`}` })
-    if (!approval) return
-    setBusy(true); setError(null)
-    try {
-      const payload = await request<{ entitlement: AdminUserSummary['entitlement'] }>(`/api/admin/users/${encodeURIComponent(selected.uid)}/entitlement`, { method: 'PATCH', headers: { 'X-Admin-Approval': approval.token }, body: approval.payloadJson })
-      updateSelected({ ...selected, entitlement: payload.entitlement }); setNotice('Đã cập nhật gói tài khoản.')
-    } catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Không thể cập nhật gói.') }
-    finally { setBusy(false) }
-  }
 
   const shownUsers = useMemo(() => usersList, [usersList])
   const handleLogout = () => { void logout().catch(() => undefined) }
@@ -154,7 +135,7 @@ export function UsersAdminPage() {
       <div className="mt-5 flex flex-wrap gap-2"><Button variant={selected.disabled ? 'outline' : 'destructive'} disabled={busy || selected.protectedAdmin} onClick={() => void setDisabled()}>{selected.disabled ? <ShieldCheck className="h-4 w-4" /> : <Ban className="h-4 w-4" />}{selected.disabled ? 'Mở khóa' : 'Khóa tài khoản'}</Button><Button variant="outline" disabled={busy} onClick={() => void revokeSessions()}><KeyRound className="h-4 w-4" />Thu hồi phiên</Button></div></>}
       {detailTab === 'activity' && <div className="mt-6 border border-white/[0.08] p-5"><h3 className="font-semibold">Hoạt động tổng hợp · 30 ngày</h3>{insights ? <><div className="mt-4 grid gap-3 sm:grid-cols-2">{[['Trạng thái', insights.online ? 'Đang online' : `Offline · ${date(insights.lastSeen)}`], ['Qualified views', String(insights.qualifiedViews)], ['Giờ xem', String(insights.watchHours)], ['Completion', `${insights.completionRate}%`]].map(([label, value]) => <div key={label} className="rounded-md bg-surface-2 p-3"><p className="text-xs text-fg-muted">{label}</p><p className="mt-1 text-sm font-semibold tabular-nums">{value}</p></div>)}</div><div className="mt-5 border-t border-white/[0.08] pt-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="text-sm font-semibold">Timeline tựa phim · dữ liệu nhạy cảm</h4><p className="mt-1 text-xs text-fg-muted">Yêu cầu analytics.read_sensitive, MFA, lý do và audit cho mỗi lần mở.</p></div><Button variant="outline" onClick={() => void loadSensitiveTimeline()} disabled={busy || reason.trim().length < 3}>Mở timeline 90 ngày</Button></div>{timeline && <div className="mt-4 max-h-72 divide-y divide-white/[0.07] overflow-y-auto">{timeline.map((item) => <div key={item.sessionId} className="py-3"><div className="flex justify-between gap-3"><p className="text-sm font-semibold">{item.movieTitle}</p><span className="text-xs tabular-nums text-fg-muted">{Math.round(item.activeSeconds / 60)} phút</span></div><p className="mt-1 text-xs text-fg-muted">{item.episodeName || item.movieSlug} · {date(item.startedAt)} · {item.source === 'watch_party' ? 'Xem chung' : 'Solo'}</p></div>)}{!timeline.length && <p className="py-4 text-sm text-fg-muted">Không có session trong 90 ngày.</p>}</div>}</div></> : <p className="mt-3 text-sm text-fg-muted">Đang tải insights…</p>}</div>}
       {detailTab === 'preferences' && <div className="mt-6 border border-white/[0.08] p-5"><h3 className="font-semibold">Sở thích & cá nhân hóa</h3>{insights ? <><p className="mt-2 text-sm text-fg-secondary">{insights.personalizationEnabled ? insights.eligibleForPersonalization ? 'Đã đủ tín hiệu để cá nhân hóa.' : 'Đã bật nhưng chưa đủ 3 phim và 60 phút xem hợp lệ.' : 'Người dùng đã tắt cá nhân hóa.'}</p><div className="mt-4 flex flex-wrap gap-2">{insights.topGenres.map((item) => <span key={item.genre} className="rounded-full border border-white/[0.1] bg-surface-2 px-3 py-2 text-xs">{item.genre} · {Math.round(item.score * 100)}%</span>)}{!insights.topGenres.length && <span className="text-sm text-fg-muted">Cold start dùng favorite genres, watchlist và biên tập.</span>}</div></> : <p className="mt-2 text-sm text-fg-muted">Đang tính user features…</p>}</div>}
-      {detailTab === 'plan' && <section className="mt-6 border border-white/[0.08] bg-bg/40 p-5"><div className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-accent-soft" /><h3 className="font-semibold">Quản lý gói</h3></div><div className="mt-4 grid gap-4 sm:grid-cols-3"><FormField label="Thao tác" description="Chọn hành động áp dụng cho entitlement hiện tại."><Select value={entitlementAction} onValueChange={(value) => setEntitlementAction(value as typeof entitlementAction)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="grant">Cấp gói</SelectItem><SelectItem value="replace">Đổi gói</SelectItem><SelectItem value="extend">Gia hạn</SelectItem><SelectItem value="cancel">Hủy gói</SelectItem></SelectContent></Select></FormField><FormField label="Gói mới" description={entitlementAction === 'extend' ? 'Gia hạn giữ nguyên gói hiện tại.' : entitlementAction === 'cancel' ? 'Hủy sẽ đưa account về CinePass.' : undefined}><Select disabled={entitlementAction === 'extend' || entitlementAction === 'cancel'} value={plan} onValueChange={(value) => setPlan(value as typeof plan)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="premium">CinePass Plus</SelectItem><SelectItem value="ultra">CinePass Ultra</SelectItem></SelectContent></Select></FormField><FormField label="Chu kỳ" description={entitlementAction === 'cancel' ? 'Không áp dụng khi hủy gói.' : undefined}><Select disabled={entitlementAction === 'cancel'} value={billingCycle} onValueChange={(value) => setBillingCycle(value as typeof billingCycle)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">1 tháng</SelectItem><SelectItem value="annual">1 năm</SelectItem></SelectContent></Select></FormField></div><div className="mt-5 grid gap-3 border-l-2 border-info bg-info/[0.05] p-4 sm:grid-cols-2"><div><p className="text-xs text-fg-muted">Hiện tại</p><p className="mt-1 font-semibold">{planName(selected.entitlement.plan)} · hết hạn {date(selected.entitlement.expiresAt)}</p></div><div><p className="text-xs text-fg-muted">Sau thao tác</p><p className="mt-1 font-semibold">{entitlementAction === 'cancel' ? 'CinePass · áp dụng ngay' : `${planName(entitlementAction === 'extend' ? selected.entitlement.plan : plan)} · ${billingCycle === 'annual' ? 'thêm 1 năm' : 'thêm 1 tháng'}`}</p></div></div><div className="mt-4 flex justify-end"><Button variant={entitlementAction === 'cancel' ? 'destructive' : 'default'} disabled={busy || reason.trim().length < 3} onClick={() => void mutateEntitlement()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCog className="h-4 w-4" />}{entitlementAction === 'cancel' ? 'Xác nhận hủy gói' : 'Xác nhận thay đổi'}</Button></div></section>}
+      {detailTab === 'plan' && <EntitlementGrantAdminPanel uid={selected.uid} request={request} onProjection={(entitlement) => updateSelected({ ...selected, entitlement })} />}
       {detailTab === 'audit' && <section className="mt-6"><h3 className="font-semibold">Audit gần đây</h3><div className="mt-3 space-y-2">{audits.map((audit) => <div key={audit.id} className="rounded-lg border border-white/[0.06] p-3 text-xs"><div className="flex justify-between gap-3"><span className="font-semibold">{audit.action}</span><span className="text-fg-muted">{date(audit.createdAt)}</span></div><p className="mt-1 text-fg-secondary">{audit.reason}</p></div>)}{!audits.length && <p className="text-sm text-fg-muted">Chưa có audit.</p>}</div></section>}
     </div></DialogContent>}</Dialog>
   </AdminShell>

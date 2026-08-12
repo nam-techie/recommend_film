@@ -7,7 +7,7 @@ import { useEntitlement } from '@/hooks/useEntitlement'
 import { PLAN_DEFINITIONS } from '@/lib/monetization'
 
 const icons = { normal: Sparkles, premium: Zap, ultra: Crown }
-const sourceLabels = { default: 'Gói miễn phí', discount: 'Mã giảm giá', payment: 'Thanh toán', admin_gift: 'Admin cấp tặng' }
+const sourceLabels = { default: 'Gói miễn phí', discount: 'Mã giảm giá', payment: 'Thanh toán', admin_gift: 'Admin cấp tặng', github_star: 'GitHub Star pilot' }
 
 export function AccountPlanCard() {
   const { entitlement, capabilities, loading, error, refresh } = useEntitlement()
