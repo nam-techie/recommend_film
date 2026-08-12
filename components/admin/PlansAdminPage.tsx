@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useAdminStepUp } from '@/components/admin/AdminStepUpDialog'
+import { useAdminReasonDialog } from '@/components/admin/AdminReasonDialog'
 
 type PlanSnapshot = Record<PaidPlan, { current: PlanCatalogEntry; scheduled: PlanPriceVersion | null; history: PlanPriceVersion[] }>
 const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)}đ`
@@ -30,6 +31,7 @@ export function PlansAdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const { approve, dialog: stepUpDialog } = useAdminStepUp()
+  const { askReason, reasonDialog } = useAdminReasonDialog()
 
   const load = useCallback(async () => {
     if (!user) return
@@ -63,7 +65,7 @@ export function PlansAdminPage() {
   }
 
   const cancelScheduled = async (planId: PaidPlan, version: PlanPriceVersion) => {
-    const cancelReason = window.prompt('Nhập lý do hủy lịch giá:', 'Điều chỉnh kế hoạch kinh doanh')?.trim()
+    const cancelReason = await askReason('Hủy lịch giá', 'Version giá đã publish không bị sửa; chỉ lịch tương lai được hủy.', 'Điều chỉnh kế hoạch kinh doanh')
     if (!cancelReason) return
     const body = { action: 'cancel', reason: cancelReason, confirmed: true }
     const approval = await approve({ action: 'plan_version_cancel', targetId: `${planId}:${version.id}`, payload: body, title: 'Hủy lịch giá tương lai', summary: `${planId === 'ultra' ? 'Ultra' : 'Plus'} · lịch ${date(version.effectiveAt)} · ${cancelReason}` })
@@ -92,5 +94,6 @@ export function PlansAdminPage() {
       </div>
     </div></main>
     {stepUpDialog}
+    {reasonDialog}
   </AdminShell>
 }

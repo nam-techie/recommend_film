@@ -15,7 +15,7 @@ import {
   type AffiliateRuntimeRequest,
 } from '@/lib/affiliate'
 import type { AccountPlan } from '@/lib/monetization'
-import { createPendingAudit, finishAudit, validateAuditReason } from '@/lib/server/audit'
+import { createPendingAudit, finishAudit, runAuditedMutation, validateAuditReason } from '@/lib/server/audit'
 import { getFirebaseAdminApp } from '@/lib/server/firebase-admin'
 import { MonetizationError } from '@/lib/server/monetization-error'
 
@@ -119,27 +119,30 @@ export async function updateAffiliateLink(id: string, input: Partial<Pick<Affili
   if (!beforeSnapshot.exists()) throw new MonetizationError('NOT_FOUND', 'Không tìm thấy affiliate link.', 404)
   const before = beforeSnapshot.val() as AffiliateLink
   let failure: MonetizationError | null = null
-  const result = await ref.transaction((current: AffiliateLink | null) => {
-    if (!current) { failure = new MonetizationError('NOT_FOUND', 'Không tìm thấy affiliate link.', 404); return }
-    const next = { ...current }
-    if (current.status === 'archived' && input.status && input.status !== 'archived') { failure = new MonetizationError('ARCHIVED_LINK', 'Link đã lưu trữ không thể kích hoạt lại.', 409); return }
-    if (input.campaignName !== undefined) next.campaignName = cleanText(input.campaignName, 80)
-    if (input.productTitle !== undefined) next.productTitle = cleanText(input.productTitle, 120)
-    if (input.ctaLabel !== undefined) next.ctaLabel = cleanText(input.ctaLabel, 60)
-    if (input.weight !== undefined) next.weight = Number(input.weight)
-    if (input.startsAt !== undefined) next.startsAt = Number(input.startsAt)
-    if (input.endsAt !== undefined) next.endsAt = Number(input.endsAt)
-    if (input.status && ['active', 'paused', 'archived'].includes(input.status)) next.status = input.status
-    if (next.campaignName.length < 3 || next.productTitle.length < 3 || next.ctaLabel.length < 3) { failure = new MonetizationError('INVALID_AFFILIATE_CONTENT', 'Nội dung cần ít nhất 3 ký tự.'); return }
-    if (!Number.isInteger(next.weight) || next.weight < 1 || next.weight > 100) { failure = new MonetizationError('INVALID_WEIGHT', 'Trọng số phải từ 1 đến 100.'); return }
-    if (!Number.isFinite(next.startsAt) || !Number.isFinite(next.endsAt) || next.endsAt <= next.startsAt) { failure = new MonetizationError('INVALID_DATES', 'Ngày kết thúc phải sau ngày bắt đầu.'); return }
-    next.updatedAt = Date.now()
-    return next
-  }, undefined, false)
-  if (!result.committed) throw failure || new MonetizationError('AFFILIATE_UPDATE_FAILED', 'Không thể cập nhật affiliate link.')
-  const after = result.snapshot.val() as AffiliateLink
-  const audit = await createPendingAudit({ action: 'affiliate_link_updated', actorUid: adminUid, targetId: id, reason, before, after })
-  await finishAudit(audit.id, 'succeeded', { after })
+  const { result: after } = await runAuditedMutation(
+    { action: 'affiliate_link_updated', actorUid: adminUid, targetId: id, reason, before },
+    async () => {
+      const result = await ref.transaction((current: AffiliateLink | null) => {
+        if (!current) { failure = new MonetizationError('NOT_FOUND', 'Không tìm thấy affiliate link.', 404); return }
+        const next = { ...current }
+        if (current.status === 'archived' && input.status && input.status !== 'archived') { failure = new MonetizationError('ARCHIVED_LINK', 'Link đã lưu trữ không thể kích hoạt lại.', 409); return }
+        if (input.campaignName !== undefined) next.campaignName = cleanText(input.campaignName, 80)
+        if (input.productTitle !== undefined) next.productTitle = cleanText(input.productTitle, 120)
+        if (input.ctaLabel !== undefined) next.ctaLabel = cleanText(input.ctaLabel, 60)
+        if (input.weight !== undefined) next.weight = Number(input.weight)
+        if (input.startsAt !== undefined) next.startsAt = Number(input.startsAt)
+        if (input.endsAt !== undefined) next.endsAt = Number(input.endsAt)
+        if (input.status && ['active', 'paused', 'archived'].includes(input.status)) next.status = input.status
+        if (next.campaignName.length < 3 || next.productTitle.length < 3 || next.ctaLabel.length < 3) { failure = new MonetizationError('INVALID_AFFILIATE_CONTENT', 'Nội dung cần ít nhất 3 ký tự.'); return }
+        if (!Number.isInteger(next.weight) || next.weight < 1 || next.weight > 100) { failure = new MonetizationError('INVALID_WEIGHT', 'Trọng số phải từ 1 đến 100.'); return }
+        if (!Number.isFinite(next.startsAt) || !Number.isFinite(next.endsAt) || next.endsAt <= next.startsAt) { failure = new MonetizationError('INVALID_DATES', 'Ngày kết thúc phải sau ngày bắt đầu.'); return }
+        next.updatedAt = Date.now()
+        return next
+      }, undefined, false)
+      if (!result.committed) throw failure || new MonetizationError('AFFILIATE_UPDATE_FAILED', 'Không thể cập nhật affiliate link.')
+      return result.snapshot.val() as AffiliateLink
+    },
+  )
   return after
 }
 
@@ -154,10 +157,11 @@ export async function updateAffiliatePolicy(enabled: boolean, reasonValue: strin
     if (!eligible) throw new MonetizationError('AFFILIATE_POOL_EMPTY', 'Cần ít nhất một link đang hoạt động trước khi bật affiliate.', 409)
   }
   const after: AffiliatePolicy = { enabled, updatedAt: Date.now(), updatedBy: adminUid }
-  const audit = await createPendingAudit({ action: enabled ? 'affiliate_enabled' : 'affiliate_disabled', actorUid: adminUid, targetId: 'affiliatePolicy', reason, before, after })
-  await ref.set(after)
-  await finishAudit(audit.id, 'succeeded', { after })
-  return after
+  const { result } = await runAuditedMutation(
+    { action: enabled ? 'affiliate_enabled' : 'affiliate_disabled', actorUid: adminUid, targetId: 'affiliatePolicy', reason, before, after },
+    async () => { await ref.set(after); return after },
+  )
+  return result
 }
 
 interface RuntimeState {
