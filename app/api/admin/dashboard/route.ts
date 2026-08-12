@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { buildMembershipBreakdown, dashboardDemoData, type AdminDashboardSnapshot } from '@/lib/admin-dashboard'
+import { buildMembershipBreakdown, type AdminDashboardSnapshot } from '@/lib/admin-dashboard'
 import { AdminAccessError, readAdminDatabasePath, requireAdmin } from '@/lib/server/firebase-admin'
+import { getAnalyticsOverview } from '@/lib/server/analytics'
+import { analyticsCompletionRate } from '@/lib/analytics'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,9 +62,11 @@ async function loadDiscountSnapshot() {
 export async function GET(request: Request) {
   try {
     const identity = await requireAdmin(request)
-    const [accounts, rooms, discounts] = await Promise.all([loadAccountSnapshot(), loadWatchPartySnapshot(), loadDiscountSnapshot()])
+    const [accounts, rooms, discounts, analytics] = await Promise.all([loadAccountSnapshot(), loadWatchPartySnapshot(), loadDiscountSnapshot(), getAnalyticsOverview('30d')])
+    const analyticsSource = analytics.since ? 'live' as const : 'empty' as const
     const notices = [
-      'Doanh thu, lượt xem và thanh toán đang dùng dữ liệu mẫu để duyệt giao diện.',
+      'Doanh thu và thanh toán tạm thời không khả dụng trong nhánh non-payment.',
+      analytics.since ? `Analytics được thu thập từ ${new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium' }).format(analytics.since)}; không backfill từ watchProgressV2.` : 'Chưa có playback session hợp lệ; dashboard không hiển thị dữ liệu xem giả.',
       ...(accounts.error ? [accounts.error] : []),
       ...(discounts.source === 'unavailable' ? ['Chưa đọc được mã giảm giá từ Firebase Admin.'] : []),
       ...(rooms.source === 'unavailable' ? ['Dịch vụ Xem Chung chưa phản hồi; số phòng tạm hiển thị 0.'] : []),
@@ -72,21 +76,28 @@ export async function GET(request: Request) {
       generatedAt: Date.now(),
       viewer: { uid: identity.uid, email: identity.email || null },
       metrics: {
-        revenueToday: dashboardDemoData.revenueToday,
-        revenueMonth: dashboardDemoData.revenueMonth,
+        revenueToday: 0,
+        revenueMonth: 0,
         totalUsers: accounts.memberships.total,
-        totalViews: dashboardDemoData.totalViews,
+        totalViews: analytics.totals.qualifiedViews,
+        uniqueViewers: analytics.totals.uniqueViewers,
+        watchHours: Math.round(analytics.totals.activeSeconds / 36) / 100,
+        completionRate: analyticsCompletionRate(analytics.totals),
+        concurrentViewers: analytics.concurrentViewers,
+        onlineNow: analytics.onlineNow,
+        peakOnline: analytics.peakOnline,
         activeRooms: rooms.active,
         activeDiscounts: discounts.active,
       },
       sources: {
-        revenue: 'demo', users: accounts.source, views: 'demo', rooms: rooms.source,
-        discounts: discounts.source, payments: 'demo',
+        revenue: 'unavailable', users: accounts.source, views: analyticsSource, rooms: rooms.source,
+        discounts: discounts.source, payments: 'unavailable',
       },
       memberships: accounts.memberships,
-      revenueSeries: [...dashboardDemoData.revenueSeries],
-      popularMovies: [...dashboardDemoData.popularMovies],
-      payments: { ...dashboardDemoData.payments },
+      revenueSeries: [],
+      analyticsSince: analytics.since,
+      popularMovies: analytics.topMovies.slice(0, 5).map((movie) => ({ slug: movie.slug, title: movie.title, genre: movie.genres[0] || 'Chưa phân loại', qualifiedViews: movie.qualifiedViews, watchHours: Math.round(movie.activeSeconds / 36) / 100, completionRate: analyticsCompletionRate(movie) })),
+      payments: { successful: 0, failed: 0, pending: 0 },
       discounts: { active: discounts.active, redemptions: discounts.redemptions, conversionRate: discounts.conversionRate },
       rooms: { active: rooms.active, participants: rooms.participants },
       health: [

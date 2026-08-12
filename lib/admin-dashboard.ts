@@ -1,4 +1,4 @@
-export type DashboardDataSource = 'live' | 'demo' | 'derived' | 'unavailable'
+export type DashboardDataSource = 'live' | 'empty' | 'derived' | 'unavailable'
 
 export interface MembershipBreakdown {
   normal: number
@@ -15,6 +15,12 @@ export interface AdminDashboardSnapshot {
     revenueMonth: number
     totalUsers: number
     totalViews: number
+    uniqueViewers: number
+    watchHours: number
+    completionRate: number
+    concurrentViewers: number
+    onlineNow: number
+    peakOnline: number
     activeRooms: number
     activeDiscounts: number
   }
@@ -28,7 +34,8 @@ export interface AdminDashboardSnapshot {
   }
   memberships: MembershipBreakdown
   revenueSeries: Array<{ label: string; value: number }>
-  popularMovies: Array<{ title: string; genre: string; views: number; growth: number }>
+  analyticsSince: number | null
+  popularMovies: Array<{ slug: string; title: string; genre: string; qualifiedViews: number; watchHours: number; completionRate: number }>
   payments: { successful: number; failed: number; pending: number }
   discounts: { active: number; redemptions: number; conversionRate: number }
   rooms: { active: number; participants: number }
@@ -46,27 +53,3 @@ export function buildMembershipBreakdown(profileUids: string[], entitlementPlans
     return result
   }, { normal: 0, premium: 0, ultra: 0, total: 0 })
 }
-
-export const dashboardDemoData = {
-  revenueToday: 1_248_000,
-  revenueMonth: 28_560_000,
-  totalViews: 12_840,
-  activeDiscounts: 6,
-  revenueSeries: [
-    { label: 'T2', value: 2_800_000 },
-    { label: 'T3', value: 3_450_000 },
-    { label: 'T4', value: 3_180_000 },
-    { label: 'T5', value: 4_720_000 },
-    { label: 'T6', value: 5_100_000 },
-    { label: 'T7', value: 6_450_000 },
-    { label: 'CN', value: 7_280_000 },
-  ],
-  popularMovies: [
-    { title: 'Nghịch Thiên Tà Thần', genre: 'Hoạt hình', views: 4_890, growth: 18 },
-    { title: 'Đấu Phá Thương Khung', genre: 'Hành động', views: 4_120, growth: 12 },
-    { title: 'Tiên Nghịch', genre: 'Phiêu lưu', views: 3_760, growth: 9 },
-    { title: 'Thôn Phệ Tinh Không', genre: 'Khoa học viễn tưởng', views: 3_180, growth: 7 },
-  ],
-  payments: { successful: 184, failed: 11, pending: 8 },
-  discounts: { active: 6, redemptions: 92, conversionRate: 18.4 },
-} as const

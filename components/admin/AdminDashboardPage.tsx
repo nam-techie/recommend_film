@@ -1,18 +1,16 @@
 'use client'
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Activity,
   BadgePercent,
   BarChart3,
-  Bell,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clapperboard,
-  CreditCard,
   Eye,
   EyeOff,
   Film,
@@ -26,8 +24,6 @@ import {
   MessageCircleMore,
   PackageOpen,
   RefreshCw,
-  Search,
-  Settings,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -45,32 +41,38 @@ import { cn } from '@/lib/utils'
 import type { AdminDashboardSnapshot, DashboardDataSource } from '@/lib/admin-dashboard'
 import { auth } from '@/lib/firebase'
 import { TotpMultiFactorGenerator, getMultiFactorResolver, type MultiFactorResolver } from 'firebase/auth'
+import { DataSourceIndicator, EmptyDataNotice } from '@/components/admin/AdminPrimitives'
 
 const formatNumber = new Intl.NumberFormat('vi-VN')
 const formatCurrency = (value: number) => `${formatNumber.format(value)}đ`
 
-const navigation: Array<{ label: string; icon: LucideIcon; href?: string; soon?: boolean }> = [
-  { label: 'Tổng quan', icon: LayoutDashboard, href: '/admin' },
-  { label: 'Người dùng', icon: Users, href: '/admin/users' },
-  { label: 'Gói & giá', icon: PackageOpen, href: '/admin/plans' },
-  { label: 'Mã giảm giá', icon: BadgePercent, href: '/admin/discounts' },
-  { label: 'Shopee Affiliate', icon: Link2, href: '/admin/affiliate' },
-  { label: 'Bảo mật', icon: ShieldCheck, href: '/admin/security' },
-  { label: 'Đơn hàng', icon: CreditCard, soon: true },
-  { label: 'Phim & nội dung', icon: Film, soon: true },
-  { label: 'Cộng đồng', icon: MessageCircleMore, soon: true },
-  { label: 'Cấu hình', icon: Settings, soon: true },
+const navigation: Array<{ label: string; items: Array<{ label: string; icon: LucideIcon; href: string }> }> = [
+  { label: 'Tổng quan', items: [{ label: 'Bảng điều khiển', icon: LayoutDashboard, href: '/admin' }] },
+  { label: 'Nội dung', items: [
+    { label: 'Phim & biên tập', icon: Film, href: '/admin/content' },
+    { label: 'Phân tích nội dung', icon: BarChart3, href: '/admin/analytics' },
+    { label: 'Cộng đồng', icon: MessageCircleMore, href: '/admin/community' },
+  ] },
+  { label: 'Khán giả', items: [{ label: 'Người dùng', icon: Users, href: '/admin/users' }] },
+  { label: 'Kiếm tiền', items: [
+    { label: 'Gói & giá', icon: PackageOpen, href: '/admin/plans' },
+    { label: 'Mã giảm giá', icon: BadgePercent, href: '/admin/discounts' },
+    { label: 'Shopee Affiliate', icon: Link2, href: '/admin/affiliate' },
+  ] },
+  { label: 'Hệ thống', items: [
+    { label: 'Bảo mật', icon: ShieldCheck, href: '/admin/security' },
+  ] },
 ]
 
 function SourceBadge({ source }: { source: DashboardDataSource }) {
-  const labels: Record<DashboardDataSource, string> = { live: 'Dữ liệu thật', demo: 'Dữ liệu mẫu', derived: 'Suy ra', unavailable: 'Chưa kết nối' }
+  const labels: Record<DashboardDataSource, string> = { live: 'Dữ liệu vận hành', empty: 'Chưa có dữ liệu', derived: 'Suy ra', unavailable: 'Chưa kết nối' }
   return <span className={cn(
     'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold',
     source === 'live' && 'border-ok/25 bg-ok/10 text-ok',
-    source === 'demo' && 'border-warn/25 bg-warn/10 text-warn',
+    source === 'empty' && 'border-info/25 bg-info/10 text-info-soft',
     source === 'derived' && 'border-info/25 bg-info/10 text-info-soft',
     source === 'unavailable' && 'border-bad/25 bg-bad/10 text-bad',
-  )}><span className={cn('h-1.5 w-1.5 rounded-full', source === 'live' ? 'bg-ok' : source === 'demo' ? 'bg-warn' : source === 'derived' ? 'bg-info' : 'bg-bad')} />{labels[source]}</span>
+  )}><span className={cn('h-1.5 w-1.5 rounded-full', source === 'live' ? 'bg-ok' : source === 'empty' ? 'bg-info' : source === 'derived' ? 'bg-info' : 'bg-bad')} />{labels[source]}</span>
 }
 
 export function AdminLogin() {
@@ -175,21 +177,27 @@ export function AdminShell({ children, viewer, refreshedAt, refreshing, onRefres
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [displayRefreshedAt, setDisplayRefreshedAt] = useState(refreshedAt)
+  const wasRefreshing = useRef(refreshing)
+  useEffect(() => {
+    if (wasRefreshing.current && !refreshing) setDisplayRefreshedAt(Date.now())
+    wasRefreshing.current = refreshing
+  }, [refreshing])
 
   const sidebar = <>
     <div className="flex h-20 items-center border-b border-white/[0.08] px-4">
       <Link href="/admin" className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-accent"><Clapperboard className="h-5 w-5" /></span>{!collapsed && <span className="min-w-0"><span className="block truncate font-display text-lg font-bold">CineMind</span><span className="block text-xs text-fg-muted">Admin console</span></span>}</Link>
       <button type="button" className="ml-auto hidden h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-white/[0.06] hover:text-fg lg:flex" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}>{collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
     </div>
-    <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Quản trị">
-      {!collapsed && <p className="px-3 pb-2 pt-3 text-xs font-bold uppercase tracking-[0.15em] text-fg-muted">Vận hành</p>}
-      {navigation.map((item) => {
-        const Icon = item.icon
-        const active = item.href === pathname
-        const content = <><Icon className="h-[18px] w-[18px] shrink-0" />{!collapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.soon && <span className="rounded-full bg-white/[0.06] px-2 py-1 text-xs font-semibold text-fg-muted">Sắp có</span>}</>}</>
-        const className = cn('group flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium transition', active ? 'bg-accent/15 text-accent-soft ring-1 ring-inset ring-accent/20' : 'text-fg-secondary hover:bg-white/[0.05] hover:text-fg', item.soon && 'cursor-not-allowed opacity-70')
-        return item.href ? <Link key={item.label} href={item.href} title={collapsed ? item.label : undefined} className={className}>{content}</Link> : <button key={item.label} type="button" disabled title={collapsed ? item.label : undefined} className={className}>{content}</button>
-      })}
+    <nav className="flex-1 space-y-4 overflow-y-auto p-3" aria-label="Quản trị">
+      {navigation.map((group) => <div key={group.label}>
+        {!collapsed && <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-[0.14em] text-fg-muted">{group.label}</p>}
+        <div className="space-y-1">{group.items.map((item) => {
+          const Icon = item.icon
+          const active = item.href === pathname
+          return <Link key={item.label} href={item.href} aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} className={cn('group flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition', active ? 'bg-accent/12 text-accent-soft ring-1 ring-inset ring-accent/20' : 'text-fg-secondary hover:bg-white/[0.05] hover:text-fg')}><Icon className="h-[18px] w-[18px] shrink-0" />{!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}</Link>
+        })}</div>
+      </div>)}
     </nav>
     <div className="border-t border-white/[0.08] p-3">
       <button type="button" onClick={onLogout} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-fg-secondary transition hover:bg-bad/10 hover:text-bad"><LogOut className="h-[18px] w-[18px] shrink-0" />{!collapsed && 'Đăng xuất'}</button>
@@ -202,10 +210,8 @@ export function AdminShell({ children, viewer, refreshedAt, refreshing, onRefres
     <div className={cn('min-w-0 transition-[padding] duration-200', collapsed ? 'lg:pl-[76px]' : 'lg:pl-64')}>
       <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-white/[0.08] bg-bg/85 px-4 backdrop-blur-xl sm:px-6 xl:px-8">
         <button type="button" onClick={() => setMobileOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-fg-secondary lg:hidden" aria-label="Mở menu"><Menu className="h-5 w-5" /></button>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">Trung tâm vận hành</p><p className="hidden text-xs text-fg-muted sm:block">Cập nhật lúc {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(refreshedAt)}</p></div>
-        <label className="relative hidden w-full max-w-xs xl:block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" /><Input aria-label="Tìm kiếm chức năng" placeholder="Tìm trong quản trị..." className="h-10 border-white/10 bg-surface-2 pl-9" disabled /></label>
-        <Button type="button" variant="ghost" size="icon" onClick={onRefresh} disabled={refreshing} aria-label="Làm mới dashboard" className="h-11 w-11 rounded-xl border border-white/[0.08] text-fg-secondary"><RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} /></Button>
-        <button type="button" disabled aria-label="Thông báo" className="relative hidden h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] text-fg-secondary sm:flex"><Bell className="h-4 w-4" /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" /></button>
+        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">Trung tâm vận hành</p><p className="hidden text-xs text-fg-muted sm:block">Tải thành công lúc {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(displayRefreshedAt)}</p></div>
+        {pathname === '/admin' && <Button type="button" variant="ghost" size="icon" onClick={onRefresh} disabled={refreshing} aria-label="Làm mới dashboard" className="h-11 w-11 rounded-xl border border-white/[0.08] text-fg-secondary"><RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} /></Button>}
         <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-surface-1 p-1.5 pr-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15 text-xs font-bold text-accent-soft">AD</span><span className="hidden max-w-40 sm:block"><span className="block truncate text-xs font-semibold">Administrator</span><span className="block truncate text-xs text-fg-muted">{viewer.email || viewer.uid}</span></span></div>
       </header>
       {children}
@@ -225,7 +231,7 @@ function RevenueChart({ items }: { items: AdminDashboardSnapshot['revenueSeries'
   const points = items.map((item, index) => ({ x: 28 + index * (644 / Math.max(items.length - 1, 1)), y: 186 - (item.value / max) * 142, ...item }))
   const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
   const area = `${path} L ${points.at(-1)?.x || 672} 190 L 28 190 Z`
-  return <div className="mt-6 overflow-hidden"><svg viewBox="0 0 700 228" role="img" aria-label="Biểu đồ doanh thu mẫu 7 ngày" className="h-auto w-full min-w-[560px]">
+  return <div className="mt-6 overflow-hidden"><svg viewBox="0 0 700 228" role="img" aria-label="Biểu đồ doanh thu 7 ngày" className="h-auto w-full min-w-[560px]">
     <defs><linearGradient id="adminRevenueArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="hsl(var(--accent))" stopOpacity="0.32" /><stop offset="1" stopColor="hsl(var(--accent))" stopOpacity="0" /></linearGradient></defs>
     {[48, 95, 142, 189].map((y) => <line key={y} x1="28" x2="672" y1={y} y2={y} stroke="hsl(var(--line))" strokeDasharray="4 6" />)}
     <path d={area} fill="url(#adminRevenueArea)" /><path d={path} fill="none" stroke="hsl(var(--accent))" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
@@ -256,18 +262,25 @@ function HealthStatus({ status }: { status: AdminDashboardSnapshot['health'][num
 function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
   const paymentTotal = data.payments.successful + data.payments.failed + data.payments.pending
   const successRate = paymentTotal ? data.payments.successful / paymentTotal * 100 : 0
-  return <div className="relative px-4 py-7 sm:px-6 xl:px-8 xl:py-9">
+  return <main id="admin-main" tabIndex={-1} className="relative px-4 py-7 sm:px-6 xl:px-8 xl:py-9">
     <div className="pointer-events-none absolute right-0 top-0 h-72 w-72 bg-[radial-gradient(circle,hsl(var(--accent)/0.08),transparent_68%)]" />
     <div className="relative mx-auto max-w-shell">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div><div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-accent-soft"><Sparkles className="h-3.5 w-3.5" />Bảng điều khiển</div><h1 className="text-title-1">Chào buổi vận hành.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-fg-secondary">Tín hiệu kinh doanh và hệ thống của CineMind. Mọi số liệu mẫu đều được đánh dấu để bạn không nhầm với dữ liệu thật.</p></div>
+        <div><div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-accent-soft"><Sparkles className="h-3.5 w-3.5" />Bảng điều khiển</div><h1 className="text-title-1">Trung tâm vận hành CineMind</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-fg-secondary">Tín hiệu kinh doanh, nội dung và hệ thống. Production không hiển thị KPI giả khi nguồn dữ liệu chưa sẵn sàng.</p></div>
         <div className="flex items-center gap-2 self-start rounded-xl border border-white/[0.08] bg-surface-1 px-3 py-2 text-xs text-fg-secondary md:self-auto"><Activity className="h-4 w-4 text-ok" /><span>Cập nhật {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(data.generatedAt)}</span></div>
       </div>
 
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="mt-5"><DataSourceIndicator state={data.sources.views === 'live' ? 'real' : data.sources.views === 'unavailable' ? 'unavailable' : 'empty'} since={data.analyticsSince} /></div>
+      <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Doanh thu hôm nay" value={formatCurrency(data.metrics.revenueToday)} detail={`Tháng này ${formatCurrency(data.metrics.revenueMonth)}`} icon={CircleDollarSign} source={data.sources.revenue} accent />
         <MetricCard label="Tổng người dùng" value={formatNumber.format(data.metrics.totalUsers)} detail="Mặc định CinePass khi chưa có gói" icon={Users} source={data.sources.users} />
-        <MetricCard label="Lượt xem" value={formatNumber.format(data.metrics.totalViews)} detail="Tổng lượt xem trong tháng" icon={Eye} source={data.sources.views} />
+        <MetricCard label="Qualified views" value={formatNumber.format(data.metrics.totalViews)} detail="Tối thiểu 30 giây active playback" icon={Eye} source={data.sources.views} />
+        <MetricCard label="Unique viewers" value={formatNumber.format(data.metrics.uniqueViewers)} detail="Một account / phim / ngày" icon={Users} source={data.sources.views} />
+        <MetricCard label="Giờ xem" value={formatNumber.format(data.metrics.watchHours)} detail="Active playback được server chấp nhận" icon={Activity} source={data.sources.views} />
+        <MetricCard label="Tỷ lệ hoàn thành" value={`${data.metrics.completionRate}%`} detail="Qualified view đạt ngưỡng hoàn thành" icon={TrendingUp} source={data.sources.views} />
+        <MetricCard label="Người đang xem" value={formatNumber.format(data.metrics.concurrentViewers)} detail="Heartbeat trong 60 giây gần nhất" icon={Clapperboard} source={data.sources.views} />
+        <MetricCard label="Online hiện tại" value={formatNumber.format(data.metrics.onlineNow)} detail="Unique account có kết nối presence" icon={Users} source={data.sources.views} />
+        <MetricCard label="Peak online" value={formatNumber.format(data.metrics.peakOnline)} detail="Đỉnh unique online trong bucket 5 phút" icon={BarChart3} source={data.sources.views} />
         <MetricCard label="Phòng đang mở" value={formatNumber.format(data.metrics.activeRooms)} detail={`${data.rooms.participants} người đang tham gia`} icon={Clapperboard} source={data.sources.rooms} />
         <MetricCard label="Mã đang chạy" value={formatNumber.format(data.metrics.activeDiscounts)} detail={`${data.discounts.redemptions} lượt sử dụng`} icon={BadgePercent} source={data.sources.discounts} />
         <MetricCard label="Thanh toán thành công" value={`${successRate.toFixed(1)}%`} detail={`${data.payments.failed} giao dịch thất bại`} icon={WalletCards} source={data.sources.payments} />
@@ -275,7 +288,7 @@ function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.75fr)]">
         <section className="min-w-0 overflow-hidden rounded-xl border border-white/[0.08] bg-surface-1 p-5 shadow-card sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold">Xu hướng doanh thu</p><p className="mt-1 text-xs text-fg-muted">7 ngày gần nhất · VND</p></div><div className="flex items-center gap-3"><SourceBadge source={data.sources.revenue} /><span className="flex items-center gap-1 text-xs font-semibold text-ok"><TrendingUp className="h-3.5 w-3.5" />+16,8%</span></div></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold">Xu hướng doanh thu</p><p className="mt-1 text-xs text-fg-muted">7 ngày gần nhất · VND</p></div><SourceBadge source={data.sources.revenue} /></div>
           <div className="overflow-x-auto"><RevenueChart items={data.revenueSeries} /></div>
         </section>
         <MembershipDonut data={data.memberships} source={data.sources.users} />
@@ -284,7 +297,7 @@ function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)_minmax(280px,0.8fr)]">
         <section className="overflow-hidden rounded-xl border border-white/[0.08] bg-surface-1 shadow-card">
           <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4"><div><p className="text-sm font-semibold">Phim nổi bật</p><p className="mt-1 text-xs text-fg-muted">Xếp theo lượt xem</p></div><SourceBadge source={data.sources.views} /></div>
-          <div className="divide-y divide-white/[0.06]">{data.popularMovies.map((movie, index) => <div key={movie.title} className="flex items-center gap-3 px-5 py-3.5"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 font-mono text-xs font-bold text-fg-muted">0{index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{movie.title}</p><p className="mt-0.5 text-xs text-fg-muted">{movie.genre}</p></div><div className="text-right"><p className="font-mono text-sm font-semibold">{formatNumber.format(movie.views)}</p><p className="text-xs text-ok">+{movie.growth}%</p></div></div>)}</div>
+          {data.popularMovies.length ? <div className="divide-y divide-white/[0.06]">{data.popularMovies.map((movie, index) => <Link href={`/admin/analytics?movie=${encodeURIComponent(movie.slug)}`} key={movie.slug} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 py-4 hover:bg-white/[0.035]"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-xs font-bold tabular-nums text-fg-muted">{String(index + 1).padStart(2, '0')}</span><div className="min-w-0"><p className="truncate text-sm font-semibold">{movie.title}</p><p className="mt-1 text-xs text-fg-muted">{movie.genre} · {movie.watchHours} giờ xem</p></div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatNumber.format(movie.qualifiedViews)}</p><p className="text-xs text-fg-muted">{movie.completionRate}% hoàn thành</p></div></Link>)}</div> : <EmptyDataNotice />}
         </section>
 
         <section className="rounded-xl border border-white/[0.08] bg-surface-1 p-5 shadow-card">
@@ -305,7 +318,7 @@ function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
         <aside className="rounded-xl border border-warn/20 bg-warn/[0.06] p-5"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-warn/10 text-warn"><ShieldAlert className="h-5 w-5" /></span><div><p className="text-sm font-semibold">Ghi chú dữ liệu</p><p className="text-xs text-fg-muted">Trước khi vận hành thật</p></div></div><ul className="mt-5 space-y-3">{data.notices.map((notice) => <li key={notice} className="flex gap-2 text-xs leading-5 text-fg-secondary"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />{notice}</li>)}</ul></aside>
       </div>
     </div>
-  </div>
+  </main>
 }
 
 export function AccessDenied({ message, onLogout }: { message: string; onLogout: () => void }) {
