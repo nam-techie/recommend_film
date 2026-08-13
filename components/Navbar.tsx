@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { usePathname } from 'next/navigation'
-import { ChevronDown, Film, Menu, Search, Sparkles, Tv, Users, X } from 'lucide-react'
+import { ChevronDown, Film, Menu, MessageSquarePlus, Search, Sparkles, Tv, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete'
 import { useAuth } from '@/components/auth/AuthProvider'
@@ -12,6 +12,7 @@ import { AuthDialog } from '@/components/auth/AuthDialog'
 import type { Country, Genre } from '@/lib/api'
 
 const AccountControls = dynamic(() => import('@/components/account/AccountControls'), { ssr: false })
+const FeedbackLauncher = dynamic(() => import('@/components/feedback/FeedbackLauncher').then((module) => module.FeedbackLauncher), { ssr: false })
 type DropdownName = 'genres' | 'countries' | null
 
 export default function Navbar({ genres, countries }: { genres: Genre[]; countries: Country[] }) {
@@ -70,17 +71,18 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
 
         <button type="button" className="mobile-search-trigger touch-target items-center justify-center text-fg-secondary" aria-label="Tìm kiếm" aria-expanded={mobileSearchOpen} onClick={() => setMobileSearchOpen((value) => !value)}><Search className="h-5 w-5" /></button>
 
-        <div className="ml-auto hidden items-center gap-1 sm:gap-2 xl:flex">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <Link href="/ai-recommender" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent-soft hover:bg-accent/10 xl:flex"><Sparkles className="h-4 w-4" /> Gợi ý AI</Link>
           <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] xl:flex"><Users className="h-4 w-4" /> Xem chung</Link>
           <Link href="/community" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" /> Cộng đồng</Link>
-          {!authLoading && (user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="sm" className="h-10 rounded-full bg-white px-4 text-slate-950 hover:bg-slate-200">Thành viên</Button></AuthDialog>)}
+          {!authLoading && user && <FeedbackLauncher />}
+          <div className="hidden xl:block">{!authLoading && (user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="sm" className="h-10 rounded-full bg-white px-4 text-slate-950 hover:bg-slate-200">Thành viên</Button></AuthDialog>)}</div>
         </div>
       </div>
 
       {mobileSearchOpen && <div className="border-t border-white/[0.06] px-4 py-3 xl:hidden"><div className="mx-auto max-w-xl"><SearchAutocomplete variant="mobile" initialValue={initialSearch} autoFocus /></div></div>}
 
-      {mobileMenuOpen && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/ai-recommender" icon={Sparkles}>Gợi ý AI</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink></div></nav>}
+      {mobileMenuOpen && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/ai-recommender" icon={Sparkles}>Gợi ý AI</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink>{user && <button type="button" onClick={() => window.dispatchEvent(new Event('cinemind:open-feedback'))} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 text-sm font-medium text-fg-secondary hover:bg-white/[0.06]"><MessageSquarePlus className="h-4 w-4 text-accent-soft" />Góp ý</button>}</div></nav>}
     </header>
   )
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { User } from 'firebase/auth'
-import { Bell, Bookmark, History, LogOut, Settings, UserRound } from 'lucide-react'
+import { Bell, Bookmark, History, LogOut, MessageSquarePlus, Settings, UserRound } from 'lucide-react'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
 import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
@@ -46,6 +46,7 @@ export default function AccountControls({ user, logout }: { user: User; logout: 
               { href: '/account?tab=movies', label: 'Danh sách phim', icon: Bookmark },
             ].map((item) => <Link key={`${item.href}:${item.label}`} href={item.href} role="menuitem" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg"><item.icon className="h-4 w-4" />{item.label}</Link>)}
           </div>
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); window.dispatchEvent(new Event('cinemind:open-feedback')) }} className="flex min-h-10 w-full items-center gap-3 rounded-xl border-t border-white/10 px-3 pt-2 text-sm text-fg-secondary hover:text-fg"><MessageSquarePlus className="h-4 w-4" />Góp ý</button>
           <Link href="/account?tab=notifications" className="flex min-h-10 items-center gap-3 rounded-xl border-t border-white/10 px-3 pt-2 text-sm text-fg-secondary hover:text-fg"><Bell className="h-4 w-4" />Thông báo{account.unreadCount > 0 && <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-xs font-bold">{account.unreadCount}</span>}</Link>
           <button type="button" role="menuitem" onClick={() => void logout()} className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-bad hover:bg-bad/10"><LogOut className="h-4 w-4" />Đăng xuất</button>
         </div>

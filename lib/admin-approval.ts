@@ -13,6 +13,11 @@ export const ADMIN_APPROVAL_ACTIONS = [
   'content_unpublish',
   'community_moderate',
   'analytics_sensitive_read',
+  'entitlement_grant_update',
+  'entitlement_restriction_update',
+  'github_star_claim_review',
+  'github_star_campaign_update',
+  'feedback_update',
 ] as const
 
 export type AdminApprovalAction = typeof ADMIN_APPROVAL_ACTIONS[number]

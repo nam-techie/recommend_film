@@ -83,8 +83,8 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 | Giới hạn tổng lượt mã | `[x] Đã có` | P0 | Có `maxRedemptions` |
 | Mã 100% kích hoạt trực tiếp | `[x] Đã có` | P0 | Không cần cổng thanh toán |
 | Thanh toán mã giảm một phần | `CODE_IMPLEMENTED / LIVE_BLOCKED_BANK_LINK` | P0 | Order snapshot, reserve, SePay/VNPAY và IPN đã có code; UAT/live tạm dừng do liên kết bank/provider |
-| GitHub Star đổi Plus 1 năm | `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` | P1 | Pilot 500 claim hoặc 90 ngày; 50 claim đầu admin duyệt; username + ảnh là đầu vào, webhook/reconciliation repo là bằng chứng vận hành; Unstar có grace 7 ngày |
-| Entitlement grant theo nguồn | `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` | P0 | Phải có trước Star pilot: payment/discount/github_star/admin là các grant riêng, thu hồi đúng grant và không ghi đè quyền hợp lệ |
+| GitHub Star đổi Plus 1 năm | `[~] CODE_IMPLEMENTED / FEATURE_FLAGGED / UAT_PENDING` | P1 | Pilot 500 claim hoặc 90 ngày; 50 claim đầu admin duyệt; username + ảnh là đầu vào, webhook/reconciliation repo là bằng chứng vận hành; Unstar có grace 7 ngày |
+| Entitlement grant theo nguồn | `[~] CODE_IMPLEMENTED / SHADOW_MODE / WRITER_MIGRATION_PENDING` | P0 | Phải có trước Star pilot: payment/discount/github_star/admin là các grant riêng, thu hồi đúng grant và không ghi đè quyền hợp lệ |
 | Tự động gia hạn | `[ ] Chưa có` | P1 | Cần payment provider + webhook |
 | Hoàn tiền | `[ ] Ngoài hệ thống` | P2 | Chưa có workflow admin/API lưu reason, amount, provider reference và evidence; không được gọi là đã kiểm soát trong app |
 | Đối soát settlement/reconciliation | `[ ] Chưa có` | P0 | Chưa có job đối soát provider, phát hiện đơn lệch và workflow xử lý chênh lệch |
@@ -98,7 +98,7 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 
 #### Quyết định pilot đã khóa
 
-- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` Star repo `nam-techie/recommend_film` để nhận CinePass Plus 1 năm.
+- `[~] CODE_IMPLEMENTED / FEATURE_FLAGGED / UAT_PENDING` Star repo `nam-techie/recommend_film` để nhận CinePass Plus 1 năm.
 - Không yêu cầu OAuth từ user. User đăng nhập CineMind, email verified, nhập GitHub username và gửi ảnh chụp trạng thái Star.
 - Ảnh chụp chỉ là evidence hỗ trợ. Trạng thái Star/Unstar vận hành dựa trên repository webhook và reconciliation bằng quyền repo admin/collaborator.
 - Owner đã chấp nhận rủi ro chính sách bên thứ ba. Campaign phải có kill switch cho claim mới, auto-approval và grant mới.
@@ -198,8 +198,8 @@ Trang dự kiến: `/admin/plans`.
 - [ ] Chất lượng video và số thiết bị theo gói.
 - [ ] Guest Pass cho Ultra.
 - [ ] Đo chuyển đổi: miễn phí → Plus → Ultra.
-- [ ] Triển khai entitlement grant ledger trước khi mở Star pilot.
-- [ ] Triển khai Star Plus pilot 500 claim/90 ngày, 50 claim đầu manual review và grace Unstar 7 ngày.
+- [~] Grant ledger, revision, restriction, restore và projection đã có code; còn shadow verification 7 ngày và migration writer discount/payment trước khi bật.
+- [~] Star Plus pilot đã có claim/evidence/webhook/reconciliation/manual queue/grace; còn deploy credential, scheduler, UAT và KPI gate trước auto-approval.
 
 ### Giai đoạn P2 — Tính năng cao cấp
 
@@ -239,22 +239,27 @@ Trang dự kiến: `/admin/plans`.
 
 ### Entitlement Integrity & Admin Fraud Controls
 
-- `[~] Một phần`: admin hiện đã có `replace` để Ultra → Plus và `cancel` để Plus/Ultra → CinePass, kèm MFA, reason và audit before/after.
-- `[ ] Chưa an toàn`: entitlement vẫn là một mutable snapshot; `grant/replace` cùng reset hạn từ hiện tại, không có expected revision, revoke riêng grant, schedule cuối kỳ, fraud restriction hoặc restore.
-- `[ ] P0`: thêm append-only `entitlementGrants`, `entitlementGrantEvents`, projection `entitlements` và `entitlementRestrictions`; migration entitlement cũ thành legacy grant và shadow compare 7 ngày.
-- `[ ] P0`: thao tác thường áp dụng cuối kỳ; cấp nhầm/gian lận mới revoke ngay đúng grant. Paid grant chỉ suspend khi điều tra, không xóa nếu chưa refund/chargeback.
+- `[~] CODE_IMPLEMENTED / SHADOW_MODE`: đã có `entitlementGrantStates`, grant theo nguồn, append-only event, restriction, revision/idempotent transaction, revoke/restore đúng grant và projection tương thích.
+- `[x] Code guard`: admin không thể tự restriction/revoke; paid grant không thể bị action thường xóa; restriction thu hồi Firebase refresh token và yêu cầu Watch Party disconnect.
+- `[~] Admin UI`: hiển thị effective plan, từng grant/source, restriction, preview và destructive step-up. Grant mới có thể xếp sau toàn bộ Plus/Ultra hiện có; Star Plus không hạ Ultra.
+- `[ ] Chưa production-ready`: cần batch backfill, shadow comparison đủ 7 ngày, explicit schedule downgrade/extend-grant UI và migration writer admin/discount/payment về cùng service. `ENTITLEMENT_GRANTS_V2_ENABLED` mặc định tắt; endpoint legacy chỉ bị khóa khi V2 bật.
 
 ### GitHub Star Plus Pilot
 
-- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED`: 500 claim hoặc 90 ngày; 50 claim đầu admin duyệt; webhook + reconciliation; grace Unstar 7 ngày.
-- `[ ] Chưa có`: claim UI, evidence upload, repo webhook, campaign admin queue, grant integration, reconciliation cron, notification và abuse metrics.
-- Plus Star nối sau Plus/Ultra hiện có; không tạo payment order và không downgrade Ultra.
+- `[~] CODE_IMPLEMENTED / KILL_SWITCHED / UAT_PENDING`: đã có claim UI, username→numeric GitHub ID, evidence WebP private, uniqueness UID/GitHub ID, quota reservation, account age 30 ngày và admin queue.
+- `[x] Code path`: webhook HMAC + delivery dedupe, repo ID check, Star/Unstar state, grace 7 ngày, daily reconciliation, revoke/restore đúng grant gốc, notification và campaign controls 500 claim/90 ngày.
+- `[x] Manual gate`: 50 claim đầu luôn manual; server không cho bật auto sớm và không cho bật grant khi Entitlement V2 còn shadow mode.
+- `[ ] Chưa production-ready`: cần cài webhook/token repo thật, Storage bucket, scheduler, smoke UAT, theo dõi ổn định 7 ngày và gate tự động cho mismatch <1%, fraud/reject <5%. Screenshot không phải bằng chứng duy nhất; claim xung đột vẫn cần proof GitHub bio.
+- Plus Star nối sau Plus/Ultra hiện có; không tạo payment order, doanh thu/refund và không downgrade Ultra.
 
 ### User Feedback Inbox
 
-- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED`: nút Góp ý cạnh account control; DOM viewport capture có preview/xóa/fallback text-only.
-- `[ ] Chưa có`: authenticated multipart API, ảnh WebP private trong Firebase Storage, `/admin/feedback`, status/assignee/reply/audit và user history.
-- Chỉ member email verified; tối đa 5 feedback/24 giờ; ảnh xóa 90 ngày sau đóng, metadata giữ 13 tháng.
+- `[~] CODE_IMPLEMENTED / DEPLOY_UAT_PENDING`: có icon cạnh avatar, item trong account/mobile menu, DOM viewport capture, preview/xóa/chụp lại, redaction và fallback text-only.
+- `[x] Server path`: authenticated multipart API, 5 feedback/24 giờ, request ID idempotency, server re-encode WebP, Storage private, text-only fallback, user history/status và notification.
+- `[x] Admin path`: `/admin/feedback` có filter status/category, priority, private preview, internal note, public reply, revision conflict và audit.
+- `[x] Lifecycle code`: xóa ảnh 90 ngày sau đóng, metadata sau 13 tháng; account deletion xóa ảnh/PII và anonymize feedback đã triage.
+- `[ ] Chưa production-ready`: cần cấu hình bucket, deploy Database/Storage rules, scheduler retention và UAT capture trên video/CORS/mobile Safari; assignee/date filter còn cần hoàn thiện.
+- Chỉ member email verified; trang login/checkout/payment/admin/Account Security mặc định text-only.
 ### Community
 
 - [x] Social foundation lõi đã chuyển review/reply/like/follow/report qua server API; profile, friend và activity đã có.
@@ -295,6 +300,7 @@ Thêm các dòng mới ở đầu bảng này sau mỗi lần cập nhật:
 
 | Ngày | Thay đổi | Trạng thái sau thay đổi | Ghi chú |
 |---|---|---|---|
+| 13/08/2026 | Implement Entitlement V2, Star Plus pilot và Feedback Inbox sau kill switch | Code + unit/type verification; chưa provider/deploy UAT | Không thay đổi SePay/VNPAY/order/IPN/Ultra |
 | 12/08/2026 | Khóa Star Plus pilot, Entitlement Integrity và User Feedback Inbox | Thiết kế đã khóa, chưa triển khai | Payment tiếp tục LIVE_BLOCKED_BANK_LINK; không thay đổi provider/order/IPN/Ultra |
 | 12/08/2026 | Audit độ sẵn sàng payment, admin UI, content, analytics và community | Roadmap truth được tách theo code/test/UAT/production | Payment live đang blocked bởi bank link; không mở rộng provider trong workstream UI |
 | 11/08/2026 | Audit trước production và thêm huy hiệu thành viên | `[x]` Code và test tự động đạt | Tài khoản cũ không có entitlement mặc định là CinePass; badge CinePass/Plus/Ultra hiển thị theo entitlement server |

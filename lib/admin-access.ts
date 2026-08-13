@@ -5,7 +5,7 @@ export interface AdminTokenIdentity {
   adminPermissions?: unknown
 }
 
-export const ADMIN_PERMISSIONS = ['content.manage', 'analytics.read', 'analytics.read_sensitive', 'community.moderate', 'support.manage', 'super_admin'] as const
+export const ADMIN_PERMISSIONS = ['content.manage', 'analytics.read', 'analytics.read_sensitive', 'community.moderate', 'support.manage', 'entitlement.manage', 'entitlement.revoke', 'super_admin'] as const
 export type AdminPermission = typeof ADMIN_PERMISSIONS[number]
 
 export function parseAdminUidAllowlist(value = '') {
