@@ -12,10 +12,11 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FormField } from '@/components/admin/AdminPrimitives'
-import type { AdminSensitiveTimelineItem, AdminUserInsights } from '@/lib/admin-user-insights'
+import type { AdminSensitiveTimelineItem, AdminUserInsights, LegacyWatchHistoryItem } from '@/lib/admin-user-insights'
 import { cn } from '@/lib/utils'
 import { useAdminStepUp } from '@/components/admin/AdminStepUpDialog'
 import { EntitlementGrantAdminPanel } from '@/components/admin/EntitlementGrantAdminPanel'
+import { UserAnalyticsActivity } from '@/components/admin/UserAnalyticsActivity'
 
 const date = (value: number | null | undefined) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(value) : '—'
 const planName = (plan: string) => plan === 'ultra' ? 'Ultra' : plan === 'premium' ? 'Plus' : 'CinePass'
@@ -38,6 +39,7 @@ export function UsersAdminPage() {
   const [detailTab, setDetailTab] = useState<'overview' | 'activity' | 'preferences' | 'plan' | 'audit'>('overview')
   const [insights, setInsights] = useState<AdminUserInsights | null>(null)
   const [timeline, setTimeline] = useState<AdminSensitiveTimelineItem[] | null>(null)
+  const [legacyHistory, setLegacyHistory] = useState<LegacyWatchHistoryItem[] | null>(null)
   const { approve, dialog: stepUpDialog } = useAdminStepUp()
 
   const load = useCallback(async (pageCursor: string | null = cursor) => {
@@ -62,7 +64,7 @@ export function UsersAdminPage() {
   }
 
   const openDetail = async (item: AdminUserSummary) => {
-    setSelected(item); setAudits([]); setInsights(null); setTimeline(null); setError(null); setDetailTab('overview')
+    setSelected(item); setAudits([]); setInsights(null); setTimeline(null); setLegacyHistory(null); setError(null); setDetailTab('overview')
     try { const payload = await request<{ user: AdminUserSummary; audits: MonetizationAuditLog[] }>(`/api/admin/users/${encodeURIComponent(item.uid)}`); setSelected(payload.user); setAudits(payload.audits) }
     catch (nextError) { setError(nextError instanceof Error ? nextError.message : 'Không thể tải chi tiết.') }
   }
@@ -82,6 +84,17 @@ export function UsersAdminPage() {
     setBusy(true); setError(null)
     try { const payload = await request<{ items: AdminSensitiveTimelineItem[] }>(`/api/admin/users/${encodeURIComponent(selected.uid)}/timeline`, { method: 'POST', headers: { 'X-Admin-Approval': approval.token }, body: approval.payloadJson }); setTimeline(payload.items) }
     catch (next) { setError(next instanceof Error ? next.message : 'Không thể tải timeline.') }
+    finally { setBusy(false) }
+  }
+
+  const loadLegacyHistory = async () => {
+    if (!selected || reason.trim().length < 3) return
+    const body = { reason, days: 90 }
+    const approval = await approve({ action: 'analytics_sensitive_read', targetId: selected.uid, payload: body, title: 'Mở lịch sử resume cũ', summary: `${selected.email || selected.uid} · 90 ngày · ${reason}` })
+    if (!approval) return
+    setBusy(true); setError(null)
+    try { const payload = await request<{ items: LegacyWatchHistoryItem[] }>(`/api/admin/users/${encodeURIComponent(selected.uid)}/legacy-watch-history`, { method: 'POST', headers: { 'X-Admin-Approval': approval.token }, body: approval.payloadJson }); setLegacyHistory(payload.items) }
+    catch (next) { setError(next instanceof Error ? next.message : 'Không thể tải lịch sử tiếp tục xem cũ.') }
     finally { setBusy(false) }
   }
 
@@ -133,7 +146,7 @@ export function UsersAdminPage() {
       {detailTab === 'overview' && <><div className="mt-6 grid gap-3 sm:grid-cols-2">{[['Email', selected.email || '—'], ['Gói', planName(selected.entitlement.plan)], ['Tạo lúc', date(selected.createdAt)], ['Đăng nhập cuối', date(selected.lastSignInAt)]].map(([label, value]) => <div key={label} className="rounded-lg bg-white/[0.035] p-4"><p className="text-xs text-fg-muted">{label}</p><p className="mt-1 truncate text-sm font-semibold">{value}</p></div>)}</div>
       <div className="mt-6 space-y-2"><Label htmlFor="admin-user-reason">Lý do thao tác</Label><Input id="admin-user-reason" value={reason} onChange={(event) => setReason(event.target.value.slice(0, 240))} className="h-11" /></div>
       <div className="mt-5 flex flex-wrap gap-2"><Button variant={selected.disabled ? 'outline' : 'destructive'} disabled={busy || selected.protectedAdmin} onClick={() => void setDisabled()}>{selected.disabled ? <ShieldCheck className="h-4 w-4" /> : <Ban className="h-4 w-4" />}{selected.disabled ? 'Mở khóa' : 'Khóa tài khoản'}</Button><Button variant="outline" disabled={busy} onClick={() => void revokeSessions()}><KeyRound className="h-4 w-4" />Thu hồi phiên</Button></div></>}
-      {detailTab === 'activity' && <div className="mt-6 border border-white/[0.08] p-5"><h3 className="font-semibold">Hoạt động tổng hợp · 30 ngày</h3>{insights ? <><div className="mt-4 grid gap-3 sm:grid-cols-2">{[['Trạng thái', insights.online ? 'Đang online' : `Offline · ${date(insights.lastSeen)}`], ['Qualified views', String(insights.qualifiedViews)], ['Giờ xem', String(insights.watchHours)], ['Completion', `${insights.completionRate}%`]].map(([label, value]) => <div key={label} className="rounded-md bg-surface-2 p-3"><p className="text-xs text-fg-muted">{label}</p><p className="mt-1 text-sm font-semibold tabular-nums">{value}</p></div>)}</div><div className="mt-5 border-t border-white/[0.08] pt-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="text-sm font-semibold">Timeline tựa phim · dữ liệu nhạy cảm</h4><p className="mt-1 text-xs text-fg-muted">Yêu cầu analytics.read_sensitive, MFA, lý do và audit cho mỗi lần mở.</p></div><Button variant="outline" onClick={() => void loadSensitiveTimeline()} disabled={busy || reason.trim().length < 3}>Mở timeline 90 ngày</Button></div>{timeline && <div className="mt-4 max-h-72 divide-y divide-white/[0.07] overflow-y-auto">{timeline.map((item) => <div key={item.sessionId} className="py-3"><div className="flex justify-between gap-3"><p className="text-sm font-semibold">{item.movieTitle}</p><span className="text-xs tabular-nums text-fg-muted">{Math.round(item.activeSeconds / 60)} phút</span></div><p className="mt-1 text-xs text-fg-muted">{item.episodeName || item.movieSlug} · {date(item.startedAt)} · {item.source === 'watch_party' ? 'Xem chung' : 'Solo'}</p></div>)}{!timeline.length && <p className="py-4 text-sm text-fg-muted">Không có session trong 90 ngày.</p>}</div>}</div></> : <p className="mt-3 text-sm text-fg-muted">Đang tải insights…</p>}</div>}
+      {detailTab === 'activity' && <UserAnalyticsActivity insights={insights} timeline={timeline} legacyHistory={legacyHistory} busy={busy} canOpen={reason.trim().length >= 3} onOpenTimeline={() => void loadSensitiveTimeline()} onOpenLegacy={() => void loadLegacyHistory()} />}
       {detailTab === 'preferences' && <div className="mt-6 border border-white/[0.08] p-5"><h3 className="font-semibold">Sở thích & cá nhân hóa</h3>{insights ? <><p className="mt-2 text-sm text-fg-secondary">{insights.personalizationEnabled ? insights.eligibleForPersonalization ? 'Đã đủ tín hiệu để cá nhân hóa.' : 'Đã bật nhưng chưa đủ 3 phim và 60 phút xem hợp lệ.' : 'Người dùng đã tắt cá nhân hóa.'}</p><div className="mt-4 flex flex-wrap gap-2">{insights.topGenres.map((item) => <span key={item.genre} className="rounded-full border border-white/[0.1] bg-surface-2 px-3 py-2 text-xs">{item.genre} · {Math.round(item.score * 100)}%</span>)}{!insights.topGenres.length && <span className="text-sm text-fg-muted">Cold start dùng favorite genres, watchlist và biên tập.</span>}</div></> : <p className="mt-2 text-sm text-fg-muted">Đang tính user features…</p>}</div>}
       {detailTab === 'plan' && <EntitlementGrantAdminPanel uid={selected.uid} request={request} onProjection={(entitlement) => updateSelected({ ...selected, entitlement })} />}
       {detailTab === 'audit' && <section className="mt-6"><h3 className="font-semibold">Audit gần đây</h3><div className="mt-3 space-y-2">{audits.map((audit) => <div key={audit.id} className="rounded-lg border border-white/[0.06] p-3 text-xs"><div className="flex justify-between gap-3"><span className="font-semibold">{audit.action}</span><span className="text-fg-muted">{date(audit.createdAt)}</span></div><p className="mt-1 text-fg-secondary">{audit.reason}</p></div>)}{!audits.length && <p className="text-sm text-fg-muted">Chưa có audit.</p>}</div></section>}

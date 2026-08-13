@@ -89,6 +89,7 @@ export interface WatchAccessResponse {
     id: string
     affiliate: import('@/lib/affiliate').AffiliateCreative | null
   }
+  playbackGrant: import('@/lib/analytics').PlaybackGrantDescriptor
 }
 
 export interface AccountEntitlement {
