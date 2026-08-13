@@ -1,6 +1,6 @@
 import { User } from 'firebase/auth'
 import { get, push, ref, remove, runTransaction, set, update } from 'firebase/database'
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import {
   AccountNotification,
   AccountSettings,
@@ -43,12 +43,23 @@ export function normalizePublicProfile(profile: PublicProfile): PublicProfile {
     showWatchlist: profile.showWatchlist !== false,
     showActivity: profile.showActivity !== false,
     allowWatchPartyInvites: profile.allowWatchPartyInvites !== false,
+    allowTasteDiscovery: profile.allowTasteDiscovery === true,
   }
 }
 
 function requireDatabase() {
   if (!database) throw new Error('Dịch vụ tài khoản chưa được cấu hình.')
   return database
+}
+
+async function communityRequest<T>(url: string, init: RequestInit): Promise<T> {
+  const currentUser = auth?.currentUser
+  if (!currentUser) throw new Error('Bạn cần đăng nhập để tương tác với cộng đồng.')
+  const token = await currentUser.getIdToken()
+  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers || {}) } })
+  const payload = await response.json().catch(() => ({})) as T & { error?: string }
+  if (!response.ok) throw new Error(payload.error || 'Không thể cập nhật cộng đồng.')
+  return payload
 }
 
 export function suggestedUsername(user: Pick<User, 'uid' | 'displayName' | 'email'>) {
@@ -73,6 +84,7 @@ export function profileFromAuthUser(user: User): PublicProfile {
     showWatchlist: true,
     showActivity: true,
     allowWatchPartyInvites: true,
+    allowTasteDiscovery: false,
   }
 }
 
@@ -101,7 +113,7 @@ export async function ensureAccountProfile(user: User, preferredDisplayName?: st
   await update(ref(db), {
     [`publicProfiles/${user.uid}`]: profile,
     [`usernames/${profile.username}`]: user.uid,
-    [`users/${user.uid}/settings`]: { privacy: DEFAULT_PRIVACY, emailNotifications: true, updatedAt: now },
+    [`users/${user.uid}/settings`]: { privacy: DEFAULT_PRIVACY, emailNotifications: true, personalizationEnabled: true, updatedAt: now },
   })
   return profile
 }
@@ -155,6 +167,7 @@ export async function saveSettings(uid: string, settings: AccountSettings) {
     [`publicProfiles/${uid}/showWatchlist`]: settings.privacy.showWatchlist,
     [`publicProfiles/${uid}/showActivity`]: settings.privacy.showActivity,
     [`publicProfiles/${uid}/allowWatchPartyInvites`]: settings.privacy.allowWatchPartyInvites,
+    [`publicProfiles/${uid}/allowTasteDiscovery`]: settings.privacy.allowTasteDiscovery,
   })
 }
 
@@ -201,48 +214,20 @@ export async function saveReview(profile: PublicProfile, input: Pick<SocialRevie
   const content = input.content.trim().slice(0, 1200)
   if (content.length < 3) throw new Error('Đánh giá cần ít nhất 3 ký tự.')
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 10) throw new Error('Điểm đánh giá phải từ 1 đến 10.')
-  const db = requireDatabase(); const now = Date.now(); const reviewRef = ref(db, `reviews/${input.movieSlug}/${profile.uid}`); const old = await get(reviewRef)
-  const review: SocialReview = {
-    id: `${input.movieSlug}:${profile.uid}`,
-    ...input,
-    content,
-    authorUid: profile.uid,
-    authorName: profile.displayName,
-    authorUsername: profile.username,
-    ...(profile.avatar ? { authorAvatar: profile.avatar } : {}),
-    createdAt: old.val()?.createdAt || now,
-    updatedAt: now,
-  }
-  await set(reviewRef, review)
-  return review
+  return communityRequest<SocialReview>('/api/community/reviews', { method: 'POST', body: JSON.stringify({ ...input, content }) })
 }
 
 export async function deleteReview(uid: string, movieSlug: string) {
-  const db = requireDatabase()
-  await update(ref(db), {
-    [`reviews/${movieSlug}/${uid}`]: null,
-    [`reviewLikes/${movieSlug}/${uid}`]: null,
-    [`reviewReplies/${movieSlug}/${uid}`]: null,
-  })
+  await communityRequest(`/api/community/reviews/${encodeURIComponent(movieSlug)}`, { method: 'DELETE' })
 }
 
 export async function deleteReviewReply(actorUid: string, review: SocialReview, reply: ReviewReply) {
   if (actorUid !== reply.authorUid && actorUid !== review.authorUid) throw new Error('Bạn không có quyền xóa bình luận này.')
-  await remove(ref(requireDatabase(), `reviewReplies/${review.movieSlug}/${review.authorUid}/${reply.id}`))
+  await communityRequest(`/api/community/reviews/${encodeURIComponent(review.movieSlug)}/${encodeURIComponent(review.authorUid)}/replies/${encodeURIComponent(reply.id)}`, { method: 'DELETE' })
 }
 
 export async function toggleFollow(actor: PublicProfile, target: PublicProfile, following: boolean) {
-  const db = requireDatabase()
-  await update(ref(db), {
-    [`following/${actor.uid}/${target.uid}`]: following || null,
-    [`followers/${target.uid}/${actor.uid}`]: following || null,
-  })
-  if (following) {
-    const notificationRef = push(ref(db, `notifications/${target.uid}`))
-    const notification: AccountNotification = { id: notificationRef.key!, type: 'follow', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, ...(actor.avatar ? { actorAvatar: actor.avatar } : {}), read: false, createdAt: Date.now() }
-    await set(notificationRef, notification)
-    await writeActivity(actor.uid, { actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar, type: 'follow', targetUid: target.uid, targetName: target.displayName })
-  }
+  await communityRequest(`/api/community/follow/${encodeURIComponent(target.uid)}`, { method: 'PUT', body: JSON.stringify({ following }) })
 }
 
 const relationshipRecord = (profile: DirectoryProfile): FriendshipRecord => ({ uid: profile.uid, displayName: profile.displayName, username: profile.username, ...(profile.avatar ? { avatar: profile.avatar } : {}), createdAt: Date.now() })
@@ -294,21 +279,11 @@ export async function setUserBlocked(actorUid: string, targetUid: string, blocke
 }
 
 export async function toggleReviewLike(actor: PublicProfile, review: SocialReview, liked: boolean) {
-  const db = requireDatabase(); await set(ref(db, `reviewLikes/${review.movieSlug}/${review.authorUid}/${actor.uid}`), liked || null)
-  if (liked && actor.uid !== review.authorUid) {
-    const notificationRef = push(ref(db, `notifications/${review.authorUid}`))
-    await set(notificationRef, { id: notificationRef.key!, type: 'review_like', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() }).catch(() => undefined)
-  }
+  await communityRequest(`/api/community/reviews/${encodeURIComponent(review.movieSlug)}/${encodeURIComponent(review.authorUid)}/like`, { method: 'PUT', body: JSON.stringify({ liked }) })
 }
 
 export async function addReviewReply(actor: PublicProfile, review: SocialReview, content: string) {
-  const db = requireDatabase(); const replyRef = push(ref(db, `reviewReplies/${review.movieSlug}/${review.authorUid}`)); const reply: ReviewReply = { id: replyRef.key!, authorUid: actor.uid, authorName: actor.displayName, authorUsername: actor.username, ...(actor.avatar ? { authorAvatar: actor.avatar } : {}), content: content.trim().slice(0, 300), createdAt: Date.now() }
-  await set(replyRef, reply)
-  if (actor.uid !== review.authorUid) {
-    const notificationRef = push(ref(db, `notifications/${review.authorUid}`))
-    await set(notificationRef, { id: notificationRef.key!, type: 'review_reply', actorUid: actor.uid, actorName: actor.displayName, actorUsername: actor.username, actorAvatar: actor.avatar || null, movieSlug: review.movieSlug, reviewId: review.id, read: false, createdAt: Date.now() }).catch(() => undefined)
-  }
-  return reply
+  return communityRequest<ReviewReply>(`/api/community/reviews/${encodeURIComponent(review.movieSlug)}/${encodeURIComponent(review.authorUid)}/replies`, { method: 'POST', body: JSON.stringify({ content }) })
 }
 
 export async function deleteAccountData(profile: PublicProfile) {

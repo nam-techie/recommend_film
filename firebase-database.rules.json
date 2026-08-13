@@ -7,10 +7,10 @@
       }
     },
     "publicProfiles": {
-      ".read": true,
       "$uid": {
+        ".read": "data.child('isPublic').val() === true || (auth != null && auth.uid === $uid)",
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['uid','username','displayName','createdAt','updatedAt','isPublic']) && newData.child('uid').val() === $uid && newData.child('username').isString() && newData.child('username').val().matches(/^[a-z0-9_]{3,24}$/) && newData.child('displayName').isString() && newData.child('displayName').val().length <= 40 && (!newData.child('bio').exists() || newData.child('bio').val().length <= 180)"
+        ".validate": "newData.hasChildren(['uid','username','displayName','createdAt','updatedAt','isPublic']) && newData.child('uid').val() === $uid && newData.child('username').isString() && newData.child('username').val().matches(/^[a-z0-9_]{3,24}$/) && newData.child('displayName').isString() && newData.child('displayName').val().length <= 40 && (!newData.child('bio').exists() || newData.child('bio').val().length <= 180) && (!newData.child('allowTasteDiscovery').exists() || newData.child('allowTasteDiscovery').isBoolean())"
       }
     },
     "usernames": {
@@ -27,23 +27,27 @@
       }
     },
     "publicWatchlists": {
-      ".read": true,
-      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+      "$uid": {
+        ".read": "(root.child('publicProfiles').child($uid).child('isPublic').val() === true && root.child('publicProfiles').child($uid).child('showWatchlist').val() === true) || (auth != null && auth.uid === $uid)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     },
     "publicRecent": {
-      ".read": true,
-      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+      "$uid": {
+        ".read": "(root.child('publicProfiles').child($uid).child('isPublic').val() === true && root.child('publicProfiles').child($uid).child('showRecentMovies').val() === true) || (auth != null && auth.uid === $uid)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     },
     "following": {
       ".read": true,
       "$uid": {
-        "$targetUid": { ".write": "auth != null && (auth.uid === $uid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
+        "$targetUid": { ".write": false }
       }
     },
     "followers": {
       ".read": true,
       "$targetUid": {
-        "$followerUid": { ".write": "auth != null && (auth.uid === $followerUid || (!newData.exists() && auth.uid === $targetUid))", ".validate": "!newData.exists() || newData.val() === true" }
+        "$followerUid": { ".write": false }
       }
     },
     "friendRequests": {
@@ -113,8 +117,7 @@
       ".read": true,
       "$movieSlug": {
         "$authorUid": {
-          ".write": "auth != null && auth.uid === $authorUid",
-          ".validate": "!newData.exists() || (newData.hasChildren(['id','movieSlug','movieTitle','authorUid','authorName','authorUsername','rating','content','createdAt','updatedAt']) && newData.child('authorUid').val() === $authorUid && newData.child('movieSlug').val() === $movieSlug && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 10 && newData.child('content').isString() && newData.child('content').val().length >= 3 && newData.child('content').val().length <= 1200)"
+          ".write": false
         }
       }
     },
@@ -122,8 +125,7 @@
       ".read": true,
       "$movieSlug": {
         "$authorUid": {
-          ".write": "auth != null && auth.uid === $authorUid",
-          "$likerUid": { ".write": "auth != null && auth.uid === $likerUid", ".validate": "!newData.exists() || newData.val() === true" }
+          "$likerUid": { ".write": false }
         }
       }
     },
@@ -131,14 +133,13 @@
       ".read": true,
       "$movieSlug": {
         "$reviewAuthorUid": {
-          ".write": "auth != null && auth.uid === $reviewAuthorUid",
-          "$replyId": { ".write": "auth != null && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || data.child('authorUid').val() === auth.uid)", ".validate": "!newData.exists() || (newData.child('content').isString() && newData.child('content').val().length > 0 && newData.child('content').val().length <= 300)" }
+          "$replyId": { ".write": false }
         }
       }
     },
     "activities": {
-      ".read": true,
       "$uid": {
+        ".read": "(root.child('publicProfiles').child($uid).child('isPublic').val() === true && root.child('publicProfiles').child($uid).child('showActivity').val() === true) || (auth != null && auth.uid === $uid)",
         "$activityId": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.child('actorUid').val() === $uid" }
       }
     },
@@ -146,7 +147,7 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$notificationId": {
-          ".write": "auth != null && (auth.uid === $uid || (!data.exists() && newData.child('actorUid').val() === auth.uid && ((newData.child('type').val() === 'friend_request' && root.child('friendRequests').child($uid).child(auth.uid).exists()) || (newData.child('type').val() === 'friend_accepted' && root.child('friendships').child($uid).child(auth.uid).exists()) || (newData.child('type').val() !== 'friend_request' && newData.child('type').val() !== 'friend_accepted'))))",
+          ".write": "auth != null && ((auth.uid === $uid && data.exists() && (!newData.exists() || (newData.child('id').val() === data.child('id').val() && newData.child('type').val() === data.child('type').val() && newData.child('actorUid').val() === data.child('actorUid').val() && newData.child('actorName').val() === data.child('actorName').val() && newData.child('actorUsername').val() === data.child('actorUsername').val() && newData.child('actorAvatar').val() === data.child('actorAvatar').val() && newData.child('movieSlug').val() === data.child('movieSlug').val() && newData.child('movieTitle').val() === data.child('movieTitle').val() && newData.child('reviewId').val() === data.child('reviewId').val() && newData.child('roomId').val() === data.child('roomId').val() && newData.child('expiresAt').val() === data.child('expiresAt').val() && newData.child('inviteId').val() === data.child('inviteId').val() && newData.child('eventId').val() === data.child('eventId').val() && newData.child('title').val() === data.child('title').val() && newData.child('body').val() === data.child('body').val() && newData.child('href').val() === data.child('href').val() && newData.child('severity').val() === data.child('severity').val() && newData.child('plan').val() === data.child('plan').val() && newData.child('code').val() === data.child('code').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('read').val() === true))) || (!data.exists() && newData.child('actorUid').val() === auth.uid && ((newData.child('type').val() === 'friend_request' && root.child('friendRequests').child($uid).child(auth.uid).exists()) || (newData.child('type').val() === 'friend_accepted' && root.child('friendships').child($uid).child(auth.uid).exists()) || newData.child('type').val() === 'follow' || newData.child('type').val() === 'review_like' || newData.child('type').val() === 'review_reply'))) ",
           ".validate": "!newData.exists() || (newData.child('actorUid').isString() && newData.child('type').isString() && newData.child('createdAt').isNumber())"
         }
       }
@@ -154,13 +155,25 @@
     "reports": {
       "$reportId": {
         ".read": false,
-        ".write": "auth != null && !data.exists() && newData.child('reporterUid').val() === auth.uid"
+        ".write": false
       }
     },
     "monetization": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      "auditLogs": { ".indexOn": ["createdAt", "status", "category", "targetUid"] },
+      "transactionalEmailOutbox": { ".indexOn": ["status", "nextAttemptAt"] }
     },
+    "analytics": {
+      ".read": false,
+      ".write": false,
+      "playbackSessions": { ".indexOn": ["uid", "finalized", "lastHeartbeatAt"] }
+    },
+    "personalization": { ".read": false, ".write": false },
+    "content": { ".read": false, ".write": false },
+    "publicContent": { ".read": true, ".write": false },
+    "community": { ".read": false, ".write": false },
+    "publicCommunity": { ".read": true, ".write": false },
     ".read": false,
     ".write": false
   }

@@ -16,6 +16,7 @@ export interface PublicProfile {
   showWatchlist: boolean
   showActivity: boolean
   allowWatchPartyInvites: boolean
+  allowTasteDiscovery: boolean
 }
 
 export type DirectoryProfile = Pick<PublicProfile, 'uid' | 'username' | 'displayName' | 'avatar'>
@@ -26,11 +27,13 @@ export interface AccountPrivacy {
   showWatchlist: boolean
   showActivity: boolean
   allowWatchPartyInvites: boolean
+  allowTasteDiscovery: boolean
 }
 
 export interface AccountSettings {
   privacy: AccountPrivacy
   emailNotifications: boolean
+  personalizationEnabled: boolean
   updatedAt: number
 }
 
@@ -90,10 +93,12 @@ export interface SocialActivity {
   createdAt: number
 }
 
-export interface AccountNotification {
+export type SocialNotificationType = 'follow' | 'friend_request' | 'friend_accepted' | 'review_like' | 'review_reply' | 'watch_party_invite'
+export type SystemNotificationType = 'plan_activated' | 'discount_redeemed' | 'entitlement_changed' | 'account_disabled' | 'account_enabled' | 'sessions_revoked'
+
+interface AccountNotificationBase {
   id: string
   inviteId?: string
-  type: 'follow' | 'friend_request' | 'friend_accepted' | 'review_like' | 'review_reply' | 'watch_party_invite'
   actorUid: string
   actorName: string
   actorUsername?: string
@@ -106,6 +111,23 @@ export interface AccountNotification {
   read: boolean
   createdAt: number
 }
+
+export interface SocialAccountNotification extends AccountNotificationBase {
+  type: SocialNotificationType
+}
+
+export interface SystemAccountNotification extends AccountNotificationBase {
+  type: SystemNotificationType
+  eventId: string
+  title: string
+  body: string
+  href?: string
+  severity: 'info' | 'success' | 'warning' | 'error'
+  plan?: 'premium' | 'ultra'
+  code?: string
+}
+
+export type AccountNotification = SocialAccountNotification | SystemAccountNotification
 
 export interface FriendshipRecord {
   uid: string
@@ -149,4 +171,5 @@ export const DEFAULT_PRIVACY: AccountPrivacy = {
   showWatchlist: true,
   showActivity: true,
   allowWatchPartyInvites: true,
+  allowTasteDiscovery: false,
 }

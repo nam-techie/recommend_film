@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Activity, Ban, Bookmark, CalendarDays, Check, Film, Flag, Heart, Loader2, LockKeyhole, MoreHorizontal, Share2, Star, UserPlus, Users } from 'lucide-react'
-import { get, push, ref, set } from 'firebase/database'
+import { get, ref } from 'firebase/database'
 import { useAccount } from '@/hooks/useAccount'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
@@ -16,7 +16,7 @@ import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
 import { PublicProfile, SocialActivity, SocialReview, WatchlistMovie } from '@/lib/account-types'
 import { getProfileByUsername, toggleFollow } from '@/lib/account-service'
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type { AccountPlan } from '@/lib/monetization'
 
@@ -33,14 +33,21 @@ export function PublicProfilePage({ username }: { username: string }) {
     setLoading(true); const next = await getProfileByUsername(username).catch(() => null)
     if (!next) { setNotFound(true); setLoading(false); return }
     setProfile({ ...next, favoriteGenres: Array.isArray(next.favoriteGenres) ? next.favoriteGenres : [] })
+    const ownTarget = account.profile?.uid === next.uid
+    if (!next.isPublic && !ownTarget) { setLoading(false); return }
     const [followersSnap, followingSnap, recentSnap, watchlistSnap, reviewsSnap, activitySnap, ownFollowingSnap, membership] = await Promise.all([
-      get(ref(database, `followers/${next.uid}`)), get(ref(database, `following/${next.uid}`)), get(ref(database, `publicRecent/${next.uid}`)), get(ref(database, `publicWatchlists/${next.uid}`)), get(ref(database, 'reviews')), get(ref(database, `activities/${next.uid}`)), account.profile ? get(ref(database, `following/${account.profile.uid}/${next.uid}`)) : Promise.resolve(null),
+      get(ref(database, `followers/${next.uid}`)), get(ref(database, `following/${next.uid}`)),
+      next.showRecentMovies || ownTarget ? get(ref(database, `publicRecent/${next.uid}`)) : Promise.resolve(null),
+      next.showWatchlist || ownTarget ? get(ref(database, `publicWatchlists/${next.uid}`)) : Promise.resolve(null),
+      get(ref(database, 'reviews')),
+      next.showActivity || ownTarget ? get(ref(database, `activities/${next.uid}`)) : Promise.resolve(null),
+      account.profile ? get(ref(database, `following/${account.profile.uid}/${next.uid}`)) : Promise.resolve(null),
       fetch(`/api/public/memberships/${encodeURIComponent(next.uid)}`, { cache: 'no-store' })
         .then(async (response) => response.ok ? await response.json() as { plan?: AccountPlan } : null)
         .catch(() => null),
     ])
     setMembershipPlan(membership?.plan === 'normal' || membership?.plan === 'premium' || membership?.plan === 'ultra' ? membership.plan : null)
-    setFollowers(Object.keys(followersSnap.val() || {}).length); setFollowingCount(Object.keys(followingSnap.val() || {}).length); setRecent(Object.values((recentSnap.val() || {}) as Record<string, RecentItem>).sort((a, b) => b.updatedAt - a.updatedAt)); setWatchlist(Object.values((watchlistSnap.val() || {}) as Record<string, WatchlistMovie>).sort((a, b) => b.updatedAt - a.updatedAt)); setActivities(Object.values((activitySnap.val() || {}) as Record<string, SocialActivity>).sort((a, b) => b.createdAt - a.createdAt)); setFollowing(Boolean(ownFollowingSnap?.val()))
+    setFollowers(Object.keys(followersSnap.val() || {}).length); setFollowingCount(Object.keys(followingSnap.val() || {}).length); setRecent(Object.values((recentSnap?.val() || {}) as Record<string, RecentItem>).sort((a, b) => b.updatedAt - a.updatedAt)); setWatchlist(Object.values((watchlistSnap?.val() || {}) as Record<string, WatchlistMovie>).sort((a, b) => b.updatedAt - a.updatedAt)); setActivities(Object.values((activitySnap?.val() || {}) as Record<string, SocialActivity>).sort((a, b) => b.createdAt - a.createdAt)); setFollowing(Boolean(ownFollowingSnap?.val()))
     const allReviews = reviewsSnap.val() || {}; setReviews(Object.values(allReviews).flatMap((movieReviews) => Object.values(movieReviews as Record<string, SocialReview>)).filter((review: SocialReview) => review.authorUid === next.uid).sort((a: SocialReview, b: SocialReview) => b.updatedAt - a.updatedAt))
     setLoading(false)
   }, [account.profile, username])
@@ -79,7 +86,7 @@ export function PublicProfilePage({ username }: { username: string }) {
       setFriendActionError(error instanceof Error ? error.message : 'Không thể cập nhật lời mời kết bạn.')
     } finally { setFriendActionLoading(false) }
   }
-  const report = async (type: 'block' | 'report') => { if (!account.profile || !profile || !database) return; if (type === 'block') await account.blockUser(profile.uid); else { const reportRef = push(ref(database, 'reports')); await set(reportRef, { id: reportRef.key, reporterUid: account.profile.uid, targetUid: profile.uid, reason: 'profile', createdAt: Date.now(), status: 'open' }) } setMenuOpen(false) }
+  const report = async (type: 'block' | 'report') => { if (!account.profile || !profile || !database) return; if (type === 'block') await account.blockUser(profile.uid); else { const currentUser = auth?.currentUser; if (!currentUser) return; const token = await currentUser.getIdToken(); const response = await fetch('/api/community/reports', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ targetType: 'profile', targetId: profile.uid, targetUid: profile.uid, reason: 'profile', details: 'Báo cáo từ hồ sơ công khai.' }) }); if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { error?: string }).error || 'Không thể gửi báo cáo.') } setMenuOpen(false) }
   const share = async () => { await navigator.clipboard.writeText(window.location.href); setCopied(true); window.setTimeout(() => setCopied(false), 1600) }
 
   if (loading) return <main className="flex min-h-[70vh] items-center justify-center bg-[#070912]"><Loader2 className="h-9 w-9 animate-spin text-accent-strong" /></main>

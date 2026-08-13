@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAllowedAdmin, parseAdminUidAllowlist } from '@/lib/admin-access'
+import { adminPermissionsFor, hasAdminPermission, isAllowedAdmin, parseAdminUidAllowlist } from '@/lib/admin-access'
 import { buildMembershipBreakdown } from '@/lib/admin-dashboard'
 
 describe('admin access', () => {
@@ -11,6 +11,12 @@ describe('admin access', () => {
     expect(isAllowedAdmin({ uid: 'owner' }, ['owner'])).toBe(true)
     expect(isAllowedAdmin({ uid: 'other', admin: true }, ['owner'])).toBe(true)
     expect(isAllowedAdmin({ uid: 'other', admin: false }, ['owner'])).toBe(false)
+  })
+
+  it('supports scoped permissions while preserving owner migration access', () => {
+    expect(hasAdminPermission({ uid: 'analyst', adminPermissions: ['analytics.read'] }, [], 'analytics.read')).toBe(true)
+    expect(hasAdminPermission({ uid: 'analyst', adminPermissions: ['analytics.read'] }, [], 'analytics.read_sensitive')).toBe(false)
+    expect(adminPermissionsFor({ uid: 'owner' }, ['owner'])).toContain('super_admin')
   })
 })
 
