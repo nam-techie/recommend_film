@@ -2,7 +2,7 @@
 
 > Tài liệu theo dõi nghiệp vụ. Cập nhật sau mỗi công đoạn; có thể đổi trạng thái, chỉnh quyền lợi hoặc xoá tính năng nếu không còn phù hợp.
 >
-> Cập nhật lần cuối: 11/08/2026
+> Cập nhật lần cuối: 12/08/2026
 
 ## 1. Quy ước trạng thái
 
@@ -10,7 +10,19 @@
 - `[~] Một phần`: Có giao diện hoặc nền tảng, nhưng chưa hoàn chỉnh/chưa giới hạn theo gói.
 - `[ ] Chưa có`: Chưa triển khai.
 - `[?] Cần quyết định`: Chưa chốt nghiệp vụ trước khi code.
+- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED`: Nghiệp vụ đã chốt nhưng chưa có code hoặc chưa được bật vận hành.
 - `Bỏ`: Không triển khai hoặc loại khỏi phạm vi.
+
+### Mức độ sẵn sàng vận hành
+
+Một tính năng chỉ được gọi là production-ready khi đi qua đủ bốn lớp độc lập:
+
+1. `CODE_IMPLEMENTED`: Đã có code trong working tree/nhánh được quản lý.
+2. `AUTOMATED_VERIFIED`: Đã qua test, typecheck và build tại một commit/build xác định.
+3. `PROVIDER_UAT_VERIFIED`: Đã thử nghiệm end-to-end với dịch vụ bên thứ ba liên quan.
+4. `PRODUCTION_READY`: Đã cấu hình, deploy, giám sát và xác minh trên môi trường thật.
+
+Không suy ra production-ready chỉ từ việc test hoặc build thành công.
 
 Mức ưu tiên: `P0` = cần làm trước để vận hành/thu tiền; `P1` = tăng chuyển đổi/giữ chân; `P2` = tính năng cao cấp làm sau khi có dữ liệu.
 
@@ -23,6 +35,12 @@ Mức ưu tiên: `P0` = cần làm trước để vận hành/thu tiền; `P1` =
 | CinePass Ultra | `ultra` | 69.000đ | 690.000đ | Mọi quyền Plus; phòng công khai/link/mật khẩu; tối đa 50 người; voice |
 
 ID nội bộ không đổi để không làm hỏng entitlement và mã giảm giá cũ.
+
+> Định hướng gói ngày 12/08/2026: Plus vẫn giữ giá catalog để người dùng có thể mua bình thường; đồng thời nghiên cứu chương trình cấp Plus 1 năm không cần thanh toán. Ultra giữ nguyên mô hình trả phí và quyền hiện tại.
+>
+> Owner đã quyết định pilot Star GitHub đổi Plus 1 năm và chấp nhận rủi ro chính sách bên thứ ba. Thiết kế bắt buộc có kill switch, manual review giai đoạn đầu, webhook/reconciliation và grant ledger tách khỏi payment; xem Mục 4.
+
+> Giá trong bảng là snapshot tham khảo theo tài liệu ngày 12/08/2026, không phải nguồn sự thật lúc chạy. Pricing, checkout và order phải đọc version catalog đang có hiệu lực; admin có thể thay đổi giá mà không sửa tài liệu này.
 
 ## 3. Bảng chức năng theo gói
 
@@ -44,7 +62,8 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 | Kick/ban thành viên phòng | Không | Host cơ bản | Host + quản trị đầy đủ | `[ ] Chưa có` | P1 | Cần log audit và chống lạm dụng |
 | Đặt lịch phòng | Không | Không | Có | `[ ] Chưa có` | P1 | Tạo phòng theo thời gian và gửi thông báo |
 | Danh sách phim chung/bình chọn | Không | Có | Có nâng cao | `[ ] Chưa có` | P1 | Tạo lý do dùng phòng thường xuyên |
-| AI gợi ý phim | Có bản chung | Có | Có | `[~] Một phần` | P1 | Đã có AI recommender nhưng chưa phân hạn mức |
+| Mood/genre rule-based discovery | Có bản chung | Có | Có | `[~] Một phần` | P1 | Ánh xạ tâm trạng sang thể loại; chưa cá nhân hóa theo hành vi account |
+| AI cá nhân hóa theo account | Fallback chung | Có | Có nâng cao | `[~] Một phần` | P1 | Đã có baseline content-based: cửa sổ 180 ngày, ngưỡng 3 phim/60 phút, genre affinity, reason code, exploration 20%, opt-out/reset; còn thiếu explicit signals, funnel đầy đủ, scoring version và consent rõ ràng |
 | Hạn mức AI theo gói | 3 lượt/ngày | 20 lượt/ngày | Không giới hạn | `[ ] Chưa có` | P1 | Cần đo chi phí API trước khi áp dụng |
 | AI tóm tắt/quiz trong phòng | Không | Không | Có | `[ ] Chưa có` | P2 | Tính năng khác biệt cho Ultra |
 | Chọn chất lượng video | Tự động/giới hạn | Tối đa 1080p | Cao nhất nguồn phim | `[~] Một phần` | P1 | Player có chọn quality nhưng chưa khóa theo gói |
@@ -63,14 +82,46 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 | Mỗi user dùng một mã một lần | `[x] Đã có` | P0 | Có redemption record theo UID |
 | Giới hạn tổng lượt mã | `[x] Đã có` | P0 | Có `maxRedemptions` |
 | Mã 100% kích hoạt trực tiếp | `[x] Đã có` | P0 | Không cần cổng thanh toán |
-| Thanh toán mã giảm một phần | `[ ] Chưa có` | P0 | Chờ SePay/VNPAY/MoMo |
+| Thanh toán mã giảm một phần | `CODE_IMPLEMENTED / LIVE_BLOCKED_BANK_LINK` | P0 | Order snapshot, reserve, SePay/VNPAY và IPN đã có code; UAT/live tạm dừng do liên kết bank/provider |
+| GitHub Star đổi Plus 1 năm | `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` | P1 | Pilot 500 claim hoặc 90 ngày; 50 claim đầu admin duyệt; username + ảnh là đầu vào, webhook/reconciliation repo là bằng chứng vận hành; Unstar có grace 7 ngày |
+| Entitlement grant theo nguồn | `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` | P0 | Phải có trước Star pilot: payment/discount/github_star/admin là các grant riêng, thu hồi đúng grant và không ghi đè quyền hợp lệ |
 | Tự động gia hạn | `[ ] Chưa có` | P1 | Cần payment provider + webhook |
-| Hoàn tiền | `Bỏ tạm thời` | P2 | Chưa làm giai đoạn đầu |
+| Hoàn tiền | `[ ] Ngoài hệ thống` | P2 | Chưa có workflow admin/API lưu reason, amount, provider reference và evidence; không được gọi là đã kiểm soát trong app |
+| Đối soát settlement/reconciliation | `[ ] Chưa có` | P0 | Chưa có job đối soát provider, phát hiện đơn lệch và workflow xử lý chênh lệch |
+| Firebase index cho payment history/orders | `[ ] Chưa deploy đầy đủ` | P0 | Cần index `paymentOrders.createdAt` và `paymentOrdersByUid/$uid/.value`; nếu thiếu, lịch sử đơn hoặc admin orders có thể lỗi 500 |
 | Admin tạo/sửa/tạm dừng mã | `[x] Đã có` | P0 | Đã có trang `/admin/discounts` |
 | Admin chỉnh giá gói | `[x] Đã có` | P0 | Version bất biến tại `/admin/plans` |
 | Admin CRUD Shopee link | `[x] Đã có` | P0 | Kho link và emergency toggle tại `/admin/affiliate` |
 | Theo dõi impression/click affiliate | `[x] Đã có` | P1 | Thống kê idempotent; không tự chuyển hướng người dùng |
 
+### Chuyển hướng Plus 1 năm không cần thanh toán
+
+#### Quyết định pilot đã khóa
+
+- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED` Star repo `nam-techie/recommend_film` để nhận CinePass Plus 1 năm.
+- Không yêu cầu OAuth từ user. User đăng nhập CineMind, email verified, nhập GitHub username và gửi ảnh chụp trạng thái Star.
+- Ảnh chụp chỉ là evidence hỗ trợ. Trạng thái Star/Unstar vận hành dựa trên repository webhook và reconciliation bằng quyền repo admin/collaborator.
+- Owner đã chấp nhận rủi ro chính sách bên thứ ba. Campaign phải có kill switch cho claim mới, auto-approval và grant mới.
+- Pilot dừng khi đạt 500 grant được duyệt hoặc 90 ngày, điều kiện nào đến trước. 50 claim đầu luôn cần admin duyệt.
+
+#### Điều kiện và chống lạm dụng
+
+1. Một CineMind UID và một GitHub numeric user ID chỉ nhận một lần trong campaign; không dùng username làm khóa vì username có thể đổi.
+2. GitHub account phải là `User`, tối thiểu 30 ngày tuổi. Anonymous CineMind account không được claim.
+3. Claim/quota reservation phải atomic, idempotent; pending claim giữ slot tối đa 72 giờ.
+4. Nếu username bị claim bởi UID khác hoặc webhook không đủ chứng minh, admin yêu cầu proof bổ sung bằng mã tạm thời trong GitHub bio.
+5. Grant có source `github_star`, không tạo payment order, doanh thu hoặc refund record.
+6. Đang Plus: grant nối sau hạn Plus. Đang Ultra: grant Plus ở trạng thái scheduled sau Ultra; tuyệt đối không downgrade Ultra.
+
+#### Unstar và reconciliation
+
+- `star.deleted` chuyển claim sang grace 7 ngày và thông báo user.
+- Star lại trong grace thì hủy lịch thu hồi. Hết grace chỉ revoke grant `github_star`, không đụng payment/discount/admin grant khác.
+- Star lại sau khi revoke chỉ khôi phục phần hạn gốc còn lại; không tạo thêm một năm mới.
+- Webhook phải xác minh `X-Hub-Signature-256`, chống replay bằng `X-GitHub-Delivery`, kiểm tra repository ID và sender numeric ID.
+- Cron reconciliation chạy hằng ngày để xử lý missed delivery. Auto-approval chỉ được bật thủ công sau 50 claim nếu webhook ổn định 7 ngày, không có double-grant, mismatch <1% và reject/fraud <5%.
+
+Tài liệu kỹ thuật: [GitHub Star webhook](https://docs.github.com/en/webhooks/webhook-events-and-payloads#star), [xác minh webhook](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), [Starring REST API](https://docs.github.com/en/rest/activity/starring).
 ### Trạng thái P0 phía user sau nghiệm thu 10/08/2026
 
 - [x] Pricing và checkout dùng catalog giá động, `planVersionId` và chặn bán phía server.
@@ -79,9 +130,9 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 - [x] CinePass dùng quota **3 phim khác nhau/ngày và 5 tập khác nhau trong mỗi phim/ngày**; không dùng giới hạn theo giờ.
 - [x] Movie Detail hiển thị quota/reset; Plus và Ultra hiển thị xem không giới hạn.
 - [x] Affiliate cadence: CinePass mỗi phiên hợp lệ, Plus phiên 3/6/9…, Ultra không có; Watch Party không chạy affiliate.
-- [x] Checkout mã 100% kích hoạt entitlement; mã giảm một phần chỉ báo giá cho tới khi có cổng thanh toán.
+- [x] Checkout mã 100% kích hoạt trực tiếp; mã giảm một phần tạo order snapshot và chờ IPN provider.
 - [x] Watch Party resolve lại entitlement khi join, đổi tập, chat, reaction và voice; video hiện tại không bị cắt khi gói hết hạn.
-- [ ] Thanh toán mã giảm một phần, order snapshot, webhook và auto-renew.
+- [~] Order snapshot, discount một phần, SePay/VNPAY IPN và receipt outbox đã có code; `CODE_IMPLEMENTED / LIVE_BLOCKED_BANK_LINK`, chưa xác nhận provider UAT hay production.
 
 ### Trạng thái Admin phục vụ kiểm thử user
 
@@ -122,7 +173,7 @@ Trang dự kiến: `/admin/plans`.
 - [x] Xem bản xem trước trên trang pricing và checkout.
 - [x] Xác nhận hai bước trước khi lưu.
 - [x] Ghi audit log người thay đổi, thời gian, giá cũ và giá mới.
-- [ ] Giá đã tạo trong đơn hàng không bị thay đổi ngược.
+- [x] Giá đã tạo trong đơn hàng không bị thay đổi ngược bằng immutable order snapshot.
 - [x] Người đã mua giữ entitlement đến hết chu kỳ hiện tại.
 
 > Cấu hình nên lưu ở `monetization/plans`, không ghi cứng trong component. Mỗi đơn hàng phải lưu snapshot giá tại thời điểm tạo đơn.
@@ -134,19 +185,21 @@ Trang dự kiến: `/admin/plans`.
 - [x] Tách giá gói khỏi code, tạo `/admin/plans`.
 - [x] Hoàn thiện Shopee Affiliate CRUD.
 - [x] Hoàn thiện quảng cáo/CTA theo gói.
-- [ ] Kết nối SePay QR và webhook xác nhận.
-- [ ] Cho checkout mã giảm một phần tạo đơn thật.
+- [~] Có code SePay Payment Gateway `BANK_TRANSFER` và IPN; live tạm dừng do liên kết bank/provider.
+- [x] Cho checkout mã giảm một phần tạo order thật, reserve lượt và kích hoạt idempotent.
 - [x] Kiểm thử hết hạn/hủy gói và quay về CinePass ở thao tác kế tiếp mà không cắt video hiện tại.
 
 ### Giai đoạn P1 — Tạo lý do nâng Plus/Ultra
 
-- [ ] Cho CinePass tham gia phòng và chat giới hạn.
+- [ ] Thiết kế chính sách chat giới hạn cho CinePass; quyền tham gia phòng ở chế độ chỉ xem đã có.
 - [ ] Co-host, kick/ban và quản lý phòng.
 - [ ] Danh sách phim chung và bình chọn.
 - [ ] Hạn mức AI theo gói.
 - [ ] Chất lượng video và số thiết bị theo gói.
 - [ ] Guest Pass cho Ultra.
 - [ ] Đo chuyển đổi: miễn phí → Plus → Ultra.
+- [ ] Triển khai entitlement grant ledger trước khi mở Star pilot.
+- [ ] Triển khai Star Plus pilot 500 claim/90 ngày, 50 claim đầu manual review và grace Unstar 7 ngày.
 
 ### Giai đoạn P2 — Tính năng cao cấp
 
@@ -167,24 +220,89 @@ Trang dự kiến: `/admin/plans`.
 - Doanh thu subscription so với doanh thu affiliate.
 - Tỷ lệ người dùng rời web sau khi gặp quảng cáo.
 
-## 9. Nhật ký quyết định
+## 9. Workstream sản phẩm ngoài payment
+
+### Admin Design System & UX refresh
+
+- [~] Đã có admin shell, navigation theo nhóm và primitive dùng chung; còn thiếu persistent shell trong `app/admin/layout.tsx` vì từng page vẫn tự mount `AdminShell`.
+- [x] Ở mức code không còn native select/`window.prompt`; User detail dùng Radix Dialog/Select. Còn thiếu nghiệm thu Axe, keyboard-only và screenshot regression toàn bộ admin.
+- [x] Dashboard không còn KPI/phim demo; dùng analytics thật và trạng thái real/no-data/provider unavailable. Cần đổi nhãn bảng analytics từ “Phim nổi bật” thành “Được xem nhiều”.
+- [x] User detail đã có tab Tổng quan, Hoạt động, Sở thích, Gói, Audit; có preview trước/sau và chỉ tải timeline nhạy cảm khi yêu cầu.
+
+### Content Analytics & Personalization
+
+- [x] Đã tách `watchProgressV2` chỉ dùng resume; analytics vận hành dùng playback session riêng và không backfill số liệu giả.
+- [~] Đã có playback session, heartbeat 15 giây, server clock, qualified/completion và rollup ngày/phim/thể loại/account; còn thiếu signed playback grant, tích hợp Watch Party, crash-safe rollup và deploy đủ Firebase index.
+- [~] Admin analytics đã có 7/30/90 ngày, qualified view, unique viewer, watch hours, completion, concurrent viewers, online, peak online, top phim/thể loại; còn thiếu previous-period growth, collection start chính xác và drill-down UI đầy đủ.
+- [~] Editorial collection đã có provider search/snapshot, draft, schedule, immutable published version, archive, rollback, audit, public projection và homepage fallback; còn thiếu reorder/edit UX, metadata stale/refresh, provider state, xử lý projection tự hết hạn và lifecycle/outage tests.
+- [~] Personalization content-based đã có eligibility, 180 ngày, genre affinity, reason code, exploration, opt-out/reset và impression/click; còn thiếu rating/favorite/watchlist/dismiss, qualified/completion event wiring, scoring version/experiment và explicit consent. Chưa dùng LLM.
+
+### Entitlement Integrity & Admin Fraud Controls
+
+- `[~] Một phần`: admin hiện đã có `replace` để Ultra → Plus và `cancel` để Plus/Ultra → CinePass, kèm MFA, reason và audit before/after.
+- `[ ] Chưa an toàn`: entitlement vẫn là một mutable snapshot; `grant/replace` cùng reset hạn từ hiện tại, không có expected revision, revoke riêng grant, schedule cuối kỳ, fraud restriction hoặc restore.
+- `[ ] P0`: thêm append-only `entitlementGrants`, `entitlementGrantEvents`, projection `entitlements` và `entitlementRestrictions`; migration entitlement cũ thành legacy grant và shadow compare 7 ngày.
+- `[ ] P0`: thao tác thường áp dụng cuối kỳ; cấp nhầm/gian lận mới revoke ngay đúng grant. Paid grant chỉ suspend khi điều tra, không xóa nếu chưa refund/chargeback.
+
+### GitHub Star Plus Pilot
+
+- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED`: 500 claim hoặc 90 ngày; 50 claim đầu admin duyệt; webhook + reconciliation; grace Unstar 7 ngày.
+- `[ ] Chưa có`: claim UI, evidence upload, repo webhook, campaign admin queue, grant integration, reconciliation cron, notification và abuse metrics.
+- Plus Star nối sau Plus/Ultra hiện có; không tạo payment order và không downgrade Ultra.
+
+### User Feedback Inbox
+
+- `[ ] DESIGN_LOCKED / NOT_IMPLEMENTED`: nút Góp ý cạnh account control; DOM viewport capture có preview/xóa/fallback text-only.
+- `[ ] Chưa có`: authenticated multipart API, ảnh WebP private trong Firebase Storage, `/admin/feedback`, status/assignee/reply/audit và user history.
+- Chỉ member email verified; tối đa 5 feedback/24 giờ; ảnh xóa 90 ngày sau đóng, metadata giữ 13 tháng.
+### Community
+
+- [x] Social foundation lõi đã chuyển review/reply/like/follow/report qua server API; profile, friend và activity đã có.
+- [~] Đã có `/community` với feed trending/following và khám phá người cùng gu; còn thiếu not-interested, public Watch Party announcement và hoàn thiện thao tác like/reply/follow ngay trong feed.
+- [~] Đã có moderation queue hide/restore/remove/dismiss và audit; chưa có `publicCommunity` projection thật, raw review/reply vẫn có thể public-read, block chưa áp dụng xuyên feed/reply/notification, report chưa snapshot evidence.
+- [ ] Admin content/config cho community.
+
+### Privacy, RBAC và vòng đời dữ liệu
+
+- [~] Đã có permission `content.manage`, `analytics.read`, `analytics.read_sensitive`, `community.moderate`, `support.manage`, `super_admin`; sensitive timeline yêu cầu permission, step-up, reason và audit.
+- [~] Account deletion đã dọn account session, playback session, user features và marker gắn UID; còn thiếu endpoint “xóa lịch sử xem” riêng, reset toàn bộ recommendation events và verification trên rules đã deploy.
+- [ ] Chưa có UI gán role/permission đầy đủ; compatibility path `admin:true` vẫn nhận toàn bộ quyền.
+- [ ] Cần chặn exact recent-title khỏi public profile, chốt explicit personalization consent và chỉ public-read community projection đã moderation.
+
+### Deployment và data integrity — blocker trước beta/production
+
+- [ ] Bổ sung/deploy Firebase index: analytics `startedAt`, payment order `createdAt`, `paymentOrdersByUid/$uid/.value`; fallback full-scan chỉ dùng tương thích tạm thời.
+- [ ] Cấu hình scheduler và `CRON_SECRET` thật cho stale finalize, peak presence, retention và content schedule; repo hiện mới có cron route, chưa có bằng chứng scheduler production.
+- [ ] Sửa analytics rollup thành recoverable/idempotent sau process crash; hiện marker hoàn tất có thể được ghi trước các increment rời rạc.
+- [ ] Nối playback session với signed one-time watch-access grant; không tin movie/title/genre/source do client tự gửi.
+- [ ] Sửa projection content tự loại collection hết `endsAt`, kể cả khi không có scheduled version mới.
+
+## 10. Nhật ký quyết định
 
 | Ngày | Quyết định | Lý do | Người cập nhật |
 |---|---|---|---|
+| 12/08/2026 | Khóa thiết kế pilot Star GitHub đổi Plus 1 năm | Owner chấp nhận rủi ro chính sách; bắt buộc kill switch, manual review 50 claim đầu, webhook/reconciliation và grace 7 ngày | Admin |
+| 12/08/2026 | Chuyển entitlement sang grant theo nguồn trước Star pilot | Cho phép revoke đúng grant gian lận/cấp nhầm mà không phá payment/discount hợp lệ; Ultra không bị downgrade | Admin |
 | 02/08/2026 | Giữ ID nội bộ `normal/premium/ultra` | Tránh hỏng dữ liệu entitlement cũ | Admin |
 | 02/08/2026 | Chưa triển khai hoàn tiền | Ngoài phạm vi giai đoạn đầu | Admin |
 | 02/08/2026 | Ưu tiên giá động, affiliate và thanh toán QR | Đây là nền tảng doanh thu đầu tiên | Admin |
+| 12/08/2026 | Tạm dừng payment live, ưu tiên Admin UX | Liên kết bank/provider chưa hoàn tất; không trộn code UI với fulfillment | Admin |
+| 12/08/2026 | Tách editorial featured khỏi analytics ranking | Nội dung biên tập và nội dung được xem nhiều phục vụ hai quyết định khác nhau | Admin |
 
-## 10. Ghi chú thay đổi
+## 11. Ghi chú thay đổi
 
 Thêm các dòng mới ở đầu bảng này sau mỗi lần cập nhật:
 
 | Ngày | Thay đổi | Trạng thái sau thay đổi | Ghi chú |
 |---|---|---|---|
+| 12/08/2026 | Khóa Star Plus pilot, Entitlement Integrity và User Feedback Inbox | Thiết kế đã khóa, chưa triển khai | Payment tiếp tục LIVE_BLOCKED_BANK_LINK; không thay đổi provider/order/IPN/Ultra |
+| 12/08/2026 | Audit độ sẵn sàng payment, admin UI, content, analytics và community | Roadmap truth được tách theo code/test/UAT/production | Payment live đang blocked bởi bank link; không mở rộng provider trong workstream UI |
 | 11/08/2026 | Audit trước production và thêm huy hiệu thành viên | `[x]` Code và test tự động đạt | Tài khoản cũ không có entitlement mặc định là CinePass; badge CinePass/Plus/Ultra hiển thị theo entitlement server |
 | 10/08/2026 | Hoàn thiện Monetization P0 phía user | `[x]` Code và test tự động đạt | Giá động, entitlement sync, quota UI/server, affiliate cadence/visibility, checkout mã 100%, Watch Party refresh quyền |
 
-## 11. Checklist nghiệm thu ba gói — 10/08/2026
+## 12. Bản ghi nghiệm thu ba gói — snapshot ngày 10/08/2026
+
+> Đây là bằng chứng lịch sử tại snapshot/build ngày 10/08/2026, không phải xác nhận cho working tree hoặc production hiện tại. Mỗi lần nghiệm thu mới phải ghi commit/build, ngày và môi trường riêng.
 
 - [x] Test tự động web: `40/40` đạt (gồm huy hiệu CinePass/Plus/Ultra).
 - [x] Test Watch Party server: `29/29` đạt.
@@ -198,5 +316,5 @@ Thêm các dòng mới ở đầu bảng này sau mỗi lần cập nhật:
 - [x] Catalog current/future/cancelled/fallback và fallback tạm không bán có test.
 - [x] Entitlement cancelled/expired quay về CinePass; Watch Party khóa quyền ở thao tác kế tiếp.
 - [~] Test thủ công end-to-end với ba tài khoản Firebase và link Shopee production vẫn cần chạy trên dữ liệu thật trước khi bật policy production.
-- [ ] Orders, snapshot đơn hàng, webhook, thanh toán một phần và auto-renew chưa triển khai.
-- [ ] Admin nội dung, cộng đồng và cấu hình chưa triển khai.
+- [~] Orders, snapshot, SePay/VNPAY IPN, thanh toán một phần, admin ledger và receipt outbox đã triển khai; refund automation/reconcile job còn thiếu; auto-renew ngoài phạm vi v1.
+- [ ] Tại snapshot 10/08/2026, Admin nội dung/cộng đồng chưa triển khai. Đây chỉ là bằng chứng lịch sử; working tree ngày 12/08 đã có triển khai đáng kể nhưng chưa production-ready, xem Mục 9.
