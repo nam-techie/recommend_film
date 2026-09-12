@@ -2,6 +2,11 @@
 
 import { FormEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
+import CinemaLiveOverlay from '@/components/cinema/CinemaLiveOverlay'
+import { isVipSeat } from '@/lib/cinema-layout'
+import CinemaPartyTools from '@/components/cinema/CinemaPartyTools'
+
 import { useRouter } from 'next/navigation'
 import {
   AudioLines,
@@ -30,6 +35,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { WatchPartyFriendInviteDialog } from '@/components/account/WatchPartyFriendInviteDialog'
+
 import { Badge } from '@/components/ui/badge'
 import { MembershipBadge } from '@/components/monetization/MembershipBadge'
 import { Button } from '@/components/ui/button'
@@ -172,6 +178,8 @@ const ChatPanel = memo(function ChatPanel({
   </div>
 })
 
+const CinemaRoom = dynamic(() => import('@/components/cinema/CinemaRoom'), { ssr: false })
+
 export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?: string }) {
   const router = useRouter()
   const { user, loading: authLoading , signInAsGuest } = useAuth()
@@ -195,6 +203,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [anonymousName, setAnonymousName] = useState(() => createAnonymousName())
   const [password, setPassword] = useState('')
   const [session, setSession] = useState<WatchPartySession | null>(null)
+  const [showCinema, setShowCinema] = useState(true)
+  const [cinemaChatOpen, setCinemaChatOpen] = useState(false)
+
   const [preview, setPreview] = useState<WatchPartyRoomPreview | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [joining, setJoining] = useState(false)
@@ -265,7 +276,12 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, [authLoading, roomId, user])
 
   const party = useWatchParty(normalizedRoomId, session)
-  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled && capabilities.canUseVoice), getVoiceCredentials: party.getVoiceCredentials })
+  const ownCinemaSeat = Object.entries(party.cinema?.seats || {}).find(([, owner]) => owner === session?.member.memberId)?.[0]
+  const canUseVip = accountPlan === 'ultra'
+  const micAllowed = canUseVip && isVipSeat(ownCinemaSeat)
+  const micUnavailableReason = !canUseVip ? 'Cần CinePass Ultra' : !micAllowed ? 'Vào Room 3D và xác nhận ghế VIP để mở mic' : !party.room?.voiceEnabled ? 'Chủ phòng chưa mở voice' : ''
+  const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled), canPublish: micAllowed, authorizeMicrophone: party.authorizeMicrophone, getVoiceCredentials: party.getVoiceCredentials })
+  const chatVisible = showCinema ? cinemaChatOpen : showChat
   const activeEpisode = useMemo(() => party.room?.movie.episodes.find((item) => item.id === party.room?.playback.episodeId) || party.room?.movie.episodes[0], [party.room])
   const analyticsRoomId = party.room?.id || ''
   const analyticsMovieSlug = party.room?.movie.slug || ''
@@ -310,10 +326,10 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   }, [])
 
   useEffect(() => {
-    if (!nearChatEnd || !showChat) return
+    if (!nearChatEnd || !chatVisible) return
     endRef.current?.scrollIntoView({ block: 'end' })
     setUnreadCount(0)
-  }, [nearChatEnd, party.room?.messages.length, showChat])
+  }, [nearChatEnd, party.room?.messages.length, chatVisible, showCinema])
 
   useEffect(() => {
     const latest = party.room?.messages.at(-1)
@@ -321,9 +337,9 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     if (lastMessageIdRef.current === undefined) { lastMessageIdRef.current = latest.id; return }
     if (latest.id === lastMessageIdRef.current) return
     lastMessageIdRef.current = latest.id
-    if (showChat && nearChatEnd) setUnreadCount(0)
+    if (chatVisible && nearChatEnd) setUnreadCount(0)
     else if (latest.memberId !== session?.member.memberId && latest.type !== 'system') setUnreadCount((value) => value + 1)
-  }, [nearChatEnd, party.room?.messages, session?.member.memberId, showChat])
+  }, [nearChatEnd, party.room?.messages, session?.member.memberId, chatVisible])
 
   useEffect(() => {
     const onFullscreenChange = () => { if (!isPseudoFullscreen) setIsFullscreen(document.fullscreenElement === theaterRef.current) }
@@ -462,7 +478,31 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   </div>
   if (!party.room) return <div className="container mx-auto py-20 text-center text-fg"><div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-accent border-t-transparent" /><p>{party.error || 'Đang kết nối phòng…'}</p>{party.error && <Button className="mt-4" onClick={() => { clearWatchPartySession(normalizedRoomId); setSession(null) }}>Tham gia lại</Button>}</div>
 
-  const room = capabilities.canUseVoice ? party.room : { ...party.room, voiceEnabled: false }
+  const room = party.room
+  const cinemaSnapshot = party.cinema
+  const hasCinemaSeat = Object.values(cinemaSnapshot?.seats || {}).includes(session.member.memberId)
+  const cinemaTools = <CinemaPartyTools
+    chatOpen={cinemaChatOpen} unread={unreadCount} userCount={party.userCount}
+    onChat={() => { setCinemaChatOpen(value => !value); setUnreadCount(0); setNearChatEnd(true) }}
+    isHost={party.isHost} connected={party.isConnected} canVoice={capabilities.canUseVoice} micAllowed={micAllowed} voiceEnabled={room.voiceEnabled}
+    micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled}
+    onMic={() => void voice.toggleMic()} onSpeaker={voice.toggleSpeaker} onVoicePermission={() => void toggleVoicePermission()}
+    onCopy={() => void copy()} copied={copied}
+    members={<div className="max-h-80 space-y-1 overflow-y-auto p-2">{members.map((member) => { const voiceMember = voice.participantsById.get(member.memberId); return <div key={member.memberId} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white/[0.04]"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-1.5"><p className="truncate text-sm font-medium">{member.displayName}{member.isAnonymous ? ' · Ẩn danh' : ''}</p>{!member.isAnonymous && <MembershipBadge plan={member.accountPlan || 'normal'} compact />}</div><p className="text-xs text-fg-muted">{!member.connected ? 'Đã rời phòng' : room.voiceEnabled && !voiceMember ? 'Đang kết nối voice…' : 'Đang online'}</p></div>{voice.speakingMemberIds.has(member.memberId) && <span className="flex items-center gap-1 rounded-full bg-ok/15 px-2 py-1 text-xs font-medium text-ok"><AudioLines className="h-3.5 w-3.5" aria-hidden />Đang nói</span>}{voiceMember?.micEnabled ? <Mic className="h-4 w-4 text-ok" aria-label="Mic đang bật" /> : <MicOff className="h-4 w-4 text-fg-muted" aria-label="Mic đang tắt" />}{member.memberId === room.hostMemberId && <span className="rounded-full bg-accent/15 px-2 py-1 text-xs font-semibold text-accent-soft">Host</span>}</div> })}</div>}
+    episodes={<div className="space-y-4">
+      <p className="text-xs text-fg-secondary">{party.isHost ? 'Chọn tập để đổi phim cho cả phòng.' : 'Chủ phòng điều khiển tập đang xem.'}</p>
+      {episodeGroups.map(([server, episodes]) => <div key={server}><h3 className="mb-2 text-sm font-medium text-fg-secondary">{server}</h3><div className="grid grid-cols-3 gap-2">{episodes.map(episode => <Button key={episode.id} size="sm" variant={episode.id === activeEpisode?.id ? 'secondary' : 'outline'} disabled={!party.isHost || !party.isConnected || !episode.linkM3u8 || episode.capability === 'unavailable'} aria-pressed={episode.id === activeEpisode?.id} onClick={() => void party.changeEpisode(episode, { reason: 'episode_list', shouldPlay: room.playback.isPlaying })}>{episode.name}</Button>)}</div></div>)}
+    </div>}
+    more={<div className="space-y-4">
+      <Button variant="outline" size="sm" className="w-full justify-start" disabled={session.member.isAnonymous} onClick={() => setShowFriendInvite(true)}><Users className="h-4 w-4" />{session.member.isAnonymous ? 'Cần tài khoản để mời bạn bè' : 'Mời bạn bè'}</Button>
+      <div><p className="mb-2 text-xs text-fg-secondary">Cảm xúc{!capabilities.canReact && ' · Cần CinePass Plus'}</p><div className="flex justify-between gap-1">{reactions.map(emoji => <button key={emoji} type="button" className="h-10 w-10 rounded-lg text-xl hover:bg-white/10 disabled:opacity-40" disabled={!capabilities.canReact || !party.isConnected} aria-label={`Thả cảm xúc ${emoji}`} onClick={() => void sendReaction(emoji)}>{emoji}</button>)}</div></div>
+    </div>}
+  />
+  const cinemaNotices = <>
+    {(voice.error || voiceControlError || reactionError || party.commandError) && <p role="status">{voice.error || voiceControlError || reactionError || party.commandError}</p>}
+    {voice.audioPlaybackBlocked && room.voiceEnabled && <p role="status">Trình duyệt đang chặn tiếng trò chuyện. <button type="button" onClick={() => void voice.startAudio()}>Bật âm thanh voice</button></p>}
+  </>
+  if (showCinema || !hasCinemaSeat) return <><CinemaRoom onNextEpisode={party.isHost && adjacentEpisodes.next ? () => void party.changeEpisode(adjacentEpisodes.next!, { reason: 'next', shouldPlay: room.playback.isPlaying }) : undefined} onPreviousEpisode={party.isHost && adjacentEpisodes.previous ? () => void party.changeEpisode(adjacentEpisodes.previous!, { reason: 'previous', shouldPlay: room.playback.isPlaying }) : undefined} onShowSeats={() => setCinemaChatOpen(false)} overlays={<WatchPartyFriendInviteDialog open={showFriendInvite} roomId={room.id} movieSlug={room.movie.slug} onClose={() => setShowFriendInvite(false)} />} canUseVip={canUseVip} liveOverlay={<CinemaLiveOverlay messages={room.messages} speakers={speakingMembers} />} headerTools={cinemaTools} sidePanel={cinemaChatOpen ? <ChatPanel onSeekTo={party.isHost && activeEpisode ? (time) => party.sendPlaybackUpdate({ episodeId: activeEpisode.id, currentTime: time, isPlaying: room.playback.isPlaying, action: 'seek' }) : undefined} messages={room.messages} currentMemberId={session.member.memberId} userCount={party.userCount} isConnected={party.isConnected} canChat={capabilities.canChat} sending={sending} message={message} messageError={messageError} nearChatEnd={nearChatEnd} chatListRef={chatListRef} endRef={endRef} onClose={() => setCinemaChatOpen(false)} onMessageChange={setMessage} onSubmit={(event) => void submitMessage(event)} onNearEndChange={(value) => { setNearChatEnd(value); if (value) setUnreadCount(0) }} /> : undefined} notices={cinemaNotices} sceneOverlay={<div className="pointer-events-none absolute inset-0 overflow-hidden" aria-live="polite">{party.reactions.map((reaction, index) => <div key={reaction.id} className="watch-party-reaction absolute bottom-24 text-3xl" style={{ left: `${18 + index * 13 % 64}%` }} title={reaction.displayName}>{reaction.emoji}</div>)}</div>} key={room.id} roomName={room.roomName} movieTitle={room.movie.title} poster={room.movie.poster} media={{ episode: activeEpisode, playback: room.playback, clockOffset: party.clockOffset, isHost: party.isHost, connected: party.isConnected, onPlaybackUpdate: party.sendPlaybackUpdate }} memberId={session.member.memberId} members={Object.values(room.members)} snapshot={cinemaSnapshot} connected={party.isConnected} seatSyncError={party.cinemaError} onRetrySeats={party.retryCinema} canReturn={hasCinemaSeat} onConfirm={party.claimSeat} onEnter={() => setShowCinema(false)} onLeave={async () => { await party.leaveRoom(); setSession(null); setShowCinema(true); router.replace('/watch-party') }} /></>
   const privacyLabel = room.accessMode === 'public' ? 'Công khai' : room.accessMode === 'password' ? 'Có mật khẩu' : 'Chỉ người có link'
   const focusedMode = isFullscreen || isPseudoFullscreen || isTheater
   const chatPanelClass = focusedMode
@@ -479,10 +519,11 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+
         <div role="status" aria-live="polite" className={cn('flex items-center gap-2 rounded-full px-2.5 py-2 text-xs lg:px-3', party.isConnected ? 'bg-fg/[0.06] text-fg-secondary' : 'bg-bad/15 text-bad')}><span className={cn('h-2 w-2 shrink-0 rounded-full', party.isConnected ? 'bg-ok' : 'bg-bad')} /><span className="hidden lg:inline">{party.isConnected ? 'Đã kết nối' : 'Mất kết nối'}</span></div>
-        {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mọi người mở mic'} title={capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép từng thành viên tự mở mic') : 'Voice chỉ dành cho CinePass Ultra'} onClick={() => void toggleVoicePermission()} className={cn('hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 md:inline-flex', room.voiceEnabled && 'bg-ok/10 text-ok')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
-        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} title={!capabilities.canUseVoice ? 'Cần CinePass Ultra' : !room.voiceEnabled ? 'Host chưa mở voice' : voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={() => void voice.toggleMic()} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
-        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={!capabilities.canUseVoice ? 'Cần CinePass Ultra' : voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={voice.toggleSpeaker} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} aria-label={room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép Ultra ở ghế VIP mở mic'} title={capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt mic tất cả và khóa quyền mở mic' : 'Cho phép Ultra đã ngồi ghế VIP mở mic') : 'Voice chỉ dành cho CinePass Ultra'} onClick={() => void toggleVoicePermission()} className={cn('hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 md:inline-flex', room.voiceEnabled && 'bg-ok/10 text-ok')}><Radio className="h-4 w-4" /><span className="hidden xl:inline">{room.voiceEnabled ? 'Tắt mic tất cả' : 'Cho phép mic'}</span></Button>}
+        <Button variant="ghost" size="icon" aria-label={micUnavailableReason || (voice.micEnabled ? 'Tắt microphone' : 'Bật microphone')} title={micUnavailableReason || (voice.micEnabled ? 'Tắt microphone' : 'Bật microphone')} disabled={!room.voiceEnabled || !micAllowed} onClick={() => void voice.toggleMic()} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} title={!room.voiceEnabled ? 'Chủ phòng chưa mở voice' : voice.speakerEnabled ? 'Không nghe giọng nói trong phòng' : 'Nghe lại giọng nói trong phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('hidden h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:inline-flex', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <div className="relative">
           <Button variant="ghost" size="sm" aria-label="Người tham gia" aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)} className="h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10"><Users className="h-4 w-4" /><span>{party.userCount}</span></Button>
           {showMembers && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-white/10 bg-[#111522] shadow-2xl">
@@ -501,12 +542,12 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
     {showRoomControls && <div className="safe-x fixed inset-x-3 top-[4.5rem] z-50 rounded-2xl border border-white/10 bg-[#111522]/98 p-3 shadow-2xl backdrop-blur md:hidden">
       <div className="grid grid-cols-4 gap-2">
-        <Button variant="ghost" size="icon" aria-label={voice.micEnabled ? 'Tắt microphone' : 'Bật microphone'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
-        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} disabled={!room.voiceEnabled || !capabilities.canUseVoice} onClick={voice.toggleSpeaker} className={cn('h-12 w-full rounded-xl', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={micUnavailableReason || (voice.micEnabled ? 'Tắt microphone' : 'Bật microphone')} disabled={!room.voiceEnabled || !micAllowed} onClick={() => void voice.toggleMic()} className={cn('h-12 w-full rounded-xl', voice.micEnabled && 'bg-ok/15 text-ok')}>{voice.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</Button>
+        <Button variant="ghost" size="icon" aria-label={voice.speakerEnabled ? 'Tắt âm thanh phòng' : 'Bật âm thanh phòng'} disabled={!room.voiceEnabled} onClick={voice.toggleSpeaker} className={cn('h-12 w-full rounded-xl', voice.speakerEnabled && room.voiceEnabled && 'bg-info/15 text-info-soft')}>{voice.speakerEnabled ? <Headphones className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
         <Button variant="ghost" size="icon" aria-label="Mời bạn" onClick={() => void copy()} className="h-12 w-full rounded-xl"><Copy className="h-5 w-5" /></Button>
         <Button variant="ghost" size="icon" aria-label="Mở chat" onClick={() => { setShowRoomControls(false); toggleChat() }} className="relative h-12 w-full rounded-xl"><MessageCircle className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-1 top-1 rounded-full bg-accent px-1.5 text-xs font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
       </div>
-      {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} onClick={() => void toggleVoicePermission()} className="mt-2 h-11 w-full justify-start rounded-xl"><Radio className="h-4 w-4" />{capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt voice của cả phòng' : 'Cho phép voice trong phòng') : 'Voice cần CinePass Ultra'}</Button>}
+      {party.isHost && <Button variant="ghost" size="sm" disabled={!capabilities.canUseVoice} onClick={() => void toggleVoicePermission()} className="mt-2 h-11 w-full justify-start rounded-xl"><Radio className="h-4 w-4" />{capabilities.canUseVoice ? (room.voiceEnabled ? 'Tắt voice của cả phòng' : 'Cho phép mic tại ghế VIP') : 'Voice cần CinePass Ultra'}</Button>}
       <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">{reactions.map((emoji) => <button key={emoji} type="button" disabled={!capabilities.canReact} onClick={() => void sendReaction(emoji)} className="touch-target rounded-xl text-xl transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35" aria-label={`Thả cảm xúc ${emoji}`}>{emoji}</button>)}</div>
     </div>}
 
@@ -520,7 +561,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     <main className="mx-auto w-full max-w-[1920px]">
       <div ref={theaterRef} className={cn('relative grid min-w-0 overflow-hidden bg-black', (isPseudoFullscreen || isTheater) && 'watch-party-pseudo-fullscreen', focusedMode ? 'h-[100dvh] grid-cols-1' : showChat ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1')}>
         <section className={cn('relative min-w-0 bg-black', focusedMode && 'h-[100dvh]')}>
-          <SyncedHlsPlayer poster={room.movie.poster} episode={activeEpisode} previousEpisode={adjacentEpisodes.previous} nextEpisode={adjacentEpisodes.next} playback={room.playback} autoNextEnabled={room.playbackPolicy?.autoNext ?? true} commandError={party.commandError} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={focusedMode} chatOpen={showChat} unreadCount={unreadCount} fillContainer={focusedMode} onToggleChat={focusedMode ? undefined : toggleChat} onToggleFullscreen={() => void toggleFullscreen()} onPreviousEpisode={adjacentEpisodes.previous ? () => void party.changeEpisode(adjacentEpisodes.previous!, { reason: 'previous', shouldPlay: room.playback.isPlaying }) : undefined} onNextEpisode={adjacentEpisodes.next ? (reason = 'next') => void party.changeEpisode(adjacentEpisodes.next!, { reason, shouldPlay: reason === 'auto_next' ? true : room.playback.isPlaying }) : undefined} onToggleAutoNext={party.isHost ? () => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true)) : undefined} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onActualPlaying={(position, duration) => void trackPartyPlayback({ action: 'playing', position, duration, isPlaying: true })} onPlaybackEnded={() => void finalizePartyPlayback()} onProgress={(time, duration, reason) => {
+          <SyncedHlsPlayer poster={room.movie.poster} episode={activeEpisode} previousEpisode={adjacentEpisodes.previous} nextEpisode={adjacentEpisodes.next} playback={room.playback} autoNextEnabled={room.playbackPolicy?.autoNext ?? true} commandError={party.commandError} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={focusedMode} chatOpen={showChat} unreadCount={unreadCount} fillContainer={focusedMode} onToggleChat={focusedMode ? undefined : toggleChat} onToggleFullscreen={() => void toggleFullscreen()} onPreviousEpisode={adjacentEpisodes.previous ? () => void party.changeEpisode(adjacentEpisodes.previous!, { reason: 'previous', shouldPlay: room.playback.isPlaying }) : undefined} onNextEpisode={adjacentEpisodes.next ? (reason = 'next') => void party.changeEpisode(adjacentEpisodes.next!, { reason, shouldPlay: reason === 'auto_next' ? true : room.playback.isPlaying }) : undefined} onToggleAutoNext={party.isHost ? () => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true)) : undefined} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} micUnavailableReason={micUnavailableReason} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
             if (!activeEpisode || !Number.isFinite(duration) || duration <= 0) return
             const now = Date.now()
             void trackPartyPlayback({ action: reason === 'pause' ? 'pause' : reason === 'seek' ? 'seek' : 'heartbeat', position: time, duration, isPlaying: reason !== 'pause' })
@@ -539,6 +580,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
 
       {!focusedMode && <div className="safe-x flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#090c14] px-3 py-3 sm:px-5">
         <Button variant="ghost" size="sm" disabled={!party.isHost} title={party.isHost ? 'Tự chuyển sang tập kế tiếp khi tập hiện tại kết thúc' : 'Chỉ host có thể đổi cài đặt này'} onClick={() => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true))} className={cn('rounded-full', (room.playbackPolicy?.autoNext ?? true) && 'bg-accent/15 text-accent-soft')}><Play className="h-4 w-4" />Tự chuyển tập: {(room.playbackPolicy?.autoNext ?? true) ? 'Bật' : 'Tắt'}</Button>
+        <Button variant="outline" size="sm" onClick={() => setShowCinema(true)} className="rounded-full"><Users className="h-4 w-4" />Room 3D</Button>
         <Button variant="ghost" size="sm" onClick={() => { setShowChat(false); setShowRoomControls(false); setIsTheater(true) }} className="rounded-full"><Lightbulb className="h-4 w-4" />Rạp phim</Button>
         <Button variant="ghost" size="sm" disabled={session.member.isAnonymous} title={session.member.isAnonymous ? 'Hãy tham gia lại bằng tài khoản để mời bạn bè' : undefined} onClick={() => setShowFriendInvite(true)} className="rounded-full"><Users className="h-4 w-4" />{session.member.isAnonymous ? 'Cần tài khoản để mời' : 'Mời bạn bè'}</Button>
         <Button variant="ghost" size="sm" onClick={() => setShowEpisodes((value) => !value)} className="rounded-full md:hidden"><Film className="h-4 w-4" />Danh sách tập</Button>

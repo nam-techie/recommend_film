@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { seatCapacity } from './cinema-seats.js'
 import { TrackSource } from 'livekit-server-sdk'
 
 const scrypt = (value, salt) => new Promise((resolve, reject) => crypto.scrypt(value, salt, 64, (error, key) => error ? reject(error) : resolve(key)))
@@ -6,7 +7,7 @@ const scrypt = (value, salt) => new Promise((resolve, reject) => crypto.scrypt(v
 export const WATCH_PARTY_PLAN_CAPABILITIES = {
   normal: { canCreateRoom: false, accessModes: [], maxMembers: 0, canChat: false, canReact: false, canVoice: false },
   premium: { canCreateRoom: true, accessModes: ['link_only'], maxMembers: 8, canChat: true, canReact: true, canVoice: false },
-  ultra: { canCreateRoom: true, accessModes: ['public', 'link_only', 'password'], maxMembers: 50, canChat: true, canReact: true, canVoice: true },
+  ultra: { canCreateRoom: true, accessModes: ['public', 'link_only', 'password'], maxMembers: seatCapacity(), canChat: true, canReact: true, canVoice: true },
 }
 
 export function resolveStoredAccountPlan(entitlement, now = Date.now()) {
@@ -134,8 +135,8 @@ export function applyVoicePermission(room, enabled) {
   return room
 }
 
-export function buildVoiceGrant(roomId) {
-  return { roomJoin: true, room: roomId, canSubscribe: true, canPublish: true, canPublishData: false, canPublishSources: [TrackSource.MICROPHONE] }
+export function buildVoiceGrant(roomId, canPublish = false) {
+  return { roomJoin: true, room: roomId, canSubscribe: true, canPublish, canPublishData: false, canPublishSources: [TrackSource.MICROPHONE] }
 }
 
 export function findEligibleInvitingMember(room, uid) {

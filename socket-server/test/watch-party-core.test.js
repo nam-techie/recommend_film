@@ -110,7 +110,7 @@ test('voice permission remains authoritative room state without duplicating medi
 })
 
 test('LiveKit grant is scoped to microphone publishing and room subscription', () => {
-  assert.deepEqual(buildVoiceGrant('ABC123'), {
+  assert.deepEqual(buildVoiceGrant('ABC123', true), {
     roomJoin: true,
     room: 'ABC123',
     canSubscribe: true,
@@ -122,7 +122,7 @@ test('LiveKit grant is scoped to microphone publishing and room subscription', (
 
 test('LiveKit voice grant can be serialized into a participant JWT', async () => {
   const token = new AccessToken('test-api-key', 'test-api-secret-at-least-32-characters', { identity: 'member_test', name: 'Test Member', ttl: '10m' })
-  token.addGrant(buildVoiceGrant('ABC123'))
+  token.addGrant(buildVoiceGrant('ABC123', true))
   const jwt = await token.toJwt()
   assert.equal(jwt.split('.').length, 3)
 })
@@ -153,4 +153,6 @@ test('fresh entitlement resolution downgrades cancelled or expired members befor
   assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.canChat, true)
   assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.canVoice, false)
   assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.ultra.canVoice, true)
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.ultra.maxMembers, 36)
+  assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.maxMembers, 8)
 })

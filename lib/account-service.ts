@@ -120,8 +120,12 @@ export async function ensureAccountProfile(user: User, preferredDisplayName?: st
 
 export async function usernameAvailable(username: string, currentUid?: string) {
   if (!usernameIsValid(username)) return false
-  const snapshot = await get(ref(requireDatabase(), `usernames/${username}`))
-  return !snapshot.exists() || snapshot.val() === currentUid
+  if (!auth?.currentUser || !currentUid) return false
+  const token = await auth.currentUser.getIdToken()
+  const response = await fetch(`/api/public/profiles/lookup?username=${encodeURIComponent(username)}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+  if (!response.ok) return false
+  const payload = await response.json() as { profile?: PublicProfile | null }
+  return !payload.profile || payload.profile.uid === currentUid
 }
 
 export async function savePublicProfile(user: User, previous: PublicProfile, next: Pick<PublicProfile, 'displayName' | 'username' | 'avatar' | 'cover' | 'bio' | 'favoriteGenres' | 'isPublic'>) {
@@ -151,11 +155,12 @@ export async function savePublicProfile(user: User, previous: PublicProfile, nex
 }
 
 export async function getProfileByUsername(username: string) {
-  const db = requireDatabase()
-  const uidSnapshot = await get(ref(db, `usernames/${normalizeUsername(username)}`))
-  if (!uidSnapshot.exists()) return null
-  const profileSnapshot = await get(ref(db, `publicProfiles/${uidSnapshot.val()}`))
-  return profileSnapshot.exists() ? normalizePublicProfile(profileSnapshot.val() as PublicProfile) : null
+  const currentUser = auth?.currentUser
+  const token = currentUser ? await currentUser.getIdToken() : null
+  const response = await fetch(`/api/public/profiles/${encodeURIComponent(normalizeUsername(username))}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined, cache: 'no-store' })
+  if (!response.ok) return null
+  const payload = await response.json() as { private?: boolean; profile?: PublicProfile }
+  return payload.private ? null : payload.profile ? normalizePublicProfile(payload.profile) : null
 }
 
 export async function saveSettings(uid: string, settings: AccountSettings) {

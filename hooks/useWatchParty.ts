@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client'
 import { CreateRoomPayload, PlaybackIntent, WatchPartyEpisode, WatchPartyEpisodeChangeReason, WatchPartyMessage, WatchPartyReaction, WatchPartyRoom, WatchPartyRoomPreview, WatchPartySession } from '@/lib/watch-party-types'
 import { estimateClockOffset, makeEpisodeKey } from '@/lib/watch-sync'
 import { auth } from '@/lib/firebase'
+import type { CinemaSeatSnapshot } from '@/lib/cinema-layout'
 
 const DEV_URL = 'http://localhost:4001'
 const normalizeServiceUrl = (value: string) => {
@@ -69,12 +70,33 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
   const [commandError, setCommandError] = useState<string | null>(null)
   const [expiryWarningAt, setExpiryWarningAt] = useState<number | null>(null)
   const [reactions, setReactions] = useState<WatchPartyReaction[]>([])
+  const [cinema, setCinema] = useState<CinemaSeatSnapshot | null>(null)
+  const [cinemaError, setCinemaError] = useState<string | null>(null)
+  const cinemaSyncRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     if (!roomId || !session?.roomToken || !socketUrl()) return undefined
     let socket: Socket | null = null
+    setCinema(null); setCinemaError(null)
     let active = true; const reactionTimers = new Set<number>()
-    const applyRoom = (next: WatchPartyRoom) => { if (active) setRoom((current) => !current || next.playback.revision >= current.playback.revision ? next : current) }
+    let seatsSyncing = false
+    const applyCinema = (snapshot: CinemaSeatSnapshot) => {
+      if (!active || !snapshot || !Number.isFinite(snapshot.revision) || !snapshot.seats) return
+      setCinema(current => !current || snapshot.revision >= current.revision ? snapshot : current)
+      setCinemaError(null)
+    }
+    const syncCinema = () => {
+      if (!active || !socket?.connected || seatsSyncing) return
+      seatsSyncing = true
+      socket.timeout(5000).emit('cinema:sync', {}, (timeout: Error | null, result?: { ok: boolean; snapshot?: CinemaSeatSnapshot }) => {
+        seatsSyncing = false
+        if (!active) return
+        if (!timeout && result?.ok && result.snapshot) applyCinema(result.snapshot)
+        else setCinemaError('Chưa đồng bộ được ghế với máy chủ. Hãy thử kết nối lại sơ đồ ghế.')
+      })
+    }
+    cinemaSyncRef.current = syncCinema
+    const applyRoom = (next: WatchPartyRoom) => { if (active) { setRoom((current) => !current || next.playback.revision >= current.playback.revision ? next : current); syncCinema() } }
     const syncClock = async () => {
       const samples: Array<{ offset: number; roundTrip: number }> = []
       for (let index = 0; index < 5 && active && socket?.connected; index += 1) {
@@ -85,7 +107,7 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
       }
       if (active && samples.length) setClockOffset(estimateClockOffset(samples))
     }
-    const onConnect = () => { if (active) { setIsConnected(true); setError(null); socket?.emit('room:resume'); syncClock() } }
+    const onConnect = () => { if (active) { setIsConnected(true); setError(null); socket?.emit('room:resume'); syncCinema(); syncClock() } }
     const onDisconnect = () => { if (active) setIsConnected(false) }
     const onConnectError = (next: Error) => { if (active) setError(next.message === 'UNAUTHORIZED' ? 'Phiên phòng đã hết hạn. Vui lòng tham gia lại.' : 'Không thể kết nối phòng.') }
     const onPlayback = (playback: WatchPartyRoom['playback']) => { if (active) setRoom((current) => current && playback.revision > current.playback.revision ? { ...current, playback } : current) }
@@ -101,19 +123,20 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     const onExpiryWarning = ({ expiresAt }: { expiresAt: number }) => { if (active) setExpiryWarningAt(expiresAt) }
     const onWatchBlocked = ({ error: message }: { error?: string }) => { if (active) { clearWatchPartySession(roomId); setRoom(null); setError(message || 'Bạn đã đạt giới hạn xem của gói CinePass hôm nay.') } }
     const onClosed = ({ reason }: { reason?: string } = {}) => { if (active) { clearWatchPartySession(roomId); setRoom(null); setError(reason === 'empty_timeout' ? 'Phòng đã tự đóng vì không có người xem trong 5 phút.' : reason === 'hard_expired' ? 'Phòng đã hết thời gian hoạt động tối đa.' : 'Phòng đã được host kết thúc.') } }
-    const heartbeat = window.setInterval(() => { socket?.emit('heartbeat:user'); syncClock() }, 30_000)
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket?.emit('room:resume'); syncClock() } }
+    const heartbeat = window.setInterval(() => { socket?.emit('heartbeat:user'); syncCinema(); syncClock() }, 30_000)
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') { socket?.emit('room:resume'); syncCinema(); syncClock() } }
     void auth?.currentUser?.getIdToken().then((firebaseIdToken) => {
       if (!active) return
       socket = io(socketUrl(), { auth: { roomToken: session.roomToken, firebaseIdToken }, transports: ['websocket', 'polling'] }); socketRef.current = socket
       socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('room:snapshot', applyRoom)
+      socket.on('cinema:seats', applyCinema)
       socket.on('playback:sync', onPlayback); socket.on('episode:sync', onEpisode); socket.on('host:reconnecting', onHostWaiting); socket.on('host:changed', onHostChanged)
       socket.on('room:member_joined', onJoined); socket.on('room:member_left', onLeft); socket.on('chat:new', onChat); socket.on('reaction:new', onReaction); socket.on('room:closed', onClosed)
       socket.on('voice:permission_changed', onVoicePermission); socket.on('room:policy_changed', onPolicy); socket.on('room:expiry_warning', onExpiryWarning); socket.on('watch:blocked', onWatchBlocked); socket.on('account:disabled', () => onClosed({ reason: 'account_disabled' }))
     }).catch(() => { if (active) setError('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.') })
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
-      active = false; document.removeEventListener('visibilitychange', onVisibilityChange); window.clearInterval(heartbeat); reactionTimers.forEach((timer) => window.clearTimeout(timer))
+      active = false; cinemaSyncRef.current = () => {}; document.removeEventListener('visibilitychange', onVisibilityChange); window.clearInterval(heartbeat); reactionTimers.forEach((timer) => window.clearTimeout(timer))
       socket?.removeAllListeners(); if (socket?.connected) socket.disconnect(); if (socketRef.current === socket) socketRef.current = null
     }
   }, [roomId, session?.roomToken])
@@ -184,6 +207,23 @@ export function useWatchParty(roomId: string, session: WatchPartySession | null)
     if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }
     socket.timeout(5000).emit('room:close', (timeoutError: Error | null, ack: { ok: boolean; code?: string }) => { if (!timeoutError && ack?.ok) clearWatchPartySession(roomId); resolve(timeoutError ? { ok: false, code: 'TIMEOUT' } : ack) })
   }), [roomId])
+  const claimSeat = useCallback((seatId: string) => new Promise<{ ok: boolean; code?: string }>((resolve) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { resolve({ ok: false, code: 'DISCONNECTED' }); return }
+    socket.timeout(5000).emit('cinema:claim', { seatId }, (error: Error | null, result: { ok: boolean; code?: string; snapshot?: CinemaSeatSnapshot }) => {
+      if (!error && result?.snapshot) { const snapshot = result.snapshot; setCinema(current => !current || snapshot.revision >= current.revision ? snapshot : current) }
+      resolve(error ? { ok: false, code: 'TIMEOUT' } : result || { ok: false, code: 'REJECTED' })
+    })
+  }), [])
+  const authorizeMicrophone = useCallback(() => new Promise<void>((resolve, reject) => {
+    const socket = socketRef.current
+    if (!socket?.connected) { reject(new Error('Phòng chưa kết nối.')); return }
+    socket.timeout(5000).emit('voice:microphone', {}, (error: Error | null, ack?: { ok: boolean; code?: string }) => {
+      if (!error && ack?.ok) resolve()
+      else reject(new Error(ack?.code === 'VIP_REQUIRED' ? 'Cần tài khoản Ultra và ghế VIP đã xác nhận để mở mic.' : ack?.code === 'VOICE_DISABLED' ? 'Chủ phòng chưa cho phép voice.' : 'Voice chưa sẵn sàng. Vui lòng thử lại.'))
+    })
+  }), [])
+  const retryCinema = useCallback(() => cinemaSyncRef.current(), [])
   const memberId = session?.member.memberId
-  return useMemo(() => ({ room, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, memberId])
+  return useMemo(() => ({ room, cinema, cinemaError, retryCinema, authorizeMicrophone, claimSeat, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, isHost: Boolean(room && memberId === room.hostMemberId), userCount: room ? Object.values(room.members).filter((member) => member.connected).length : 0 }), [room, cinema, cinemaError, retryCinema, authorizeMicrophone, claimSeat, isConnected, error, commandError, expiryWarningAt, clockOffset, reactions, sendPlaybackUpdate, changeEpisode, updatePlaybackPolicy, sendMessage, sendReaction, setVoicePermission, getVoiceCredentials, leaveRoom, closeRoom, memberId])
 }

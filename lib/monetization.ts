@@ -1,3 +1,5 @@
+import { CINEMA_CAPACITY, CINEMA_REGULAR_SEATS, CINEMA_VIP_SEATS } from './cinema-layout'
+
 export type AccountPlan = 'normal' | 'premium' | 'ultra'
 export type PaidPlan = Exclude<AccountPlan, 'normal'>
 export type BillingCycle = 'monthly' | 'annual'
@@ -164,7 +166,7 @@ export const PLAN_DEFINITIONS: Record<AccountPlan, PlanDefinition> = {
   ultra: {
     id: 'ultra', name: 'CinePass Ultra', monthlyPrice: 69_000, annualPrice: 690_000,
     description: 'Trọn bộ trải nghiệm CineMind dành cho người dùng cao cấp.',
-    highlights: ['Toàn bộ quyền lợi CinePass Plus', 'Phòng công khai hoặc có mật khẩu', 'Voice chat và co-host', 'Tối đa 50 người trong phòng', 'Ẩn hoàn toàn nội dung tài trợ'],
+    highlights: ['Toàn bộ quyền lợi CinePass Plus', 'Phòng công khai hoặc có mật khẩu', `Tối đa ${CINEMA_CAPACITY} người: ${CINEMA_REGULAR_SEATS} ghế thường + ${CINEMA_VIP_SEATS} ghế VIP`, 'Chọn ghế VIP dành riêng cho Ultra', 'Bật mic tại ghế VIP khi chủ phòng cho phép', 'Ẩn hoàn toàn nội dung tài trợ'],
   },
 }
 
@@ -179,7 +181,7 @@ export const PLAN_CAPABILITIES: Record<AccountPlan, PlanCapabilities> = {
   },
   ultra: {
     moviesPerDay: null, episodesPerMoviePerDay: null, canCreateRoom: true,
-    roomAccessModes: ['public', 'link_only', 'password'], roomMaxMembers: 50, canChat: true, canReact: true, canUseVoice: true,
+    roomAccessModes: ['public', 'link_only', 'password'], roomMaxMembers: CINEMA_CAPACITY, canChat: true, canReact: true, canUseVoice: true,
   },
 }
 

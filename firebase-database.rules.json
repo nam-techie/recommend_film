@@ -16,7 +16,7 @@
     "usernames": {
       ".read": true,
       "$username": {
-        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && (!newData.exists() || newData.val() === auth.uid)))",
+        ".write": false,
         ".validate": "!newData.exists() || ($username.matches(/^[a-z0-9_]{3,24}$/) && newData.val() === auth.uid)"
       }
     },
@@ -182,6 +182,7 @@
     "entitlementMutationReceipts": { ".read": false, ".write": false },
     "githubStar": { ".read": false, ".write": false, "claims": { ".indexOn": ["status", "createdAt", "githubId", "uid"] } },
     "support": { ".read": false, ".write": false, "feedback": { ".indexOn": ["status", "createdAt", "uid"] } },
+    "profileMedia": { ".read": false, ".write": false },
     ".read": false,
     ".write": false
   }
