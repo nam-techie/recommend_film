@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, Suspense, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
@@ -22,7 +22,7 @@ export function AppChrome({ children, genres, countries }: { children: ReactNode
       >
         Bỏ qua điều hướng, tới nội dung chính
       </a>
-      <div inert={immersive ? true : undefined} aria-hidden={immersive || undefined}><Navbar genres={genres} countries={countries} /></div>
+      <div inert={immersive ? true : undefined} aria-hidden={immersive || undefined}><Suspense fallback={null}><Navbar genres={genres} countries={countries} /></Suspense></div>
       <main id="main" className="min-w-0 w-full flex-1 overflow-visible pb-10">{children}</main>
       <Footer />
       <GlobalFloatingActions />
