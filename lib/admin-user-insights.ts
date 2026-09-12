@@ -1,3 +1,5 @@
+import type { AnalyticsCollectionState, AnalyticsReliability } from '@/lib/analytics'
+
 export interface AdminUserInsights {
   uid: string
   online: boolean
@@ -10,6 +12,8 @@ export interface AdminUserInsights {
   personalizationEnabled: boolean
   eligibleForPersonalization: boolean
   range: '7d' | '30d' | '90d'
+  collectionState: AnalyticsCollectionState
+  collectionStartedAt: number | null
 }
 
 export interface AdminSensitiveTimelineItem {
@@ -21,5 +25,20 @@ export interface AdminSensitiveTimelineItem {
   endedAt: number | null
   activeSeconds: number
   completed: boolean
+  source: 'solo' | 'watch_party' | 'estimated_embed'
+  reliability: Exclude<AnalyticsReliability, 'legacy_resume'>
+}
+
+export interface LegacyWatchHistoryItem {
+  movieSlug: string
+  movieTitle: string
+  poster?: string
+  episodeId: string
+  episodeName: string
+  currentTime: number
+  duration: number
+  percentage: number
+  clientEstimatedSeconds: number
+  updatedAt: number
   source: 'solo' | 'watch_party'
 }

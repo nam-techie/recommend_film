@@ -58,6 +58,9 @@ interface Props {
   roomStatus: WatchPartyRoomStatus
   onPlaybackUpdate: (payload: { episodeId: string; currentTime: number; isPlaying: boolean; action: 'play' | 'pause' | 'seek' | 'heartbeat' }) => void
   onProgress?: (currentTime: number, duration: number, reason: ProgressReason) => void
+  onActualPlaying?: (currentTime: number, duration: number) => void
+  onPlaybackEnded?: (currentTime: number, duration: number) => void
+  onFallbackEmbedActiveChange?: (active: boolean) => void
   allowIframeFallback?: boolean
   initialTime?: number
   standalone?: boolean
@@ -122,6 +125,9 @@ export function SyncedHlsPlayer({
   roomStatus,
   onPlaybackUpdate,
   onProgress,
+  onActualPlaying,
+  onPlaybackEnded,
+  onFallbackEmbedActiveChange,
   allowIframeFallback = false,
   initialTime = 0,
   standalone = false,
@@ -167,6 +173,7 @@ export function SyncedHlsPlayer({
   const gestureTimerRef = useRef<number | null>(null)
   const feedbackTimerRef = useRef<number | null>(null)
   const [playerState, setPlayerState] = useState<PlayerState>('idle')
+  useEffect(() => { onFallbackEmbedActiveChange?.(playerState === 'fallback_embed') }, [onFallbackEmbedActiveChange, playerState])
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceVersion, setSourceVersion] = useState(0)
   const [deliveryAttempt, setDeliveryAttempt] = useState({ episodeId: '', index: 0 })
@@ -792,9 +799,11 @@ export function SyncedHlsPlayer({
       }}
       onTimeUpdate={(event) => { const video = event.currentTarget; if (!isScrubbing) setCurrentTime(video.currentTime); onProgress?.(video.currentTime, video.duration, 'timeupdate'); if (!isHost && Math.abs(targetTime - video.currentTime) < 0.2) video.playbackRate = 1 }}
       onPlay={() => { setIsPlaying(true); setPlayerState('playing'); emitNative('play') }}
+      onPlaying={(event) => onActualPlaying?.(event.currentTarget.currentTime, event.currentTarget.duration)}
       onPause={() => { setIsPlaying(false); onProgress?.(currentTime, duration, 'pause'); emitNative('pause') }}
-      onEnded={() => {
+      onEnded={(event) => {
         setIsPlaying(false)
+        onPlaybackEnded?.(event.currentTarget.currentTime, event.currentTarget.duration)
         if (isHost && autoNextEnabled && nextEpisode && endedEpisodeRef.current !== episode.id) {
           endedEpisodeRef.current = episode.id
           onNextEpisode?.('auto_next')

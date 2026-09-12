@@ -1,14 +1,23 @@
-export type PlaybackSource = 'solo' | 'watch_party'
+export type PlaybackSource = 'solo' | 'watch_party' | 'estimated_embed'
+
+export type AnalyticsReliability = 'verified' | 'estimated_embed' | 'legacy_resume'
+export type AnalyticsCollectionState = 'not_collecting' | 'collecting_no_data' | 'available' | 'delayed_rollup' | 'degraded'
+
+export interface PlaybackGrantDescriptor {
+  grantId: string
+  expiresAt: number
+}
 
 export interface PlaybackSessionStart {
+  grantId: string
+  clientSessionId: string
   movieSlug: string
   movieTitle: string
   episodeKey: string
   episodeName?: string
   duration: number
   genres?: string[]
-  source: PlaybackSource
-  roomId?: string
+  mode?: 'verified' | 'estimated_embed'
 }
 
 export interface PlaybackHeartbeat {
@@ -20,9 +29,15 @@ export interface PlaybackHeartbeat {
   pictureInPicture: boolean
 }
 
-export interface PlaybackSessionRecord extends PlaybackSessionStart {
+export interface PlaybackSessionRecord extends Omit<PlaybackSessionStart, 'mode' | 'grantId' | 'clientSessionId'> {
+  grantId?: string
+  clientSessionId?: string
   id: string
   uid: string
+  source: PlaybackSource
+  roomId?: string
+  reliability?: Exclude<AnalyticsReliability, 'legacy_resume'>
+  dayKey?: string
   startedAt: number
   lastHeartbeatAt: number
   endedAt: number | null
@@ -64,6 +79,20 @@ export interface AnalyticsOverview {
   topGenres: Array<{ genre: string; qualifiedViews: number; activeSeconds: number }>
 }
 
+export interface AnalyticsHealth {
+  collectionState: AnalyticsCollectionState
+  firstSessionAt: number | null
+  lastSessionStartedAt: number | null
+  lastSuccessfulStartAt: number | null
+  lastSuccessfulHeartbeatAt: number | null
+  lastSuccessfulFinalizeAt: number | null
+  lastCronAt: number | null
+  dirtyDays: number
+  openSessions: number
+  lastErrorCode: string | null
+  lastErrorAt: number | null
+}
+
 export const EMPTY_ANALYTICS_TOTALS: AnalyticsTotals = { qualifiedViews: 0, uniqueViewers: 0, activeSeconds: 0, completedViews: 0, playStarts: 0 }
 
 export function analyticsCompletionRate(value: AnalyticsTotals) {
@@ -78,10 +107,11 @@ export function applyPlaybackHeartbeat(current: PlaybackSessionRecord, heartbeat
   const activeSeconds = Math.round((current.activeSeconds + activeDelta) * 1000) / 1000
   const duration = Number.isFinite(heartbeat.duration) && heartbeat.duration > 0 ? Math.min(heartbeat.duration, 24 * 60 * 60) : current.duration
   const position = Number.isFinite(heartbeat.position) ? Math.max(0, Math.min(heartbeat.position, duration || heartbeat.position)) : current.lastPosition
+  const verified = current.reliability !== 'estimated_embed'
   return { accepted: true, record: {
     ...current, lastSequence: sequence, lastHeartbeatAt: now, lastPosition: position, duration,
     activeSeconds, isPlaying: Boolean(heartbeat.isPlaying), visible: Boolean(heartbeat.visible), pictureInPicture: Boolean(heartbeat.pictureInPicture),
-    qualified: activeSeconds >= (duration > 0 && duration < 60 ? 10 : 30),
-    completed: duration > 0 && (position / duration >= 0.9 || duration - position <= 120),
+    qualified: verified && activeSeconds >= (duration > 0 && duration < 60 ? 10 : 30),
+    completed: verified && duration > 0 && (position / duration >= 0.9 || duration - position <= 120),
   } }
 }

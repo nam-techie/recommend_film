@@ -20,6 +20,7 @@ import { useAuth } from '@/components/auth/AuthProvider'
 import { AffiliateInterstitial } from '@/components/ui/AffiliateInterstitial'
 import type { AffiliateCreative } from '@/lib/affiliate'
 import type { AccountPlan, DailyUsage, WatchAccessResponse } from '@/lib/monetization'
+import type { PlaybackGrantDescriptor } from '@/lib/analytics'
 
 const SyncedHlsPlayer = dynamic(
   () => import('@/components/ui/SyncedHlsPlayer').then((module) => module.SyncedHlsPlayer),
@@ -27,7 +28,7 @@ const SyncedHlsPlayer = dynamic(
 )
 
 type DetailTab = 'episodes' | 'info' | 'reviews'
-type WatchAccessResult = { allowed: boolean; affiliate: AffiliateCreative | null; plan?: AccountPlan; usage?: DailyUsage | null }
+type WatchAccessResult = { allowed: boolean; affiliate: AffiliateCreative | null; plan?: AccountPlan; usage?: DailyUsage | null; playbackGrant?: PlaybackGrantDescriptor }
 
 export function MovieDetailPage({ slug, initialDetail }: { slug: string; initialDetail: MovieDetail }) {
   const [selectedServer, setSelectedServer] = useState(0)
@@ -49,6 +50,9 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
   const [affiliateGate, setAffiliateGate] = useState<AffiliateCreative | null>(null)
   const [watchUsage, setWatchUsage] = useState<DailyUsage | null>(null)
   const [resolvedPlan, setResolvedPlan] = useState<AccountPlan | null>(null)
+  const [analyticsGrant, setAnalyticsGrant] = useState<PlaybackGrantDescriptor | null>(null)
+  const [embedActive, setEmbedActive] = useState(false)
+  const [embedInViewport, setEmbedInViewport] = useState(false)
   const deepLinkRequestRef = useRef<{ target: string; requestId: string } | null>(null)
   const latestOpenRequestRef = useRef<string | null>(null)
   const activeViewSessionRef = useRef<{ episodeKey: string; requestId: string; gateCompleted: boolean } | null>(null)
@@ -66,9 +70,9 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
     episodeKey: currentHlsEpisode?.episodeKey || currentHlsEpisode?.id || `${selectedServer}:${selectedEpisode}`,
     episodeName: currentHlsEpisode?.name,
     genres: movie.category?.map((item) => item.name) || [],
-    source: 'solo' as const,
-  }), [currentHlsEpisode, movie.category, movie.name, movie.slug, selectedEpisode, selectedServer])
-  const { signal: trackPlayback, finalize: finalizePlayback } = usePlaybackAnalytics(analyticsMetadata)
+    mode: embedActive ? 'estimated_embed' as const : 'verified' as const,
+  }), [currentHlsEpisode, movie.category, movie.name, movie.slug, selectedEpisode, selectedServer, embedActive])
+  const { signal: trackPlayback, finalize: finalizePlayback } = usePlaybackAnalytics(analyticsMetadata, analyticsGrant)
 
   const requestWatchAccess = useCallback(async (serverIndex: number, episodeIndex: number, requestId = crypto.randomUUID()): Promise<WatchAccessResult> => {
     if (authLoading) return { allowed: false, affiliate: null }
@@ -97,7 +101,8 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
       setWatchAccessState('allowed')
       setResolvedPlan(payload.plan || null)
       setWatchUsage(payload.usage || null)
-      return { allowed: true, affiliate: payload.viewSession?.affiliate || null, plan: payload.plan, usage: payload.usage || null }
+      setAnalyticsGrant(payload.playbackGrant || null)
+      return { allowed: true, affiliate: payload.viewSession?.affiliate || null, plan: payload.plan, usage: payload.usage || null, playbackGrant: payload.playbackGrant }
     } catch (error) {
       if (latestOpenRequestRef.current !== requestId) return { allowed: false, affiliate: null }
       setWatchAccessState('denied')
@@ -110,6 +115,8 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
     if (!currentHlsEpisode) return
     void finalizePlayback()
     analyticsDurationRef.current = 0
+    setAnalyticsGrant(null)
+    setEmbedActive(false)
     setSoloPlayback((current) => ({ ...current, episodeId: currentHlsEpisode.id, currentTime: 0, isPlaying: false, revision: current.revision + 1, serverUpdatedAt: Date.now(), action: 'episode_change' }))
   }, [currentHlsEpisode, finalizePlayback])
 
@@ -143,6 +150,15 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
     document.addEventListener('fullscreenchange', onFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [pseudoFullscreen])
+
+  useEffect(() => {
+    if (!embedActive || !analyticsGrant) return undefined
+    let position = 0
+    const send = () => { if (document.visibilityState !== 'visible') return; position += 15; void trackPlayback({ action: position === 15 ? 'playing' : 'heartbeat', position, duration: 0, isPlaying: true }) }
+    send()
+    const timer = window.setInterval(send, 15_000)
+    return () => window.clearInterval(timer)
+  }, [analyticsGrant, embedActive, trackPlayback])
 
   useEffect(() => {
     if (!showPlayer) return
@@ -251,7 +267,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
         {showPlayer && currentEpisode && currentHlsEpisode && (
           <section className={cn('overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_30px_90px_rgba(0,0,0,.55)]', (lightsOff || theaterMode) && 'relative z-[70]', theaterMode && 'left-1/2 w-screen -translate-x-1/2 rounded-none border-x-0 sm:w-[min(100vw,1800px)] sm:rounded-3xl sm:border-x')}>
             <div ref={playerContainerRef} className={cn('relative w-full bg-black', (pseudoFullscreen || playerFullscreen) && 'watch-party-pseudo-fullscreen h-[100dvh]')}>
-              <SyncedHlsPlayer poster={getImageUrl(movie.thumb_url || movie.poster_url)} onRequestServerChange={() => { if (!episodes?.length) return; const next = (selectedServer + 1) % episodes.length; void selectEpisode(next, 0, true) }} episode={currentHlsEpisode} previousEpisode={previousHlsEpisode} nextEpisode={nextHlsEpisode} playback={soloPlayback} isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback autoNextEnabled={autoNext} isFullscreen={playerFullscreen} fillContainer={playerFullscreen || pseudoFullscreen} onToggleFullscreen={() => void toggleFullscreen()} onToggleAutoNext={() => setAutoNext((value) => !value)} onPreviousEpisode={previousHlsEpisode ? () => selectEpisode(selectedServer, previousHlsEpisode.episodeIndex, true) : undefined} onNextEpisode={nextHlsEpisode ? () => selectEpisode(selectedServer, nextHlsEpisode.episodeIndex, true) : undefined} onPlaybackUpdate={(payload) => { setSoloPlayback((current) => ({ ...current, ...payload, revision: current.revision + 1, serverUpdatedAt: Date.now(), updatedBy: 'solo' })); void trackPlayback({ action: payload.action === 'seek' ? 'seek' : payload.action === 'heartbeat' ? 'heartbeat' : payload.action, position: payload.currentTime, duration: analyticsDurationRef.current, isPlaying: payload.isPlaying }) }} onProgress={(time, duration, reason) => { if (!Number.isFinite(duration) || duration <= 0) return; analyticsDurationRef.current = duration; const now = Date.now(); if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return; lastSavedAtRef.current = now; void saveProgress({ movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentHlsEpisode.id, episodeName: currentHlsEpisode.name, serverName: currentHlsEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now, episodeKey: currentHlsEpisode.episodeKey, sourceId: currentHlsEpisode.sourceId }) }} />
+              <SyncedHlsPlayer poster={getImageUrl(movie.thumb_url || movie.poster_url)} onRequestServerChange={() => { if (!episodes?.length) return; const next = (selectedServer + 1) % episodes.length; void selectEpisode(next, 0, true) }} episode={currentHlsEpisode} previousEpisode={previousHlsEpisode} nextEpisode={nextHlsEpisode} playback={soloPlayback} isHost isConnected clockOffset={0} reactions={[]} roomStatus="active" standalone allowIframeFallback autoNextEnabled={autoNext} isFullscreen={playerFullscreen} fillContainer={playerFullscreen || pseudoFullscreen} onToggleFullscreen={() => void toggleFullscreen()} onToggleAutoNext={() => setAutoNext((value) => !value)} onPreviousEpisode={previousHlsEpisode ? () => selectEpisode(selectedServer, previousHlsEpisode.episodeIndex, true) : undefined} onNextEpisode={nextHlsEpisode ? () => selectEpisode(selectedServer, nextHlsEpisode.episodeIndex, true) : undefined} onPlaybackUpdate={(payload) => { setSoloPlayback((current) => ({ ...current, ...payload, revision: current.revision + 1, serverUpdatedAt: Date.now(), updatedBy: 'solo' })); if (payload.action !== 'play') void trackPlayback({ action: payload.action, position: payload.currentTime, duration: analyticsDurationRef.current, isPlaying: payload.isPlaying }) }} onActualPlaying={(position, duration) => { analyticsDurationRef.current = duration; void trackPlayback({ action: 'playing', position, duration, isPlaying: true }) }} onPlaybackEnded={() => void finalizePlayback()} onFallbackEmbedActiveChange={setEmbedActive} onProgress={(time, duration, reason) => { if (!Number.isFinite(duration) || duration <= 0) return; analyticsDurationRef.current = duration; const now = Date.now(); if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return; lastSavedAtRef.current = now; void saveProgress({ movieSlug: movie.slug, movieTitle: movie.name, poster: getImageUrl(movie.poster_url), episodeId: currentHlsEpisode.id, episodeName: currentHlsEpisode.name, serverName: currentHlsEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'solo', updatedAt: now, episodeKey: currentHlsEpisode.episodeKey, sourceId: currentHlsEpisode.sourceId }) }} />
             </div>
             <div className="flex flex-col gap-3 border-t border-white/10 bg-[#0e1019] p-4 lg:flex-row lg:items-center lg:justify-between"><div><p className="font-bold text-fg">Đang xem: {currentEpisode.name}</p><p className="mt-1 text-xs text-fg-muted">{episodes[selectedServer]?.server_name}</p></div><div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" aria-pressed={lightsOff} onClick={() => setLightsOff((value) => !value)} className="border-white/15 bg-white/[0.035] text-fg-secondary hover:bg-white/10">{lightsOff ? <Lightbulb className="h-4 w-4" /> : <LightbulbOff className="h-4 w-4" />}{lightsOff ? 'Bật đèn' : 'Tắt đèn'}</Button><Button type="button" size="sm" variant="outline" aria-pressed={theaterMode} onClick={() => setTheaterMode((value) => !value)} className="border-white/15 bg-white/[0.035] text-fg-secondary hover:bg-white/10"><RectangleHorizontal className="h-4 w-4" />{theaterMode ? 'Thu gọn' : 'Chiếu rạp'}</Button><MovieLibraryActions movie={libraryMovie} /></div></div>
           </section>

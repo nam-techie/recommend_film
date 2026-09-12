@@ -54,6 +54,7 @@ import {
   useWatchParty,
 } from '@/hooks/useWatchParty'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
+import { usePlaybackAnalytics } from '@/hooks/usePlaybackAnalytics'
 import { useAccount } from '@/hooks/useAccount'
 import { useWatchPartyVoice } from '@/hooks/useWatchPartyVoice'
 import { useEntitlement } from '@/hooks/useEntitlement'
@@ -68,6 +69,8 @@ import {
   WatchProgress,
 } from '@/lib/watch-party-types'
 import { cn } from '@/lib/utils'
+import type { PlaybackGrantDescriptor } from '@/lib/analytics'
+import type { WatchAccessResponse } from '@/lib/monetization'
 
 const reactions = ['❤️', '😂', '🔥', '😮', '👏', '😢']
 const normalizeRoom = (value: string) => {
@@ -229,6 +232,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const [roomsError, setRoomsError] = useState<string | null>(null)
   const [roomsUpdatedAt, setRoomsUpdatedAt] = useState<number | null>(null)
   const [activeOwnedRoom, setActiveOwnedRoom] = useState<WatchPartyRoomPreview | null>(null)
+  const [analyticsGrant, setAnalyticsGrant] = useState<PlaybackGrantDescriptor | null>(null)
 
   // Không còn redirect sang /login. Khách mở link phòng phải xem được phòng có gì
   // rồi mới quyết định vào — trước đây họ bị đá thẳng ra form đăng nhập và bỏ đi.
@@ -279,6 +283,26 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
   const voice = useWatchPartyVoice({ memberId: session?.member.memberId, voiceEnabled: Boolean(party.room?.voiceEnabled), canPublish: micAllowed, authorizeMicrophone: party.authorizeMicrophone, getVoiceCredentials: party.getVoiceCredentials })
   const chatVisible = showCinema ? cinemaChatOpen : showChat
   const activeEpisode = useMemo(() => party.room?.movie.episodes.find((item) => item.id === party.room?.playback.episodeId) || party.room?.movie.episodes[0], [party.room])
+  const analyticsRoomId = party.room?.id || ''
+  const analyticsMovieSlug = party.room?.movie.slug || ''
+  const analyticsMovieTitle = party.room?.movie.title || ''
+  const analyticsEpisodeKey = activeEpisode?.episodeKey || activeEpisode?.slug || activeEpisode?.id || ''
+  const analyticsEpisodeName = activeEpisode?.name
+  const analyticsGenresKey = (party.room?.movie.genres || []).join('|')
+  const analyticsMetadata = useMemo(() => ({ movieSlug: analyticsMovieSlug, movieTitle: analyticsMovieTitle, episodeKey: analyticsEpisodeKey, episodeName: analyticsEpisodeName, genres: analyticsGenresKey ? analyticsGenresKey.split('|') : [], mode: 'verified' as const }), [analyticsEpisodeKey, analyticsEpisodeName, analyticsGenresKey, analyticsMovieSlug, analyticsMovieTitle])
+  const { signal: trackPartyPlayback, finalize: finalizePartyPlayback } = usePlaybackAnalytics(analyticsMetadata, analyticsGrant)
+
+  useEffect(() => {
+    if (!user || !session || !analyticsRoomId || !analyticsMovieSlug || !analyticsEpisodeKey || !party.isConnected) { setAnalyticsGrant(null); return }
+    let active = true
+    void finalizePartyPlayback()
+    const requestId = crypto.randomUUID()
+    void user.getIdToken().then((token) => fetch('/api/me/watch-access', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ movieSlug: analyticsMovieSlug, episodeKey: analyticsEpisodeKey, requestId, context: 'watch_party', roomId: analyticsRoomId }) })).then(async (response) => {
+      const payload = await response.json().catch(() => ({})) as Partial<WatchAccessResponse>
+      if (active && response.ok) setAnalyticsGrant(payload.playbackGrant || null)
+    }).catch(() => { if (active) setAnalyticsGrant(null) })
+    return () => { active = false }
+  }, [analyticsEpisodeKey, analyticsMovieSlug, analyticsRoomId, finalizePartyPlayback, party.isConnected, session?.member.memberId, user])
   const episodeGroups = useMemo(() => Object.entries((party.room?.movie.episodes || []).reduce<Record<string, WatchPartyEpisode[]>>((groups, episode) => {
     groups[episode.serverName] = [...(groups[episode.serverName] || []), episode]
     return groups
@@ -540,6 +564,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
           <SyncedHlsPlayer poster={room.movie.poster} episode={activeEpisode} previousEpisode={adjacentEpisodes.previous} nextEpisode={adjacentEpisodes.next} playback={room.playback} autoNextEnabled={room.playbackPolicy?.autoNext ?? true} commandError={party.commandError} isHost={party.isHost} isConnected={party.isConnected} clockOffset={party.clockOffset} reactions={party.reactions} roomStatus={room.status} onPlaybackUpdate={party.sendPlaybackUpdate} isFullscreen={focusedMode} chatOpen={showChat} unreadCount={unreadCount} fillContainer={focusedMode} onToggleChat={focusedMode ? undefined : toggleChat} onToggleFullscreen={() => void toggleFullscreen()} onPreviousEpisode={adjacentEpisodes.previous ? () => void party.changeEpisode(adjacentEpisodes.previous!, { reason: 'previous', shouldPlay: room.playback.isPlaying }) : undefined} onNextEpisode={adjacentEpisodes.next ? (reason = 'next') => void party.changeEpisode(adjacentEpisodes.next!, { reason, shouldPlay: reason === 'auto_next' ? true : room.playback.isPlaying }) : undefined} onToggleAutoNext={party.isHost ? () => void party.updatePlaybackPolicy(!(room.playbackPolicy?.autoNext ?? true)) : undefined} voiceEnabled={room.voiceEnabled} micEnabled={voice.micEnabled} speakerEnabled={voice.speakerEnabled} voiceJoined={voice.voiceJoined} speakingMembers={speakingMembers} reactionOptions={reactions} reactionError={reactionError} micUnavailableReason={micUnavailableReason} onToggleMic={() => void voice.toggleMic()} onToggleSpeaker={voice.toggleSpeaker} onToggleVoicePermission={party.isHost ? () => void toggleVoicePermission() : undefined} onSendReaction={(emoji) => void sendReaction(emoji)} onProgress={(time, duration, reason) => {
             if (!activeEpisode || !Number.isFinite(duration) || duration <= 0) return
             const now = Date.now()
+            void trackPartyPlayback({ action: reason === 'pause' ? 'pause' : reason === 'seek' ? 'seek' : 'heartbeat', position: time, duration, isPlaying: reason !== 'pause' })
             const progress: WatchProgress = { movieSlug: room.movie.slug, movieTitle: room.movie.title, poster: room.movie.poster, episodeId: activeEpisode.id, episodeName: activeEpisode.name, serverName: activeEpisode.serverName, currentTime: time, duration, percentage: Math.min(100, time / duration * 100), completed: time / duration >= 0.9 || duration - time < 120, source: 'watch_party', roomId: room.id, updatedAt: now }
             latestProgressRef.current = progress
             if (reason === 'timeupdate' && now - lastSavedAtRef.current < 10_000) return
