@@ -69,6 +69,7 @@ import {
   WatchProgress,
 } from '@/lib/watch-party-types'
 import { cn } from '@/lib/utils'
+import { GithubRepoControl } from '@/components/GithubRepoControl'
 import type { PlaybackGrantDescriptor } from '@/lib/analytics'
 import type { WatchAccessResponse } from '@/lib/monetization'
 
@@ -510,7 +511,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
     : 'fixed inset-x-0 bottom-0 z-50 h-[min(72dvh,42rem)] overflow-hidden rounded-t-3xl border-t border-white/10 shadow-2xl md:absolute md:inset-y-0 md:left-auto md:right-0 md:top-0 md:h-auto md:w-[380px] md:rounded-none md:border-l md:border-t-0 xl:static xl:z-auto xl:w-auto'
 
   return <div className="viewport-height bg-[#070912] text-fg">
-    <header className="safe-x sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0e18]/95 px-3 py-2 backdrop-blur-md sm:px-4">
+    {!focusedMode && <header className="safe-x sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0e18]/95 px-3 py-2 backdrop-blur-md sm:px-4">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <Button variant="ghost" size="icon" aria-label="Thoát phòng" title="Thoát phòng" onClick={() => setShowLeaveDialog(true)} className="h-11 w-11 shrink-0 rounded-full text-fg-secondary hover:bg-white/10 hover:text-fg"><LogOut className="h-5 w-5" /></Button>
         <div className="min-w-0">
@@ -535,7 +536,7 @@ export default function WatchPartyPage({ roomId }: { movieSlug?: string; roomId?
         <Button variant="ghost" size="sm" aria-label={showChat ? 'Ẩn chat' : 'Hiện chat'} aria-expanded={showChat} onClick={toggleChat} className={cn('relative hidden h-11 rounded-full px-3 text-fg-secondary hover:bg-white/10 md:inline-flex', showChat && 'bg-white/[0.08]')}><MessageCircle className="h-4 w-4" /><span>Chat</span>{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs font-bold">{Math.min(unreadCount, 99)}</span>}</Button>
         <Button variant="ghost" size="icon" aria-label="Thêm điều khiển phòng" aria-expanded={showRoomControls} onClick={() => setShowRoomControls((value) => !value)} className="relative h-11 w-11 rounded-full text-fg-secondary hover:bg-white/10 md:hidden"><MoreHorizontal className="h-5 w-5" />{unreadCount > 0 && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-accent-strong" />}</Button>
       </div>
-    </header>
+    </header>}
 
     {showLeaveDialog && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="leave-room-title"><div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111522] p-5 shadow-2xl"><h2 id="leave-room-title" className="text-lg font-semibold">Rời phòng?</h2><p className="mt-2 text-sm leading-relaxed text-fg-secondary">Phòng vẫn được giữ lại. Nếu không còn host, người đầu tiên vào lại sẽ nhận quyền host. Phòng trống sẽ tự xóa sau 5 phút.</p><div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setShowLeaveDialog(false)}>Ở lại</Button><Button variant="outline" onClick={async () => { setShowLeaveDialog(false); await party.leaveRoom(); setSession(null); router.replace('/watch-party') }}>Rời phòng</Button></div></div></div>}
     <WatchPartyFriendInviteDialog open={showFriendInvite} roomId={room.id} movieSlug={room.movie.slug} onClose={() => setShowFriendInvite(false)} />

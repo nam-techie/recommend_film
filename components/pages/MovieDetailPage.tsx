@@ -177,6 +177,16 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [lightsOff, theaterMode])
 
+  useEffect(() => {
+    const immersive = playerFullscreen || pseudoFullscreen
+    document.documentElement.dataset.cinemindImmersive = immersive ? 'true' : 'false'
+    window.dispatchEvent(new CustomEvent('cinemind:immersive-change', { detail: immersive }))
+    return () => {
+      delete document.documentElement.dataset.cinemindImmersive
+      window.dispatchEvent(new CustomEvent('cinemind:immersive-change', { detail: false }))
+    }
+  }, [playerFullscreen, pseudoFullscreen])
+
   const toggleFullscreen = async () => {
     const container = playerContainerRef.current
     if (!container) return

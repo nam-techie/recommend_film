@@ -2,7 +2,6 @@ import { DeferredContinueWatching } from '@/components/sections/DeferredContinue
 import { HeroSection } from '@/components/sections/HeroSection'
 import { MovieSection } from '@/components/sections/MovieSection'
 import { PersonalizedMovieSection } from '@/components/sections/PersonalizedMovieSection'
-import { ScrollToTop } from '@/components/ui/ScrollToTop'
 import type { HomePageData } from '@/lib/home-data'
 import Link from 'next/link'
 import { ArrowRight, Sparkles } from 'lucide-react'
@@ -51,7 +50,6 @@ export function HomePage({ data }: { data: HomePageData }) {
           </section>
         )}
       </div>
-      <ScrollToTop />
     </div>
   )
 }

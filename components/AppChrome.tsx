@@ -1,13 +1,16 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import type { Country, Genre } from '@/lib/api'
+import { GlobalFloatingActions } from '@/components/GlobalFloatingActions'
 
 export function AppChrome({ children, genres, countries }: { children: ReactNode; genres: Genre[]; countries: Country[] }) {
   const pathname = usePathname()
+  const [immersive, setImmersive] = useState(false)
+  useEffect(() => { const listener = (event: Event) => setImmersive(Boolean((event as CustomEvent<boolean>).detail)); window.addEventListener('cinemind:immersive-change', listener); return () => window.removeEventListener('cinemind:immersive-change', listener) }, [])
   const isRoom = /^\/watch-party\/[^/]+/.test(pathname)
   const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/')
   if (isRoom || isAdmin) return <main className="min-h-screen">{children}</main>
@@ -19,9 +22,10 @@ export function AppChrome({ children, genres, countries }: { children: ReactNode
       >
         Bỏ qua điều hướng, tới nội dung chính
       </a>
-      <Navbar genres={genres} countries={countries} />
+      <div inert={immersive ? true : undefined} aria-hidden={immersive || undefined}><Navbar genres={genres} countries={countries} /></div>
       <main id="main" className="min-w-0 w-full flex-1 overflow-visible pb-10">{children}</main>
       <Footer />
+      <GlobalFloatingActions />
     </>
   )
 }
