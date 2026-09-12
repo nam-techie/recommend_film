@@ -187,7 +187,13 @@ export class LiveKitVoiceProvider implements VoiceProvider {
   async enableMicrophone() {
     if (!this.room) throw new Error('Voice chưa kết nối.')
     try {
-      await this.room.localParticipant.setMicrophoneEnabled(true, { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, { audioPreset: { maxBitrate: 24_000 }, dtx: true, red: true })
+      // The server changes this participant's publishing grant after the VIP check.
+      const room = this.room
+      for (let attempt = 0; attempt < 20 && room.localParticipant.permissions?.canPublish !== true; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      if (this.room !== room || room.localParticipant.permissions?.canPublish !== true) throw new Error('VIP_MIC_NOT_GRANTED')
+      await room.localParticipant.setMicrophoneEnabled(true, { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, { audioPreset: { maxBitrate: 24_000 }, dtx: true, red: true })
       this.syncParticipants()
       this.update({ error: null })
     } catch (error) {

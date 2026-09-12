@@ -20,7 +20,7 @@ Mức ưu tiên: `P0` = cần làm trước để vận hành/thu tiền; `P1` =
 |---|---|---:|---:|---|
 | CinePass | `normal` | 0đ | 0đ | 3 phim khác nhau/ngày; 5 tập trong mỗi phim/ngày; tham gia phòng ở chế độ xem |
 | CinePass Plus | `premium` | 39.000đ | 390.000đ | Xem không giới hạn; tạo phòng bằng link; tối đa 8 người; chat/reaction |
-| CinePass Ultra | `ultra` | 69.000đ | 690.000đ | Mọi quyền Plus; phòng công khai/link/mật khẩu; tối đa 50 người; voice |
+| CinePass Ultra | `ultra` | 69.000đ | 690.000đ | Mọi quyền Plus; phòng công khai/link/mật khẩu; tối đa 36 người (32 thường + 4 VIP); voice |
 
 ID nội bộ không đổi để không làm hỏng entitlement và mã giảm giá cũ.
 
@@ -34,13 +34,13 @@ ID nội bộ không đổi để không làm hỏng entitlement và mã giảm 
 | Tham gia phòng | Có, chỉ xem | Có | Có | `[x] Đã có` | P0 | Người miễn phí vẫn nên tham gia để tạo tăng trưởng tự nhiên |
 | Tạo phòng | Không | Có | Có | `[x] Đã có` | P0 | CinePass bị chặn ở UI và socket |
 | Chế độ phòng | Không | Link | Công khai/link/mật khẩu | `[x] Đã có` | P0 | Server kiểm tra mode theo host |
-| Giới hạn thành viên | — | 8 | 50 | `[x] Đã có` | P0 | Có thể điều chỉnh từ cấu hình gói sau này |
+| Giới hạn thành viên | — | 8 | 36 | `[x] Đã có` | P0 | Có thể điều chỉnh từ cấu hình gói sau này |
 | Đồng bộ phát/dừng/đổi tập | — | Có | Có | `[x] Đã có` | P0 | Host điều khiển |
 | Chat chữ | Không theo chính sách hiện tại | Có | Có | `[x] Đã có` | P0 | Có thể cân nhắc cho CinePass chat giới hạn |
 | Reaction | Không | Có | Có | `[x] Đã có` | P0 | Reaction động độc quyền chưa có |
-| Voice chat | Không | Không | Có | `[x] Đã có` | P1 | LiveKit; cần kiểm tra chi phí khi tăng người dùng |
+| Voice chat | Không | Không | Có | `[x] Đã có` | P1 | LiveKit; Ultra ngồi VIP mới bật mic khi host cho phép; mọi gói có thể nghe |
 | Video chat | Không | Không | Có | `[ ] Chưa có` | P2 | Chỉ làm sau khi voice ổn định |
-| Co-host | Không | Không | Có | `[ ] Chưa có` | P1 | Hiện mô tả Ultra có chữ co-host nhưng code chưa hỗ trợ |
+| Co-host | Không | Không | Có | `[ ] Chưa có` | P1 | Chưa triển khai; không đưa vào quyền lợi Ultra đang bán |
 | Kick/ban thành viên phòng | Không | Host cơ bản | Host + quản trị đầy đủ | `[ ] Chưa có` | P1 | Cần log audit và chống lạm dụng |
 | Đặt lịch phòng | Không | Không | Có | `[ ] Chưa có` | P1 | Tạo phòng theo thời gian và gửi thông báo |
 | Danh sách phim chung/bình chọn | Không | Có | Có nâng cao | `[ ] Chưa có` | P1 | Tạo lý do dùng phòng thường xuyên |

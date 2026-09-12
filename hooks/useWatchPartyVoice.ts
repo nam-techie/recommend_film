@@ -7,6 +7,8 @@ import { VoiceProviderSnapshot } from '@/lib/voice-provider'
 interface Props {
   memberId?: string
   voiceEnabled: boolean
+  canPublish?: boolean
+  authorizeMicrophone?: () => Promise<void>
   getVoiceCredentials: () => Promise<{ serverUrl: string; participantToken: string }>
 }
 
@@ -19,7 +21,7 @@ const initialSnapshot: VoiceProviderSnapshot = {
   error: null,
 }
 
-export function useWatchPartyVoice({ memberId, voiceEnabled, getVoiceCredentials }: Props) {
+export function useWatchPartyVoice({ memberId, voiceEnabled, canPublish = false, authorizeMicrophone, getVoiceCredentials }: Props) {
   const providerRef = useRef<LiveKitVoiceProvider | null>(null)
   const connectAttemptRef = useRef(0)
   const [snapshot, setSnapshot] = useState(initialSnapshot)
@@ -56,12 +58,22 @@ export function useWatchPartyVoice({ memberId, voiceEnabled, getVoiceCredentials
     return () => { connectAttemptRef.current += 1 }
   }, [getVoiceCredentials, memberId, voiceEnabled])
 
+  useEffect(() => {
+    if (!canPublish) void providerRef.current?.disableMicrophone().catch(() => undefined)
+  }, [canPublish])
   const toggleMic = useCallback(async () => {
     const provider = providerRef.current
     if (!provider || !voiceEnabled) return
-    if (snapshot.micEnabled) await provider.disableMicrophone()
-    else await provider.enableMicrophone()
-  }, [snapshot.micEnabled, voiceEnabled])
+    try {
+      if (snapshot.micEnabled) await provider.disableMicrophone()
+      else {
+        if (!canPublish || !authorizeMicrophone) { setCredentialError('Cần Ultra và ghế VIP đã xác nhận để mở mic.'); return }
+        await authorizeMicrophone()
+        await provider.enableMicrophone()
+        setCredentialError(null)
+      }
+    } catch (error) { setCredentialError(error instanceof Error ? error.message : 'Chưa mở được microphone.') }
+  }, [snapshot.micEnabled, voiceEnabled, canPublish, authorizeMicrophone])
 
   const toggleSpeaker = useCallback(() => {
     const provider = providerRef.current
