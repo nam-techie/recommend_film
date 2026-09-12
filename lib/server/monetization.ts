@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
 import { getDatabase } from 'firebase-admin/database'
+import { activeRestriction, type EntitlementRestriction } from '@/lib/entitlement-grants'
 import {
   addBillingCycle,
   buildDiscountQuote,
@@ -214,7 +215,10 @@ export async function redeemFreeDiscount(codeValue: string, uid: string, expecte
 }
 
 export async function getUserEntitlement(uid: string) {
-  const snapshot = await db().ref(`monetization/entitlements/${uid}`).get()
+  const [snapshot, restrictionSnapshot] = await Promise.all([db().ref(`monetization/entitlements/${uid}`).get(), db().ref(`entitlementRestrictions/${uid}`).get()])
+  if (activeRestriction(restrictionSnapshot.exists() ? restrictionSnapshot.val() as EntitlementRestriction : null)) {
+    return { uid, plan: 'normal', billingCycle: null, status: 'active', startsAt: null, expiresAt: null, autoRenew: false, source: 'default', updatedAt: Date.now() } as AccountEntitlement
+  }
   return resolveEntitlement(uid, snapshot.exists() ? snapshot.val() as AccountEntitlement : null)
 }
 

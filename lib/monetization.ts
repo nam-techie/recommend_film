@@ -101,7 +101,7 @@ export interface AccountEntitlement {
   startsAt: number | null
   expiresAt: number | null
   autoRenew: boolean
-  source: 'default' | 'discount' | 'payment' | 'admin_gift'
+  source: 'default' | 'discount' | 'payment' | 'admin_gift' | 'github_star'
   sourceId?: string
   updatedAt: number
 }
@@ -265,7 +265,7 @@ export function resolveEntitlement(uid: string, stored?: Partial<AccountEntitlem
     startsAt: typeof stored?.startsAt === 'number' ? stored.startsAt : now,
     expiresAt,
     autoRenew: stored?.autoRenew === true,
-    source: stored?.source === 'discount' || stored?.source === 'payment' || stored?.source === 'admin_gift' ? stored.source : 'discount',
+    source: stored?.source === 'discount' || stored?.source === 'payment' || (stored?.source === 'admin_gift' || stored?.source === 'github_star') ? stored.source : 'discount',
     ...(stored?.sourceId ? { sourceId: stored.sourceId } : {}),
     updatedAt: stored?.updatedAt || now,
   }

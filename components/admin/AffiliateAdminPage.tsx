@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Archive, ExternalLink, Link2, Loader2, Pause, Play, RefreshCw, Save, ShieldAlert } from 'lucide-react'
@@ -6,10 +6,12 @@ import type { AffiliateLink, AffiliatePolicy } from '@/lib/affiliate'
 import { AccessDenied, AdminLogin, AdminShell } from '@/components/admin/AdminShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { useAdminApi } from '@/hooks/useAdminApi'
 import { cn } from '@/lib/utils'
 import { useAdminStepUp } from '@/components/admin/AdminStepUpDialog'
+import { useAdminReasonDialog } from '@/components/admin/AdminReasonDialog'
 
 type LinkWithStats = AffiliateLink & { stats: { impressions: number; clicks: number; ctr: number } }
 type Payload = { links: LinkWithStats[]; policy: AffiliatePolicy }
@@ -33,6 +35,7 @@ export function AffiliateAdminPage() {
   const [endsAt, setEndsAt] = useState(() => toLocal(Date.now() + 30 * 24 * 60 * 60_000))
   const [reason, setReason] = useState('Bổ sung chiến dịch affiliate')
   const { approve, dialog: stepUpDialog } = useAdminStepUp()
+  const { askReason, reasonDialog } = useAdminReasonDialog()
 
   const load = useCallback(async () => {
     if (!user) return
@@ -66,7 +69,7 @@ export function AffiliateAdminPage() {
 
   const mutateLink = async (link: LinkWithStats, status: AffiliateLink['status']) => {
     const action = status === 'active' ? 'kích hoạt' : status === 'paused' ? 'tạm dừng' : 'lưu trữ'
-    const actionReason = window.prompt(`Nhập lý do ${action} link:`, `Điều chỉnh trạng thái chiến dịch ${link.campaignName}`)?.trim()
+    const actionReason = await askReason(`Xác nhận ${action} link`, `Chiến dịch ${link.campaignName}`, `Điều chỉnh trạng thái chiến dịch ${link.campaignName}`)
     if (!actionReason) return
     const body = { status, reason: actionReason, confirmed: true }
     const approval = await approve({ action: 'affiliate_link_update', targetId: link.id, payload: body, title: `${action[0].toUpperCase()}${action.slice(1)} affiliate link`, summary: `${link.campaignName} · ${actionReason}` })
@@ -79,7 +82,7 @@ export function AffiliateAdminPage() {
 
   const togglePolicy = async () => {
     const enabled = !data.policy.enabled
-    const policyReason = window.prompt(`Nhập lý do ${enabled ? 'bật' : 'tắt'} affiliate toàn hệ thống:`, enabled ? 'Bắt đầu chiến dịch affiliate' : 'Tạm dừng khẩn cấp')?.trim()
+    const policyReason = await askReason(`${enabled ? 'Bật' : 'Tắt'} affiliate toàn hệ thống`, 'Thay đổi này ảnh hưởng mọi phiên xem đủ điều kiện.', enabled ? 'Bắt đầu chiến dịch affiliate' : 'Tạm dừng khẩn cấp')
     if (!policyReason) return
     const body = { enabled, reason: policyReason, confirmed: true }
     const approval = await approve({ action: 'affiliate_policy_update', targetId: 'affiliatePolicy', payload: body, title: `${enabled ? 'Bật' : 'Tắt'} affiliate toàn hệ thống`, summary: policyReason })
@@ -112,14 +115,14 @@ export function AffiliateAdminPage() {
           <Field label="Lý do"><Input value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={240} /></Field>
           <Button type="submit" className="w-full" disabled={loading}><Save className="h-4 w-4" />Thêm vào kho</Button>
         </form>
-        <section className="space-y-4"><div className="flex flex-col gap-3 sm:flex-row"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm chiến dịch, sản phẩm hoặc URL…" className="flex-1" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} className="min-h-11 rounded-xl border border-white/[0.1] bg-surface-2 px-3 text-sm"><option value="all">Tất cả</option><option value="active">Đang chạy</option><option value="paused">Tạm dừng</option><option value="archived">Lưu trữ</option></select></div>
-          <div className="space-y-3">{visibleLinks.map((link) => <article key={link.id} className="rounded-2xl border border-white/[0.08] bg-surface-1 p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link2 className="h-4 w-4 text-accent-soft" /><h3 className="font-bold">{link.campaignName}</h3><span className={cn('rounded-full px-2.5 py-1 text-[11px] font-bold uppercase', link.status === 'active' ? 'bg-success/15 text-success' : link.status === 'paused' ? 'bg-warning/15 text-warning' : 'bg-white/[0.07] text-fg-muted')}>{link.status}</span></div><p className="mt-2 text-sm text-fg-secondary">{link.productTitle}</p><a href={link.destinationUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex max-w-full items-center gap-1 truncate text-xs text-accent-soft hover:underline">{link.destinationUrl}<ExternalLink className="h-3 w-3 shrink-0" /></a><p className="mt-3 text-xs text-fg-muted">{formatDate(link.startsAt)} → {formatDate(link.endsAt)} · trọng số {link.weight}</p></div><div className="grid grid-cols-3 gap-2 text-center"><Metric label="Impression" value={link.stats.impressions} /><Metric label="Click" value={link.stats.clicks} /><Metric label="CTR" value={`${link.stats.ctr}%`} /></div></div><div className="mt-4 flex flex-wrap gap-2">{link.status === 'paused' && <Button size="sm" variant="outline" onClick={() => void mutateLink(link, 'active')} disabled={loading}><Play className="h-3.5 w-3.5" />Kích hoạt</Button>}{link.status === 'active' && <Button size="sm" variant="outline" onClick={() => void mutateLink(link, 'paused')} disabled={loading}><Pause className="h-3.5 w-3.5" />Tạm dừng</Button>}{link.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => void mutateLink(link, 'archived')} disabled={loading}><Archive className="h-3.5 w-3.5" />Lưu trữ</Button>}</div></article>)}{!visibleLinks.length && <div className="rounded-2xl border border-dashed border-white/[0.12] p-10 text-center text-sm text-fg-muted">Chưa có link phù hợp bộ lọc.</div>}</div>
+        <section className="space-y-4"><div className="flex flex-col gap-3 sm:flex-row"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm chiến dịch, sản phẩm hoặc URL…" className="flex-1" /><Select value={filter} onValueChange={(value) => setFilter(value as typeof filter)}><SelectTrigger aria-label="Trạng thái chiến dịch" className="sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tất cả</SelectItem><SelectItem value="active">Đang chạy</SelectItem><SelectItem value="paused">Tạm dừng</SelectItem><SelectItem value="archived">Lưu trữ</SelectItem></SelectContent></Select></div>
+          <div className="space-y-3">{visibleLinks.map((link) => <article key={link.id} className="rounded-2xl border border-white/[0.08] bg-surface-1 p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link2 className="h-4 w-4 text-accent-soft" /><h3 className="font-bold">{link.campaignName}</h3><span className={cn('rounded-full px-2.5 py-1 text-xs font-bold uppercase', link.status === 'active' ? 'bg-success/15 text-success' : link.status === 'paused' ? 'bg-warning/15 text-warning' : 'bg-white/[0.07] text-fg-muted')}>{link.status}</span></div><p className="mt-2 text-sm text-fg-secondary">{link.productTitle}</p><a href={link.destinationUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex max-w-full items-center gap-1 truncate text-xs text-accent-soft hover:underline">{link.destinationUrl}<ExternalLink className="h-3 w-3 shrink-0" /></a><p className="mt-3 text-xs text-fg-muted">{formatDate(link.startsAt)} → {formatDate(link.endsAt)} · trọng số {link.weight}</p></div><div className="grid grid-cols-3 gap-2 text-center"><Metric label="Impression" value={link.stats.impressions} /><Metric label="Click" value={link.stats.clicks} /><Metric label="CTR" value={`${link.stats.ctr}%`} /></div></div><div className="mt-4 flex flex-wrap gap-2">{link.status === 'paused' && <Button size="sm" variant="outline" onClick={() => void mutateLink(link, 'active')} disabled={loading}><Play className="h-3.5 w-3.5" />Kích hoạt</Button>}{link.status === 'active' && <Button size="sm" variant="outline" onClick={() => void mutateLink(link, 'paused')} disabled={loading}><Pause className="h-3.5 w-3.5" />Tạm dừng</Button>}{link.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => void mutateLink(link, 'archived')} disabled={loading}><Archive className="h-3.5 w-3.5" />Lưu trữ</Button>}</div></article>)}{!visibleLinks.length && <div className="rounded-2xl border border-dashed border-white/[0.12] p-10 text-center text-sm text-fg-muted">Chưa có link phù hợp bộ lọc.</div>}</div>
         </section>
       </div>
     </div></main>
     {stepUpDialog}
+    {reasonDialog}
   </AdminShell>
 }
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div> }
-function Metric({ label, value }: { label: string; value: string | number }) { return <div className="min-w-20 rounded-xl bg-black/20 px-3 py-2"><p className="text-base font-bold">{value}</p><p className="text-[10px] uppercase tracking-wide text-fg-muted">{label}</p></div> }
+function Metric({ label, value }: { label: string; value: string | number }) { return <div className="min-w-20 rounded-xl bg-black/20 px-3 py-2"><p className="text-base font-bold">{value}</p><p className="text-xs uppercase tracking-wide text-fg-muted">{label}</p></div> }

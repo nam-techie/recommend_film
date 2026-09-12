@@ -4,9 +4,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Archive, BadgePercent, CalendarDays, Check, Copy, Loader2, Pause, Play, Plus, RefreshCw, ShieldCheck, Sparkles, TicketPercent, UserRound } from 'lucide-react'
 import { AccessDenied, AdminLogin, AdminShell } from '@/components/admin/AdminShell'
 import { useAdminStepUp } from '@/components/admin/AdminStepUpDialog'
+import { useAdminReasonDialog } from '@/components/admin/AdminReasonDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { normalizeDiscountCode, PLAN_DEFINITIONS, type BillingCycle, type DiscountCode, type DiscountStatus, type PaidPlan } from '@/lib/monetization'
 import { usePlanCatalog } from '@/hooks/usePlanCatalog'
@@ -30,6 +32,7 @@ function StatusBadge({ status }: { status: DiscountStatus }) {
 export function DiscountAdminPage() {
   const { user, loading: authLoading, logout, request, denied } = useAdminApi()
   const { approve, dialog: stepUpDialog } = useAdminStepUp()
+  const { askReason, reasonDialog } = useAdminReasonDialog()
   const { plans: catalog } = usePlanCatalog()
   const [codes, setCodes] = useState<DiscountCode[]>([])
   const [loading, setLoading] = useState(false)
@@ -77,7 +80,7 @@ export function DiscountAdminPage() {
   }
 
   const setStatus = async (item: DiscountCode, status: DiscountStatus) => {
-    const actionReason = window.prompt(`Nhập lý do ${status === 'active' ? 'bật' : status === 'paused' ? 'tạm dừng' : 'lưu trữ'} mã ${item.code}:`, `Điều chỉnh trạng thái mã ${item.code}`)?.trim()
+    const actionReason = await askReason(`Xác nhận ${status === 'active' ? 'bật' : status === 'paused' ? 'tạm dừng' : 'lưu trữ'} mã`, `Mã giảm giá ${item.code}`, `Điều chỉnh trạng thái mã ${item.code}`)
     if (!actionReason) return
     const body = { status, reason: actionReason, confirmed: true }
     const approval = await approve({ action: 'discount_code_update', targetId: item.code, payload: body, title: 'Cập nhật mã giảm giá', summary: `${item.code} · ${status} · ${actionReason}` })
@@ -114,7 +117,7 @@ export function DiscountAdminPage() {
           <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/15 text-accent-soft"><Plus className="h-5 w-5" /></span><div><h2 className="text-sm font-semibold">Tạo mã mới</h2><p className="mt-1 text-xs text-fg-muted">Mỗi user chỉ dùng một lần</p></div></div>
           <div className="mt-6 space-y-5">
             <div className="space-y-2"><Label htmlFor="discount-code">Mã giảm giá</Label><div className="flex gap-2"><Input id="discount-code" value={code} onChange={(event) => setCode(normalizeDiscountCode(event.target.value))} maxLength={32} placeholder="NAMULTRA" className="h-11 font-mono uppercase" /><Button type="button" variant="outline" onClick={() => setCode(randomCode())} className="h-11 shrink-0 border-white/10"><Sparkles className="h-4 w-4" />Tạo mã</Button></div></div>
-            <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="discount-plan">Gói nhận được</Label><select id="discount-plan" value={targetPlan} onChange={(event) => setTargetPlan(event.target.value as PaidPlan)} className="h-11 w-full rounded-md border border-input bg-bg px-3 text-sm"><option value="premium">CinePass Plus</option><option value="ultra">CinePass Ultra</option></select></div><div className="space-y-2"><Label htmlFor="discount-cycle">Thời hạn</Label><select id="discount-cycle" value={billingCycle} onChange={(event) => setBillingCycle(event.target.value as BillingCycle)} className="h-11 w-full rounded-md border border-input bg-bg px-3 text-sm"><option value="monthly">1 tháng</option><option value="annual">1 năm</option></select></div></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Gói nhận được</Label><Select value={targetPlan} onValueChange={(value) => setTargetPlan(value as PaidPlan)}><SelectTrigger aria-label="Gói nhận được"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="premium">CinePass Plus</SelectItem><SelectItem value="ultra">CinePass Ultra</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Thời hạn</Label><Select value={billingCycle} onValueChange={(value) => setBillingCycle(value as BillingCycle)}><SelectTrigger aria-label="Thời hạn"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="monthly">1 tháng</SelectItem><SelectItem value="annual">1 năm</SelectItem></SelectContent></Select></div></div>
             <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="discount-percent">Phần trăm giảm</Label><Input id="discount-percent" type="number" min={1} max={100} value={percent} onChange={(event) => setPercent(Number(event.target.value))} className="h-11" /></div><div className="space-y-2"><Label htmlFor="discount-limit">Tổng lượt sử dụng</Label><Input id="discount-limit" type="number" min={1} max={1_000_000} value={maxRedemptions} onChange={(event) => setMaxRedemptions(Number(event.target.value))} className="h-11" /></div></div>
             <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="discount-start">Bắt đầu</Label><Input id="discount-start" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="h-11" /></div><div className="space-y-2"><Label htmlFor="discount-end">Kết thúc</Label><Input id="discount-end" type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="h-11" /></div></div>
             <div className="space-y-2"><Label htmlFor="discount-uid">Chỉ định Firebase UID <span className="font-normal text-fg-muted">(không bắt buộc)</span></Label><Input id="discount-uid" value={targetUid} onChange={(event) => setTargetUid(event.target.value.trim())} placeholder="Để trống nếu ai có mã cũng dùng được" className="h-11 font-mono" /></div>
@@ -134,5 +137,6 @@ export function DiscountAdminPage() {
       </div>
     </div></div>
     {stepUpDialog}
+    {reasonDialog}
   </AdminShell>
 }

@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { type Database, onDisconnect, onValue, push, ref, serverTimestamp, set, update } from 'firebase/database'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { AccountNotification, AccountSession, AccountSettings, DEFAULT_PRIVACY, DirectoryProfile, FriendPresence, FriendRequest, FriendshipRecord, LibraryWatchStatus, PublicProfile, SocialActivity, WatchlistMovie, WatchlistStatus } from '@/lib/account-types'
-import { database } from '@/lib/firebase'
-import { cancelFriendRequest, ensureAccountProfile, normalizeLibraryItem, normalizePublicProfile, profileFromAuthUser, removeFriend, removeWatchlistMovie, respondFriendRequest, saveSettings, sendFriendRequest, setUserBlocked, setWatchlistMovie, updateMovieLibrary as saveMovieLibrary, writeActivity } from '@/lib/account-service'
+import { auth, database } from '@/lib/firebase'
+import { cancelFriendRequest, normalizeLibraryItem, normalizePublicProfile, profileFromAuthUser, removeFriend, removeWatchlistMovie, respondFriendRequest, saveSettings, sendFriendRequest, setUserBlocked, setWatchlistMovie, updateMovieLibrary as saveMovieLibrary, writeActivity } from '@/lib/account-service'
 import { inviteFriendToRoom } from '@/lib/social-api'
 
 function accountLoadError(error: unknown) {
@@ -126,14 +126,18 @@ export function useAccount() {
     }
     const timeout = window.setTimeout(() => failGracefully(new Error('account-timeout')), 7000)
 
-    void ensureAccountProfile(user)
-      .then((ensuredProfile) => {
-        if (!active) return
-        setProfile(normalizePublicProfile(ensuredProfile))
-        setLoading(false)
-        window.clearTimeout(timeout)
-      })
-      .catch(failGracefully)
+    void (async () => {
+      const token = await user.getIdToken()
+      const response = await fetch('/api/me/profile/bootstrap', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const payload = await response.json() as { profile?: PublicProfile; error?: string }
+      if (!response.ok || !payload.profile) throw new Error(payload.error || 'Không thể khởi tạo hồ sơ.')
+      return payload.profile
+    })().then((ensuredProfile) => {
+      if (!active) return
+      setProfile(normalizePublicProfile(ensuredProfile))
+      setLoading(false)
+      window.clearTimeout(timeout)
+    }).catch(failGracefully)
 
     unsubscribers.push(
       onValue(ref(database, `publicProfiles/${user.uid}`), (snapshot) => {
@@ -178,7 +182,7 @@ export function useAccount() {
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [friends])
 
-  const updateSettings = useCallback(async (next: AccountSettings) => { if (!user || !database) return; setSettings(next); await saveSettings(user.uid, next); const publicUpdates: Record<string, unknown> = {}; publicUpdates[`publicWatchlists/${user.uid}`] = next.privacy.showWatchlist ? watchlist : null; if (!next.privacy.showRecentMovies) publicUpdates[`publicRecent/${user.uid}`] = null; await update(ref(database), publicUpdates) }, [user, watchlist])
+  const updateSettings = useCallback(async (next: AccountSettings) => { if (!user || !database) return; setSettings(next); const token = await auth?.currentUser?.getIdToken(); if (!token) throw new Error('Bạn cần đăng nhập.'); const response = await fetch('/api/me/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(next) }); const payload = await response.json() as { settings?: AccountSettings; error?: string }; if (!response.ok || !payload.settings) throw new Error(payload.error || 'Không thể cập nhật quyền riêng tư.'); setSettings(payload.settings); const publicUpdates: Record<string, unknown> = {}; publicUpdates[`publicWatchlists/${user.uid}`] = payload.settings.privacy.showWatchlist ? watchlist : null; await update(ref(database), publicUpdates) }, [user, watchlist])
   const setMovieStatus = useCallback(async (movie: Omit<WatchlistMovie, 'status' | 'addedAt' | 'updatedAt'>, status: WatchlistStatus | null) => { if (!user || !database) throw new Error('Bạn cần đăng nhập để lưu phim.'); if (status) { const value = await setWatchlistMovie(user.uid, movie, status); if (settings.privacy.showWatchlist) await update(ref(database), { [`publicWatchlists/${user.uid}/${movie.movieSlug}`]: value }); if (profile) await writeActivity(user.uid, { actorUid: user.uid, actorName: profile.displayName, actorUsername: profile.username, actorAvatar: profile.avatar, type: status === 'completed' ? 'completed' : 'watchlist', movieSlug: movie.movieSlug, movieTitle: movie.title, poster: movie.poster }).catch(() => undefined) } else { await removeWatchlistMovie(user.uid, movie.movieSlug); await update(ref(database), { [`publicWatchlists/${user.uid}/${movie.movieSlug}`]: null }) } }, [profile, settings.privacy.showWatchlist, user])
   const updateMovieLibrary = useCallback(async (movie: Omit<WatchlistMovie, 'status' | 'favorite' | 'watchLater' | 'watchStatus' | 'addedAt' | 'updatedAt'>, patch: { favorite?: boolean; watchLater?: boolean; watchStatus?: LibraryWatchStatus }) => {
     if (!user || !database) throw new Error('Bạn cần đăng nhập để lưu phim.')

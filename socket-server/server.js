@@ -322,7 +322,9 @@ const verifyFirebaseToken = async (token) => {
 const planCapabilities = WATCH_PARTY_PLAN_CAPABILITIES
 const getAccountPlan = async (uid) => {
   if (!adminDb) throw firebaseAdminUnavailable()
-  const snapshot = await adminDb.ref(`monetization/entitlements/${uid}`).get()
+  const [snapshot, restrictionSnapshot] = await Promise.all([adminDb.ref(`monetization/entitlements/${uid}`).get(), adminDb.ref(`entitlementRestrictions/${uid}`).get()])
+  const restriction = restrictionSnapshot.exists() ? restrictionSnapshot.val() : null
+  if (restriction?.active && (!restriction.expiresAt || restriction.expiresAt > Date.now())) return 'normal'
   if (!snapshot.exists()) return 'normal'
   return resolveStoredAccountPlan(snapshot.val())
 }

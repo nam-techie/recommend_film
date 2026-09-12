@@ -13,9 +13,10 @@ import { SocialReviewCard } from '@/components/account/SocialReviewCard'
 import { ActivityHeatmap } from '@/components/account/ActivityHeatmap'
 import { PresenceBadge } from '@/components/account/PresenceBadge'
 import { MembershipBadge } from '@/components/monetization/MembershipBadge'
+import { ShareCardBuilder } from '@/components/account/ShareCardBuilder'
 import { Button } from '@/components/ui/button'
 import { PublicProfile, SocialActivity, SocialReview, WatchlistMovie } from '@/lib/account-types'
-import { getProfileByUsername, toggleFollow } from '@/lib/account-service'
+import { toggleFollow } from '@/lib/account-service'
 import { auth, database } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import type { AccountPlan } from '@/lib/monetization'
@@ -29,27 +30,25 @@ export function PublicProfilePage({ username }: { username: string }) {
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
-    if (!database) { setLoading(false); setNotFound(true); return }
-    setLoading(true); const next = await getProfileByUsername(username).catch(() => null)
-    if (!next) { setNotFound(true); setLoading(false); return }
-    setProfile({ ...next, favoriteGenres: Array.isArray(next.favoriteGenres) ? next.favoriteGenres : [] })
-    const ownTarget = account.profile?.uid === next.uid
-    if (!next.isPublic && !ownTarget) { setLoading(false); return }
-    const [followersSnap, followingSnap, recentSnap, watchlistSnap, reviewsSnap, activitySnap, ownFollowingSnap, membership] = await Promise.all([
-      get(ref(database, `followers/${next.uid}`)), get(ref(database, `following/${next.uid}`)),
-      next.showRecentMovies || ownTarget ? get(ref(database, `publicRecent/${next.uid}`)) : Promise.resolve(null),
-      next.showWatchlist || ownTarget ? get(ref(database, `publicWatchlists/${next.uid}`)) : Promise.resolve(null),
-      get(ref(database, 'reviews')),
-      next.showActivity || ownTarget ? get(ref(database, `activities/${next.uid}`)) : Promise.resolve(null),
-      account.profile ? get(ref(database, `following/${account.profile.uid}/${next.uid}`)) : Promise.resolve(null),
-      fetch(`/api/public/memberships/${encodeURIComponent(next.uid)}`, { cache: 'no-store' })
-        .then(async (response) => response.ok ? await response.json() as { plan?: AccountPlan } : null)
-        .catch(() => null),
-    ])
-    setMembershipPlan(membership?.plan === 'normal' || membership?.plan === 'premium' || membership?.plan === 'ultra' ? membership.plan : null)
-    setFollowers(Object.keys(followersSnap.val() || {}).length); setFollowingCount(Object.keys(followingSnap.val() || {}).length); setRecent(Object.values((recentSnap?.val() || {}) as Record<string, RecentItem>).sort((a, b) => b.updatedAt - a.updatedAt)); setWatchlist(Object.values((watchlistSnap?.val() || {}) as Record<string, WatchlistMovie>).sort((a, b) => b.updatedAt - a.updatedAt)); setActivities(Object.values((activitySnap?.val() || {}) as Record<string, SocialActivity>).sort((a, b) => b.createdAt - a.createdAt)); setFollowing(Boolean(ownFollowingSnap?.val()))
-    const allReviews = reviewsSnap.val() || {}; setReviews(Object.values(allReviews).flatMap((movieReviews) => Object.values(movieReviews as Record<string, SocialReview>)).filter((review: SocialReview) => review.authorUid === next.uid).sort((a: SocialReview, b: SocialReview) => b.updatedAt - a.updatedAt))
-    setLoading(false)
+    setLoading(true); setNotFound(false)
+    try {
+      const currentUser = auth?.currentUser
+      const token = currentUser ? await currentUser.getIdToken() : null
+      const response = await fetch(`/api/public/profiles/${encodeURIComponent(username)}`, { cache: 'no-store', headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      if (response.status === 404) { setNotFound(true); return }
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Không thể tải hồ sơ.')
+      if (payload.private) {
+        setProfile({ ...payload.profile, favoriteGenres: [], createdAt: 0, updatedAt: 0, isPublic: false, showRecentMovies: false, showWatchlist: false, showActivity: false, allowWatchPartyInvites: false, allowTasteDiscovery: false })
+        setMembershipPlan(null); setFollowers(0); setFollowingCount(0); setRecent([]); setWatchlist([]); setReviews([]); setActivities([]); setFollowing(false)
+        return
+      }
+      setProfile({ ...payload.profile, favoriteGenres: Array.isArray(payload.profile.favoriteGenres) ? payload.profile.favoriteGenres : [] })
+      setMembershipPlan(payload.membershipPlan === 'normal' || payload.membershipPlan === 'premium' || payload.membershipPlan === 'ultra' ? payload.membershipPlan : null)
+      setFollowers(Number(payload.counts?.followers || 0)); setFollowingCount(Number(payload.counts?.following || 0)); setFollowing(Boolean(payload.viewerFollowing))
+      setRecent(Array.isArray(payload.recent) ? payload.recent : []); setWatchlist(Array.isArray(payload.watchlist) ? payload.watchlist : []); setReviews(Array.isArray(payload.reviews) ? payload.reviews : []); setActivities(Array.isArray(payload.activities) ? payload.activities : [])
+    } catch { setNotFound(true) }
+    finally { setLoading(false) }
   }, [account.profile, username])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -109,9 +108,7 @@ export function PublicProfilePage({ username }: { username: string }) {
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
             {ownProfile ? (
-              <Button className="w-full sm:w-auto" onClick={() => router.push('/account')}>
-                <UserPlus className="mr-2 h-4 w-4" />Chỉnh sửa hồ sơ
-              </Button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row"><Button className="w-full sm:w-auto" onClick={() => router.push('/account?tab=profile')}><UserPlus className="mr-2 h-4 w-4" />Chỉnh sửa hồ sơ</Button><ShareCardBuilder compact /></div>
             ) : (
               <div className="grid w-full grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:w-auto">
                 <Button className="w-full sm:w-auto" disabled={!account.profile} onClick={() => void toggle()} variant={following ? 'outline' : 'default'}>

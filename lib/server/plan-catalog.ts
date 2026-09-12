@@ -15,6 +15,7 @@ import {
 } from '@/lib/monetization'
 import { getFirebaseAdminApp } from '@/lib/server/firebase-admin'
 import { MonetizationError } from '@/lib/server/monetization-error'
+import { runAuditedMutation } from '@/lib/server/audit'
 
 const paidPlans: PaidPlan[] = ['premium', 'ultra']
 
@@ -109,12 +110,11 @@ export async function createPlanVersion(planId: string, input: CreatePlanVersion
     createdBy: adminUid,
     createdAt: now,
   }
-  const auditId = database().ref('monetization/auditLogs').push().key!
-  await database().ref('monetization').update({
-    [`plans/${planId}/versions/${id}`]: version,
-    [`auditLogs/${auditId}`]: { id: auditId, action: 'plan_version_created', status: 'succeeded', actorUid: adminUid, targetId: `${planId}:${id}`, reason: version.reason, after: version, createdAt: now, completedAt: now },
-  })
-  return version
+  const { result } = await runAuditedMutation(
+    { action: 'plan_version_created', actorUid: adminUid, targetId: `${planId}:${id}`, reason: version.reason, after: version },
+    async () => { await database().ref(`monetization/plans/${planId}/versions/${id}`).set(version); return version },
+  )
+  return result
 }
 
 export async function cancelPlanVersion(planId: string, versionId: string, reason: string, adminUid: string) {
@@ -124,14 +124,18 @@ export async function cancelPlanVersion(planId: string, versionId: string, reaso
   const ref = database().ref(`monetization/plans/${planId}/versions/${versionId}`)
   let failure: MonetizationError | null = null
   const now = Date.now()
-  const result = await ref.transaction((current: PlanPriceVersion | null) => {
-    if (!current) { failure = new MonetizationError('NOT_FOUND', 'Không tìm thấy phiên bản giá.', 404); return }
-    if (current.status !== 'published' || current.effectiveAt <= now) { failure = new MonetizationError('VERSION_NOT_CANCELLABLE', 'Chỉ có thể hủy phiên bản chưa đến thời điểm áp dụng.', 409); return }
-    return { ...current, status: 'cancelled', cancelledBy: adminUid, cancelledAt: now }
-  }, undefined, false)
-  if (!result.committed) throw failure || new MonetizationError('CANCEL_FAILED', 'Không thể hủy lịch giá.')
-  const version = result.snapshot.val() as PlanPriceVersion
-  const auditId = database().ref('monetization/auditLogs').push().key!
-  await database().ref(`monetization/auditLogs/${auditId}`).set({ id: auditId, action: 'plan_version_cancelled', status: 'succeeded', actorUid: adminUid, targetId: `${planId}:${versionId}`, reason: cleanReason, after: version, createdAt: now, completedAt: now })
+  const before = (await ref.get()).val() as PlanPriceVersion | null
+  const { result: version } = await runAuditedMutation(
+    { action: 'plan_version_cancelled', actorUid: adminUid, targetId: `${planId}:${versionId}`, reason: cleanReason, before },
+    async () => {
+      const result = await ref.transaction((current: PlanPriceVersion | null) => {
+        if (!current) { failure = new MonetizationError('NOT_FOUND', 'Không tìm thấy phiên bản giá.', 404); return }
+        if (current.status !== 'published' || current.effectiveAt <= now) { failure = new MonetizationError('VERSION_NOT_CANCELLABLE', 'Chỉ có thể hủy phiên bản chưa đến thời điểm áp dụng.', 409); return }
+        return { ...current, status: 'cancelled', cancelledBy: adminUid, cancelledAt: now }
+      }, undefined, false)
+      if (!result.committed) throw failure || new MonetizationError('CANCEL_FAILED', 'Không thể hủy lịch giá.')
+      return result.snapshot.val() as PlanPriceVersion
+    },
+  )
   return version
 }

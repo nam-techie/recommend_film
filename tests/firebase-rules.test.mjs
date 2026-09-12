@@ -62,3 +62,13 @@ test('monetization data stays server-only for authenticated clients', async () =
   assert.equal((await write('monetization/affiliatePolicy', { enabled: true }, 'alice')).status, 401)
   assert.equal((await write(`monetization/entitlements/${users.alice.uid}`, { plan: 'ultra' }, 'alice')).status, 401)
 })
+
+test('entitlement, Star and feedback data stay server-only', async () => {
+  const uid = users.alice.uid
+  assert.equal((await read(`entitlementGrantStates/${uid}`, 'alice')).status, 401)
+  assert.equal((await write(`entitlementGrants/${uid}/fake`, { plan: 'ultra' }, 'alice')).status, 401)
+  assert.equal((await write('githubStar/claims/fake', { uid }, 'alice')).status, 401)
+  assert.equal((await read('githubStar/states/1', 'alice')).status, 401)
+  assert.equal((await write('support/feedback/fake', { uid, message: 'spoofed' }, 'alice')).status, 401)
+  assert.equal((await read('support/feedback/fake', 'alice')).status, 401)
+})

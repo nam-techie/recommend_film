@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { getDatabase } from 'firebase-admin/database'
 import { requireUser, getFirebaseAdminApp } from '@/lib/server/firebase-admin'
 import { apiError } from '@/lib/server/api-response'
+import { anonymizeFeedbackForDeletedAccount } from '@/lib/server/feedback'
+import { anonymizeGithubStarClaimsForDeletedAccount } from '@/lib/server/github-star'
+import { deleteAllProfileMedia } from '@/lib/server/profile-media'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +45,7 @@ export async function DELETE(request: Request) {
       Object.keys(movies || {}).forEach((movieSlug) => { if (movies[movieSlug]?.[identity.uid]) updates[`analytics/aggregates/uniqueViewers/${day}/${movieSlug}/${identity.uid}`] = null })
     })
     await database.ref().update(updates)
+    await Promise.all([anonymizeFeedbackForDeletedAccount(identity.uid), anonymizeGithubStarClaimsForDeletedAccount(identity.uid), deleteAllProfileMedia(identity.uid)])
     return NextResponse.json({ deleted: true })
   } catch (error) { return apiError(error, 'Không thể xóa dữ liệu account trên server.') }
 }

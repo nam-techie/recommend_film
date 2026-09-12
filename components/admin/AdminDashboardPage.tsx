@@ -22,6 +22,8 @@ import {
   LogOut,
   Menu,
   MessageCircleMore,
+  Github,
+  Inbox,
   PackageOpen,
   RefreshCw,
   ShieldAlert,
@@ -53,7 +55,11 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
     { label: 'Phân tích nội dung', icon: BarChart3, href: '/admin/analytics' },
     { label: 'Cộng đồng', icon: MessageCircleMore, href: '/admin/community' },
   ] },
-  { label: 'Khán giả', items: [{ label: 'Người dùng', icon: Users, href: '/admin/users' }] },
+  { label: 'Khán giả', items: [
+    { label: 'Người dùng', icon: Users, href: '/admin/users' },
+    { label: 'Hòm thư góp ý', icon: Inbox, href: '/admin/feedback' },
+    { label: 'GitHub Star Plus', icon: Github, href: '/admin/github-stars' },
+  ] },
   { label: 'Kiếm tiền', items: [
     { label: 'Gói & giá', icon: PackageOpen, href: '/admin/plans' },
     { label: 'Mã giảm giá', icon: BadgePercent, href: '/admin/discounts' },
