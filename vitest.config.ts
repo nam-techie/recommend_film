@@ -3,10 +3,10 @@ import path from 'node:path'
 
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
-  resolve: { alias: { '@': path.resolve(__dirname) } },
+  resolve: { alias: { '@': path.resolve(process.cwd()) } },
   test: {
     environment: 'jsdom',
-    setupFiles: ['./tests/setup.ts'],
+    setupFiles: [path.resolve(process.cwd(), 'tests/setup.ts')],
     include: ['tests/**/*.test.{ts,tsx}'],
     restoreMocks: true,
   },

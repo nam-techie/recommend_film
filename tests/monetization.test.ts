@@ -15,7 +15,7 @@ describe('monetization rules', () => {
     expect(PLAN_DEFINITIONS.ultra.name).toBe('CinePass Ultra')
     expect(PLAN_CAPABILITIES.normal).toMatchObject({ moviesPerDay: 3, episodesPerMoviePerDay: 5, canCreateRoom: false, canChat: false })
     expect(PLAN_CAPABILITIES.premium).toMatchObject({ roomAccessModes: ['link_only'], roomMaxMembers: 8, canUseVoice: false })
-    expect(PLAN_CAPABILITIES.ultra).toMatchObject({ roomAccessModes: ['public', 'link_only', 'password'], roomMaxMembers: 50, canUseVoice: true })
+    expect(PLAN_CAPABILITIES.ultra).toMatchObject({ roomAccessModes: ['public', 'link_only', 'password'], roomMaxMembers: 36, canUseVoice: true })
   })
   it('normalizes codes and quotes a free Ultra year', () => {
     expect(normalizeDiscountCode(' ultra 100 ')).toBe('ULTRA100')

@@ -69,6 +69,7 @@ interface Props {
   onToggleFullscreen?: () => void
   voiceEnabled?: boolean
   micEnabled?: boolean
+  micUnavailableReason?: string
   speakerEnabled?: boolean
   voiceJoined?: boolean
   speakingMembers?: WatchPartyMember[]
@@ -132,6 +133,7 @@ export function SyncedHlsPlayer({
   onToggleFullscreen,
   voiceEnabled = false,
   micEnabled = false,
+  micUnavailableReason = '',
   speakerEnabled = true,
   voiceJoined = false,
   speakingMembers = [],
@@ -933,7 +935,7 @@ export function SyncedHlsPlayer({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-          {!standalone && onToggleMic && <Button size="icon-lg" variant="ghost" aria-label={micEnabled ? 'Tắt mic' : 'Bật mic'} aria-pressed={micEnabled} title={voiceEnabled ? (micEnabled ? 'Tắt mic' : 'Bật mic') : 'Host chưa mở voice'} disabled={!voiceEnabled} onClick={onToggleMic} className={cn(iconButtonClass, micEnabled && 'bg-ok/25 text-ok')}>{micEnabled ? <Mic /> : <MicOff />}</Button>}
+          {!standalone && onToggleMic && <Button size="icon-lg" variant="ghost" aria-label={micUnavailableReason || (micEnabled ? 'Tắt mic' : 'Bật mic')} aria-pressed={micEnabled} title={micUnavailableReason || (voiceEnabled ? (micEnabled ? 'Tắt mic' : 'Bật mic') : 'Host chưa mở voice')} disabled={!voiceEnabled || Boolean(micUnavailableReason)} onClick={onToggleMic} className={cn(iconButtonClass, micEnabled && 'bg-ok/25 text-ok')}>{micEnabled ? <Mic /> : <MicOff />}</Button>}
           {!standalone && onToggleSpeaker && <Button size="icon-lg" variant="ghost" aria-label={speakerEnabled ? 'Tắt tiếng phòng' : 'Bật tiếng phòng'} aria-pressed={speakerEnabled} disabled={!voiceEnabled} onClick={onToggleSpeaker} className={cn(iconButtonClass, 'hidden sm:inline-flex')}>{speakerEnabled ? <Headphones /> : <VolumeX />}</Button>}
           {!standalone && <Button size="icon-lg" variant="ghost" aria-label="Đồng bộ lại" title="Đồng bộ lại với phòng" onClick={() => void applyRoomPlayback()} className={cn(iconButtonClass, 'hidden md:inline-flex')}><RefreshCw /></Button>}
           {!standalone && onSendReaction && <Button size="icon-lg" variant="ghost" aria-label={showReactionTray ? 'Ẩn reaction' : 'Gửi reaction'} onClick={() => { setShowReactionTray((value) => !value); setShowSettings(false); setShowSpeed(false); setControlsVisible(true) }} className={cn(iconButtonClass, showReactionTray && 'bg-fg/20')}><SmilePlus /></Button>}
