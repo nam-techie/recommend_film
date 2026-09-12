@@ -15,6 +15,7 @@ import { buildWatchPartyInviteEmail } from './email-templates.js'
 import { createEmailDelivery } from './email-delivery.js'
 import { firebaseAdminConfig } from './service-config.js'
 import dotenv from 'dotenv'
+import { CinemaSeatStore, isVipSeat } from './cinema-seats.js'
 
 if (process.env.NODE_ENV !== 'production') dotenv.config({ path: new URL('../.env', import.meta.url) })
 
@@ -25,7 +26,9 @@ const TOKEN_SECRET = process.env.WATCH_PARTY_TOKEN_SECRET || (IS_PRODUCTION ? ''
 const ROOM_TTL_SECONDS = Number(process.env.ROOM_TTL_SECONDS || 43200)
 const EMPTY_ROOM_TTL_SECONDS = Number(process.env.EMPTY_ROOM_TTL_SECONDS || 300)
 const HOST_GRACE_SECONDS = Number(process.env.HOST_GRACE_SECONDS || 30)
-const MAX_ROOM_MEMBERS = Number(process.env.MAX_ROOM_MEMBERS || 50)
+const configuredRoomLimit = Number(process.env.MAX_ROOM_MEMBERS)
+const MAX_ROOM_MEMBERS = Math.min(WATCH_PARTY_PLAN_CAPABILITIES.ultra.maxMembers, Number.isInteger(configuredRoomLimit) && configuredRoomLimit > 0 ? configuredRoomLimit : WATCH_PARTY_PLAN_CAPABILITIES.ultra.maxMembers)
+const roomMemberLimit = (room) => Math.min(MAX_ROOM_MEMBERS, Number.isInteger(room.maxMembers) && room.maxMembers > 0 ? room.maxMembers : WATCH_PARTY_PLAN_CAPABILITIES[room.ownerPlan]?.maxMembers || MAX_ROOM_MEMBERS)
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || (IS_PRODUCTION ? '' : 'http://localhost:3000,http://localhost:8080'))
   .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean)
 const MEDIA_ALLOWED_HOSTS = (process.env.MEDIA_ALLOWED_HOSTS || '')
@@ -251,6 +254,7 @@ if (REDIS_URL) {
   store = new RedisStore(redisClient)
 }
 
+const cinemaSeats = new CinemaSeatStore(redisClient)
 const log = (event, data = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...data }))
 const deleteVoiceRoom = async (roomId, attempt = 1) => {
   if (!livekitRooms) return
@@ -328,6 +332,47 @@ const refreshMemberPlan = async (member) => {
   if (member) member.accountPlan = plan
   return { plan, changed }
 }
+// Join tokens never grant publishing. Mic permission is issued only for a live
+// participant after checking the current entitlement and authoritative VIP seat.
+const cinemaPublishers = new Map()
+const publisherKey = (roomId, memberId) => `${roomId}:${memberId}`
+const cinemaMemberLocks = new Map()
+const withCinemaMemberLock = (roomId, memberId, work) => {
+  const key = publisherKey(roomId, memberId)
+  const task = (cinemaMemberLocks.get(key) || Promise.resolve()).catch(() => undefined).then(work)
+  cinemaMemberLocks.set(key, task)
+  void task.finally(() => { if (cinemaMemberLocks.get(key) === task) cinemaMemberLocks.delete(key) }).catch(() => undefined)
+  return task
+}
+const revokeCinemaMic = async (roomId, memberId) => {
+  if (!livekitRooms || !cinemaPublishers.has(publisherKey(roomId, memberId))) return
+  try {
+    await livekitRooms.updateParticipant(roomId, memberId, { permission: { canPublish: false, canPublishData: false, canSubscribe: true } })
+  } catch (error) {
+    if (!['not_found', '404'].includes(String(error?.code || '').toLowerCase()) && error?.status !== 404) throw error
+  }
+  // Keep watching until the room ends, including reconnects with refreshed provider tokens.
+}
+let checkingPublishers = false
+setInterval(async () => {
+  if (checkingPublishers) return
+  checkingPublishers = true
+  try {
+    await Promise.all([...cinemaPublishers.values()].map(async ({ roomId, memberId }) => {
+      try {
+        const room = await store.getRoom(roomId), member = room?.members?.[memberId]
+        const seats = room ? (await cinemaSeats.update(room)).snapshot.seats : {}
+        const seat = Object.keys(seats).find(id => seats[id] === memberId)
+        const plan = member?.uid ? await getAccountPlan(member.uid) : 'normal'
+        if (!room?.voiceEnabled || !member?.connected || !isVipSeat(seat) || plan !== 'ultra') await revokeCinemaMic(roomId, memberId)
+        if (!room || ['closing', 'closed'].includes(room.status)) cinemaPublishers.delete(publisherKey(roomId, memberId))
+      } catch {
+        // Entitlement checks fail closed; retry revocation on the next pass.
+        try { await revokeCinemaMic(roomId, memberId) } catch { log('cinema_mic_revoke_retry', { roomId, memberId }) }
+      }
+    }))
+  } finally { checkingPublishers = false }
+}, 5000).unref()
 const vietnamDateKey = (now = Date.now()) => {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
@@ -359,7 +404,7 @@ const publicRoom = (room) => ({
   hostName: room.members[room.hostMemberId]?.displayName || 'Đang chờ host',
   userCount: Object.values(room.members).filter((member) => member.connected).length,
   createdAt: room.createdAt, expiresAt: room.expiresAt, status: room.status,
-  maxMembers: room.maxMembers || MAX_ROOM_MEMBERS,
+  maxMembers: roomMemberLimit(room),
   deleteAt: room.lifecycle?.deleteAt || null,
   playbackPolicy: room.playbackPolicy || { autoNext: true }
 })
@@ -371,6 +416,7 @@ const clientMember = (member) => {
 }
 const clientRoom = (room) => {
   const copy = structuredClone(room)
+  copy.maxMembers = roomMemberLimit(room)
   copy.playbackPolicy ||= { autoNext: true }
   delete copy.passwordHash
   for (const memberId of Object.keys(copy.members)) copy.members[memberId] = clientMember(room.members[memberId])
@@ -436,6 +482,7 @@ async function closeRoom(roomId, reason = 'host_closed') {
   room.lifecycle = { ...(room.lifecycle || { hardExpiresAt: room.expiresAt }), closedAt: Date.now(), closeReason: reason }
   io.to(room.id).emit('room:closed', { code: reason.toUpperCase(), reason })
   await store.deleteRoom(room.id)
+  await cinemaSeats.delete(room.id)
   io.in(room.id).disconnectSockets(true)
   await deleteVoiceRoom(room.id)
   clearTimeout(hostTimers.get(room.id)); hostTimers.delete(room.id)
@@ -466,7 +513,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return res.writeHead(204).end()
   const ip = requestIp(req)
   try {
-    if (url.pathname === '/health') return json(res, 200, { ok: true })
+    if (url.pathname === '/health') return json(res, 200, { ok: true, cinema: { regular: 32, vip: 4, capacity: 36, vipMicrophone: true } })
     const disconnectUserMatch = url.pathname.match(/^\/internal\/admin\/users\/([^/]+)\/disconnect$/)
     if (req.method === 'POST' && disconnectUserMatch) {
       const configuredSecret = process.env.WATCH_PARTY_INTERNAL_ADMIN_SECRET || ''
@@ -637,7 +684,7 @@ const server = http.createServer(async (req, res) => {
       if (!room.voiceEnabled) return json(res, 403, { code: 'VOICE_DISABLED', error: 'Host chưa bật voice cho phòng.' })
       const { plan: memberPlan, changed: memberPlanChanged } = await refreshMemberPlan(member)
       if (memberPlanChanged) await store.setRoom(room)
-      if (!planCapabilities[memberPlan]?.canVoice) return json(res, 403, { code: 'ULTRA_REQUIRED', error: 'Voice chat chỉ dành cho CinePass Ultra.' })
+      if (!member.connected || claims.deviceRole === 'remote') return json(res, 403, { code: 'SCREEN_ONLY', error: 'Hãy tham gia phòng trên thiết bị xem phim.' })
       if (!(await store.allow(`voice-token:${member.memberId}`, 10, 60_000))) return json(res, 429, { code: 'RATE_LIMITED', error: 'Bạn yêu cầu kết nối voice quá nhanh.' })
       try {
         const participantToken = await createVoiceToken(room, member)
@@ -695,7 +742,7 @@ const server = http.createServer(async (req, res) => {
       if (deniedEpisode) return json(res, 400, { code: 'MEDIA_HOST_DENIED', error: 'Host HLS chưa được máy chủ cho phép.' })
       const displayName = String(owner.name || owner.email?.split('@')[0] || 'Host').trim().slice(0, 30)
       const member = { memberId, displayName, role: 'host', uid: owner.uid, accountPlan: ownerPlan, avatar: owner.picture, isAnonymous: false, joinedAt: now, lastSeenAt: now, connected: false, socketIds: [] }
-      const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, maxMembers: ownerCapabilities.maxMembers, ownerPlan, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
+      const room = { id: code, roomName: input.roomName || input.movie.title, accessMode: input.accessMode, maxMembers: Math.min(ownerCapabilities.maxMembers, MAX_ROOM_MEMBERS), ownerPlan, passwordHash: input.accessMode === 'password' ? await hashRoomPassword(input.password) : undefined, syncCapability: sourceCapability(initial) === 'full' ? 'full' : 'limited', ownerUid: owner.uid, ownerDisplayName: displayName, ownerAvatar: owner.picture, movie: { ...input.movie, episodes: input.movie.episodes.map((episode) => ({ ...episode, capability: sourceCapability(episode) })) },
         playback: { episodeId: initial.id, currentTime: 0, isPlaying: false, revision: 0, serverUpdatedAt: now, updatedBy: memberId, action: 'pause' },
         members: { [memberId]: member }, messages: [], hostMemberId: memberId, controlMode: 'host_only', voiceEnabled: false,
         playbackPolicy: input.playbackPolicy || { autoNext: true }, createdAt: now, expiresAt: now + ROOM_TTL_SECONDS * 1000, status: 'empty_grace', emptySince: now,
@@ -710,7 +757,7 @@ const server = http.createServer(async (req, res) => {
       if (room?.accessMode === 'password' && !(await store.allow(`password:${ip}:${roomId}`, 5, 60_000))) return json(res, 429, { code: 'PASSWORD_RATE_LIMITED', error: 'Bạn nhập sai quá nhiều lần. Hãy thử lại sau một phút.' })
       if (room?.accessMode === 'password' && !(await verifyRoomPassword(input.password || '', room.passwordHash))) return json(res, 403, { code: 'WRONG_PASSWORD', error: 'Mật khẩu phòng không đúng.' })
       if (!room) return json(res, 404, { code: 'ROOM_NOT_FOUND', error: 'Phòng không tồn tại hoặc đã hết hạn.' })
-      if (Object.keys(room.members).length >= (room.maxMembers || MAX_ROOM_MEMBERS)) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người theo giới hạn gói của host.' })
+      if (Object.keys(room.members).length >= roomMemberLimit(room)) return json(res, 409, { code: 'ROOM_FULL', error: 'Phòng đã đủ người theo giới hạn gói của host.' })
       const account = await verifyFirebaseToken(input.firebaseIdToken)
       const accountPlan = await getAccountPlan(account.uid)
       const joiningEpisode = room.movie.episodes.find((episode) => episode.id === room.playback.episodeId) || room.movie.episodes[0]
@@ -828,6 +875,35 @@ io.on('connection', async (socket) => {
   }
 
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
+  socket.on('cinema:sync', async (_payload, ack) => {
+    try {
+      const fresh = await store.getRoom(roomId)
+      if (!fresh?.members[memberId] || ['closing', 'closed'].includes(fresh.status)) return ack?.({ ok: false, code: 'ROOM_NOT_FOUND' })
+      const member = fresh.members[memberId]
+      const plan = await refreshMemberPlan(member)
+      if (plan.changed) { await store.setRoom(fresh); io.to(roomId).emit('room:member_joined', clientMember(member)) }
+      const result = await cinemaSeats.update(fresh, isRemote ? 'read' : 'renew', memberId)
+      io.to(roomId).emit('cinema:seats', result.snapshot)
+      ack?.(result)
+    } catch { ack?.({ ok: false, code: 'SEAT_SERVICE_UNAVAILABLE' }) }
+  })
+  socket.on('cinema:claim', (payload, ack) => withCinemaMemberLock(roomId, memberId, async () => {
+    try {
+      if (isRemote) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
+      const fresh = await store.getRoom(roomId)
+      if (!fresh?.members[memberId]?.connected || ['closing', 'closed'].includes(fresh.status)) return ack?.({ ok: false, code: 'ROOM_NOT_FOUND' })
+      if (typeof payload?.seatId !== 'string' || payload.seatId.length > 3) return ack?.({ ok: false, code: 'INVALID_SEAT' })
+      if (!(await store.allow(`cinema:${memberId}`, 8, 5000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+      const member = fresh.members[memberId]
+      const plan = await refreshMemberPlan(member)
+      if (plan.changed) { await store.setRoom(fresh); io.to(roomId).emit('room:member_joined', clientMember(member)) }
+      if (isVipSeat(payload.seatId) && plan.plan !== 'ultra') return ack?.({ ok: false, code: 'ULTRA_REQUIRED' })
+      if (!isVipSeat(payload.seatId)) await revokeCinemaMic(roomId, memberId)
+      const result = await cinemaSeats.update(fresh, 'claim', memberId, payload.seatId)
+      io.to(roomId).emit('cinema:seats', result.snapshot)
+      ack?.(result)
+    } catch { ack?.({ ok: false, code: 'SEAT_SERVICE_UNAVAILABLE' }) }
+  }))
   socket.on('sync:request', async (payload, ack) => { const fresh = await store.getRoom(roomId); const response = { serverTime: Date.now(), clientSentAt: payload?.clientSentAt, playback: fresh?.playback }; ack?.(response); socket.emit('sync:pong', response) })
   socket.on('heartbeat:user', async () => { const fresh = await store.getRoom(roomId); if (fresh?.members[memberId]) { fresh.members[memberId].lastSeenAt = Date.now(); if (!isRemote) fresh.members[memberId].connected = true; await store.setRoom(fresh) } })
   socket.on('playback:update', async (payload, ack) => {
@@ -899,6 +975,28 @@ io.on('connection', async (socket) => {
     if (senderPlanChanged) await store.setRoom(fresh)
     io.to(roomId).emit('reaction:new', { id: id('reaction'), memberId, displayName: sender.displayName, emoji, timestamp: Date.now() }); ack?.({ ok: true })
   })
+  socket.on('voice:microphone', (_payload, ack) => withCinemaMemberLock(roomId, memberId, async () => {
+    try {
+      if (isRemote || !livekitRooms) return ack?.({ ok: false, code: 'SCREEN_ONLY' })
+      if (!(await store.allow(`mic:${memberId}`, 6, 5000))) return ack?.({ ok: false, code: 'RATE_LIMITED' })
+      const fresh = await store.getRoom(roomId), member = fresh?.members[memberId]
+      if (!member?.connected || !fresh.voiceEnabled) return ack?.({ ok: false, code: 'VOICE_DISABLED' })
+      const { plan } = await refreshMemberPlan(member)
+      const seats = (await cinemaSeats.update(fresh, 'renew', memberId)).snapshot.seats
+      const seat = Object.keys(seats).find(id => seats[id] === memberId)
+      if (plan !== 'ultra' || !isVipSeat(seat)) { await revokeCinemaMic(roomId, memberId); return ack?.({ ok: false, code: 'VIP_REQUIRED' }) }
+      const key = publisherKey(roomId, memberId)
+      cinemaPublishers.set(key, { roomId, memberId })
+      await livekitRooms.updateParticipant(roomId, memberId, { permission: { canPublish: true, canSubscribe: true, canPublishData: false, canPublishSources: buildVoiceGrant(roomId, true).canPublishSources } })
+      // Recheck after the provider request, in case a seat change raced this grant.
+      const current = await store.getRoom(roomId)
+      const latestSeats = current ? (await cinemaSeats.update(current)).snapshot.seats : {}
+      if (!current?.voiceEnabled || !Object.entries(latestSeats).some(([id, owner]) => owner === memberId && isVipSeat(id))) {
+        await revokeCinemaMic(roomId, memberId); return ack?.({ ok: false, code: 'VIP_REQUIRED' })
+      }
+      ack?.({ ok: true })
+    } catch { ack?.({ ok: false, code: 'VOICE_NOT_READY' }) }
+  }))
   socket.on('voice:permission', async (payload, ack) => {
     const fresh = await store.getRoom(roomId)
     if (!fresh || fresh.hostMemberId !== memberId) return ack?.({ ok: false, code: 'HOST_ONLY' })
@@ -965,7 +1063,16 @@ io.on('connection', async (socket) => {
     }
     await store.setRoom(fresh); io.emit('room:list_changed')
   }
-  socket.on('room:leave', async (ack) => { await disconnectMember(); await transferHost(roomId); ack?.({ ok: true }); setTimeout(() => socket.disconnect(true), 0) })
+  socket.on('room:leave', async (ack) => {
+    await disconnectMember()
+    const fresh = await store.getRoom(roomId)
+    if (fresh && !isRemote && !fresh.members[memberId]?.connected) {
+      await revokeCinemaMic(roomId, memberId).catch(() => undefined)
+      const result = await cinemaSeats.update(fresh, 'release', memberId)
+      io.to(roomId).emit('cinema:seats', result.snapshot)
+    }
+    await transferHost(roomId); ack?.({ ok: true }); setTimeout(() => socket.disconnect(true), 0)
+  })
   socket.on('disconnect', disconnectMember)
 })
 

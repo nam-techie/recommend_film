@@ -130,7 +130,7 @@ Ma trận quyền hiện tại:
 
 - **CinePass:** 3 phim khác nhau/ngày, 5 tập trong mỗi phim/ngày; được tham gia phòng ở chế độ xem, không tạo phòng, chat, reaction hoặc voice.
 - **CinePass Plus:** xem không giới hạn; tạo phòng bằng link tối đa 8 người; chat và reaction; không có voice.
-- **CinePass Ultra:** toàn bộ quyền Plus; phòng công khai/link/mật khẩu tối đa 50 người; voice chat.
+- **CinePass Ultra:** toàn bộ quyền Plus; phòng công khai/link/mật khẩu tối đa 36 người (32 thường + 4 VIP); voice chat.
 
 Sau khi sửa quyền socket server, cần khởi động lại cả Next.js và `socket-server`. Nếu UI đã đổi nhưng tài khoản CinePass vẫn tạo được phòng thì socket server đang chạy bản cũ.
 
