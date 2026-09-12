@@ -7,7 +7,7 @@ import { AdminPage, AdminPageHeader, AdminSection, AdminState, DataSourceIndicat
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAdminApi } from '@/hooks/useAdminApi'
-import type { AnalyticsOverview } from '@/lib/analytics'
+import type { AnalyticsHealth, AnalyticsOverview } from '@/lib/analytics'
 import { analyticsCompletionRate } from '@/lib/analytics'
 
 const number = new Intl.NumberFormat('vi-VN')
@@ -16,13 +16,14 @@ export function AnalyticsAdminPage() {
   const { user, loading: authLoading, logout, request, denied } = useAdminApi()
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
   const [data, setData] = useState<AnalyticsOverview | null>(null)
+  const [health, setHealth] = useState<AnalyticsHealth | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const load = useCallback(async () => {
     if (!user) return
     setLoading(true); setError(null)
-    try { setData(await request<AnalyticsOverview>(`/api/admin/analytics/overview?range=${range}`)); setLoadedAt(Date.now()) }
+    try { const [overview, healthState] = await Promise.all([request<AnalyticsOverview>(`/api/admin/analytics/overview?range=${range}`), request<AnalyticsHealth>('/api/admin/analytics/health')]); setData(overview); setHealth(healthState); setLoadedAt(Date.now()) }
     catch (next) { setError(next instanceof Error ? next.message : 'Không thể tải analytics.') }
     finally { setLoading(false) }
   }, [range, request, user])

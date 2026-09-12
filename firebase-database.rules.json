@@ -167,7 +167,8 @@
     "analytics": {
       ".read": false,
       ".write": false,
-      "playbackSessions": { ".indexOn": ["uid", "finalized", "lastHeartbeatAt", "startedAt"] }
+      "playbackSessions": { ".indexOn": ["uid", "finalized", "lastHeartbeatAt", "startedAt", "dayKey"] },
+      "playbackGrants": { ".indexOn": ["expiresAt"] }
     },
     "personalization": { ".read": false, ".write": false },
     "content": { ".read": false, ".write": false },

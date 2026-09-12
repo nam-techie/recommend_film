@@ -25,6 +25,14 @@ describe('playback analytics heartbeat', () => {
     expect(applyPlaybackHeartbeat(current, { sequence: 4, position: 90, duration: 1000, isPlaying: true, visible: true, pictureInPicture: false }, 16_000)).toEqual({ accepted: false, record: current })
   })
 
+  it('keeps estimated embed sessions out of qualified and completed metrics', () => {
+    const result = applyPlaybackHeartbeat(session({ reliability: 'estimated_embed', source: 'estimated_embed', duration: 40, activeSeconds: 20 }), { sequence: 1, position: 39, duration: 40, isPlaying: true, visible: true, pictureInPicture: false }, 16_000)
+    expect(result.record.activeSeconds).toBeGreaterThan(20)
+    expect(result.record.qualified).toBe(false)
+    expect(result.record.completed).toBe(false)
+  })
+
+
   it('uses a ten-second qualified threshold for very short content', () => {
     const result = applyPlaybackHeartbeat(session({ duration: 45, activeSeconds: 5 }), { sequence: 1, position: 15, duration: 45, isPlaying: true, visible: true, pictureInPicture: false }, 6_000)
     expect(result.record.qualified).toBe(true)

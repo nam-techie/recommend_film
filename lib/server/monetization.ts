@@ -28,6 +28,7 @@ import { MonetizationError } from '@/lib/server/monetization-error'
 import { getPaidPlanPrice } from '@/lib/server/plan-catalog'
 import { assignAffiliateForWatch } from '@/lib/server/affiliate'
 import { createPendingAudit, finishAudit, validateAuditReason } from '@/lib/server/audit'
+import { issuePlaybackGrant } from '@/lib/server/analytics'
 export { MonetizationError } from '@/lib/server/monetization-error'
 
 function db() { return getDatabase(getFirebaseAdminApp()) }
@@ -270,7 +271,7 @@ async function reserveWatchRequest(uid: string, movieSlug: string, episodeKey: s
   if (!result.committed) throw failure || new MonetizationError('WATCH_REQUEST_FAILED', 'Không thể tạo phiên xem.', 503)
 }
 
-export async function claimWatchAccess(uid: string, movieSlugValue: string, episodeKeyValue: string, requestId: string, context: 'solo' = 'solo') {
+export async function claimWatchAccess(uid: string, movieSlugValue: string, episodeKeyValue: string, requestId: string, context: 'solo' | 'watch_party' = 'solo', roomId = '') {
   const movieSlug = movieSlugValue.trim().slice(0, 160)
   const episodeKey = episodeKeyValue.trim().slice(0, 240)
   if (!movieSlug || !episodeKey) throw new MonetizationError('INVALID_WATCH_TARGET', 'Phim hoặc tập phim không hợp lệ.')
@@ -302,10 +303,12 @@ export async function claimWatchAccess(uid: string, movieSlugValue: string, epis
   const viewSession = context === 'solo'
     ? await assignAffiliateForWatch(uid, entitlement.plan, movieSlug, episodeKey, requestId)
     : { id: requestId, affiliate: null }
+  const playbackGrant = await issuePlaybackGrant(uid, { movieSlug, episodeKey, source: context, roomId, grantId: requestId })
   return {
     allowed: true,
     plan: entitlement.plan,
     usage: usagePayload,
     viewSession,
+    playbackGrant,
   }
 }
