@@ -41,8 +41,8 @@ export function isAllowedMediaUrl(value, configuredHosts = []) {
     if (!['http:', 'https:'].includes(url.protocol)) return false
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false
     if (/^10\.|^127\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false
-    if (/^v\d+\.kkphimplayer\d*\.com$/.test(host) || host === 'kkphimplayer.com' || host.endsWith('.kkphimplayer.com')) return true
-    if (host === 's3.phim1280.tv') return true
+    if (/^[sv]\d+\.kkphimplayer\d*\.com$/.test(host) || host === 'kkphimplayer.com' || host.endsWith('.kkphimplayer.com')) return true
+    if (/^s\d+\.phim1280\.tv$/.test(host)) return true
     return configuredHosts.some((entry) => {
       const rule = String(entry || '').trim().toLowerCase()
       if (!rule) return false

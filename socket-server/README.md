@@ -61,7 +61,7 @@ Nhóm `MAIL_*` chỉ là SMTP fallback cho local hoặc hạ tầng cho phép k�
 
 `CLIENT_ORIGINS` nhận nhiều origin phân cách bằng dấu phẩy. Server luôn cho phép loopback `localhost`, `127.0.0.1` và `::1` để frontend local gọi Render trong lúc phát triển.
 
-`MEDIA_ALLOWED_HOSTS` nhận hostname CDN bổ sung, phân cách bằng dấu phẩy; có thể dùng dạng `*.example.com`. Các host KKPhim và `s3.phim1280.tv` đã có trong allowlist mặc định. Cùng một chính sách được áp dụng cho probe, tạo phòng, proxy và từng bước redirect.
+`MEDIA_ALLOWED_HOSTS` nhận hostname CDN bổ sung, phân cách bằng dấu phẩy; có thể dùng dạng `*.example.com`. Allowlist mặc định nhận `kkphimplayer.com` và các tên miền con của nó, CDN dạng `v<số>.kkphimplayer<số>.com` / `s<số>.kkphimplayer<số>.com` (hậu tố số sau `kkphimplayer` có thể bỏ trống), và `s<số>.phim1280.tv` (ví dụ `s3`, `s4`, `s5`). Cùng một chính sách được áp dụng cho probe, tạo phòng, proxy và từng bước redirect.
 
 Firebase Admin không cần nâng Firebase lên Blaze. Cách ít lỗi nhất trên Render là tạo **Secret File** tên `firebase-service-account.json`, dán nguyên JSON tải từ Firebase Console → Project settings → Service accounts, rồi đặt `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json`. Có thể dùng một trong ba phương án thay thế: `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_SERVICE_ACCOUNT_BASE64`, hoặc bộ `FIREBASE_PROJECT_ID` + `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`; không cấu hình nhiều phương án cùng lúc.
 
