@@ -38,6 +38,32 @@ test('room creation media policy validates every HLS episode without requiring a
   assert.equal(findDeniedMediaEpisode([denied], ['untrusted.example']), null)
 })
 
+test('room creation accepts the mixed CDN episode list used by Van Gioi Doc Ton', () => {
+  const episodes = [
+    'https://s5.phim1280.tv/20250308/jss6azUX/index.m3u8',
+    'https://s4.phim1280.tv/20250311/ds54ifRQ/index.m3u8',
+    'https://s6.kkphimplayer6.com/20250524/NqvcvU4L/index.m3u8',
+    'https://v7.kkphimplayer7.com/20260418/CdV6XTO7/index.m3u8',
+  ].map((linkM3u8, index) => ({ id: String(index), linkM3u8 }))
+  for (const episode of episodes) assert.equal(isAllowedMediaUrl(episode.linkM3u8), true, episode.linkM3u8)
+  assert.equal(findDeniedMediaEpisode(episodes), null)
+  const denied = { id: 'unknown', linkM3u8: 'https://untrusted.example/index.m3u8' }
+  assert.equal(findDeniedMediaEpisode([...episodes, denied]), denied)
+})
+
+test('numbered CDN rules reject unrelated hosts and provider lookalikes', () => {
+  for (const url of [
+    'https://s5.phim1280.tv.evil.test/index.m3u8',
+    'https://s6.kkphimplayer6.com.evil.test/index.m3u8',
+    'https://s5-phim1280.tv/index.m3u8',
+    'https://s6-kkphimplayer6.com/index.m3u8',
+    'https://arbitrary.phim1280.tv/index.m3u8',
+    'https://arbitrary.kkphimplayer6.com/index.m3u8',
+    'https://s5.phim1280.tv@evil.test/index.m3u8',
+    'http://192.168.1.1/index.m3u8',
+  ]) assert.equal(isAllowedMediaUrl(url), false, url)
+})
+
 test('host successor is the earliest connected member with stable tie break', () => {
   const members = {
     host: { memberId: 'host', joinedAt: 1, connected: false },
