@@ -11,7 +11,7 @@ export interface WatchPartyEpisode {
 export interface WatchPartyMember {
   memberId: string; displayName: string; role: 'host' | 'viewer'
   avatar?: string; isAnonymous?: boolean
-  accountPlan?: 'normal' | 'premium' | 'ultra'
+  accountPlan?: 'normal' | 'premium' | 'ultra'; characterGender?: 'male' | 'female'; characterRevision?: number
   joinedAt: number; lastSeenAt: number; connected: boolean; socketIds?: string[]
 }
 

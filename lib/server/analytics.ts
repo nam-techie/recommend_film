@@ -58,7 +58,7 @@ export async function issuePlaybackGrant(uid: string, input: { movieSlug: string
   if (!movieSlug || !episodeKey) throw new MonetizationError('INVALID_WATCH_TARGET', 'Phim hoặc tập phim không hợp lệ.')
   const id = cleanKey(input.grantId || randomUUID())
   const now = Date.now()
-  const value: PlaybackGrantRecord = { id, uid, movieSlug, episodeKey, source: input.source, roomId: input.roomId ? cleanKey(input.roomId) : undefined, issuedAt: now, expiresAt: now + PLAYBACK_GRANT_TTL_MS }
+  const value: PlaybackGrantRecord = { id, uid, movieSlug, episodeKey, source: input.source, ...(input.roomId ? { roomId: cleanKey(input.roomId) } : {}), issuedAt: now, expiresAt: now + PLAYBACK_GRANT_TTL_MS }
   const ref = database().ref(`analytics/playbackGrants/${id}`)
   const result = await ref.transaction((current: PlaybackGrantRecord | null) => current || value, undefined, false)
   const grant = result.snapshot.val() as PlaybackGrantRecord
@@ -97,7 +97,7 @@ export async function startPlaybackSession(uid: string, input: PlaybackSessionSt
       duration: Number.isFinite(input.duration) ? Math.max(0, Math.min(input.duration, 24 * 60 * 60)) : 0,
       genres: [...new Set((input.genres || []).map((genre) => cleanText(genre, 60)).filter(Boolean))].slice(0, 8),
       source: reliability === 'estimated_embed' ? 'estimated_embed' : grant.source,
-      roomId: grant.roomId, reliability, dayKey: vietnamDayKey(now),
+      ...(grant.roomId ? { roomId: grant.roomId } : {}), reliability, dayKey: vietnamDayKey(now),
       startedAt: now, lastHeartbeatAt: now, endedAt: null, lastSequence: 0, lastPosition: 0,
       activeSeconds: 0, isPlaying: true, visible: true, pictureInPicture: false,
       qualified: false, completed: false, finalized: false, rollupApplied: false,

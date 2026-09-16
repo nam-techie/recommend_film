@@ -7,9 +7,16 @@ import { ArrowLeft, Armchair, Check, Expand, RotateCcw, Move3d, MonitorPlay, Pla
 import { cinemaLayout, CINEMA_CAPACITY, isVipSeat, CinemaPerson, CinemaSeatSnapshot } from '@/lib/cinema-layout'
 import styles from './CinemaRoom.module.css'
 import { useCinemaVideo, CinemaPlayback } from './useCinemaVideo'
+import type { CinemaView } from './cinema-camera'
+import type { CinemaCharacterPreview } from '@/lib/cinema-character'
+import type { ChangeCharacter } from '@/lib/cinema-character-sync'
+import { useRoomCharacter } from './useRoomCharacter'
+import CinemaCharacterPicker from './CinemaCharacterPicker'
 
 const CinemaScene = dynamic(() => import('./CinemaScene'), { ssr: false })
 interface Props {
+  onCharacterChange?: ChangeCharacter
+  characterPreview?: CinemaCharacterPreview; characterPicker?: ReactNode
   onNextEpisode?: () => void; onPreviousEpisode?: () => void; onShowSeats?: () => void; canUseVip?: boolean; overlays?: ReactNode; liveOverlay?: ReactNode; seatSyncError?: string | null; onRetrySeats?: () => void; headerTools?: ReactNode; sidePanel?: ReactNode; notices?: ReactNode; sceneOverlay?: ReactNode
   media?: CinemaPlayback; roomName: string; movieTitle: string; poster?: string; memberId: string; members: CinemaPerson[]
   snapshot: CinemaSeatSnapshot | null; connected: boolean; demo?: boolean; preview?: boolean; canReturn?: boolean
@@ -29,8 +36,10 @@ const messages: Record<string, string> = {
 export default function CinemaRoom(props: Props) {
 
   const ownSeat = Object.entries(props.snapshot?.seats || {}).find(([, id]) => id === props.memberId)?.[0] || null
+  const character = useRoomCharacter(Boolean(props.canUseVip), { memberId: props.memberId, gender: props.members.find(member => member.memberId === props.memberId)?.characterGender, connected: props.connected, change: props.onCharacterChange })
+  const characterPreview = props.demo ? props.characterPreview : character.preview
   const [selected, setSelected] = useState<string | null>(ownSeat)
-  const [view, setView] = useState<'overview' | 'screen' | 'seat'>('overview')
+  const [view, setView] = useState<CinemaView>('overview')
   const [resetKey, setResetKey] = useState(0)
   const root = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
@@ -131,12 +140,15 @@ export default function CinemaRoom(props: Props) {
     setBusy(true); setError('')
     try {
       const result = await props.onConfirm(picked)
-      if (result.ok) props.onEnter()
+      if (result.ok) {
+        if (props.demo || props.preview || failed || ownSeat === picked) props.onEnter()
+        else setView('overview')
+      }
       else setError(messages[result.code || ''] || 'Chưa giữ được ghế. Hãy thử lại.')
     } catch { setError('Không thể xác nhận ghế. Hãy thử lại khi có kết nối.') }
     finally { setBusy(false) }
   }
-  return <div ref={root} className={`${styles.room} ${expanded ? styles.expandedRoom : ''} ${screenFullscreen ? styles.screenFullscreen : ''}`} data-controls-visible={controlsVisible} data-wide-scene={!seatPanelVisible && !props.sidePanel} onPointerMoveCapture={revealControls} onPointerDownCapture={revealControls} onPointerUpCapture={revealControls} onWheelCapture={revealControls} onKeyDownCapture={revealControls} onFocusCapture={revealControls}>
+  return <div ref={root} className={`${styles.room} ${expanded ? styles.expandedRoom : ''} ${screenFullscreen ? styles.screenFullscreen : ''}`} data-character-preview={Boolean(characterPreview)} data-controls-visible={controlsVisible} data-wide-scene={!seatPanelVisible && !props.sidePanel} onPointerMoveCapture={revealControls} onPointerDownCapture={revealControls} onPointerUpCapture={revealControls} onWheelCapture={revealControls} onKeyDownCapture={revealControls} onFocusCapture={revealControls}>
     <header className={styles.header}>
       <button className={styles.back} onClick={props.onLeave} aria-label="Rời phòng 3D"><ArrowLeft size={20} /></button>
       <div className={styles.identity}><span className={styles.brand}>CineMind<span> / </span>Room 3D</span><span className={styles.roomName}>{props.roomName}</span></div>
@@ -159,8 +171,8 @@ export default function CinemaRoom(props: Props) {
     </header>
     <div className={styles.content}>
       <section className={styles.stage} aria-label="Không gian rạp phim">
-        <div className={styles.sceneTitle} data-compact={view !== 'overview'}><h1>{view === 'overview' ? 'Chọn ghế của bạn' : view === 'seat' ? `Góc nhìn từ ghế ${picked || ''}` : props.movieTitle}</h1>{view !== 'screen' && <p>{props.movieTitle}</p>}</div>
-        {!failed && <CinemaScene video={projection.video} screenFullscreen={screenFullscreen} capacity={capacity} seats={seats} members={props.members} selected={picked} currentMemberId={props.memberId} poster={props.poster} title={props.movieTitle} view={view} resetKey={resetKey} onSelect={select} onReady={() => setReady(true)} onError={() => setFailed(true)} />}
+        <div className={styles.sceneTitle} data-compact={view !== 'overview'}><h1>{view === 'overview' ? 'Chọn ghế của bạn' : view === 'seat' ? `Góc nhìn từ ghế ${picked || ''}` : view === 'character' ? `Nhân vật tại ghế ${picked || ''}` : props.movieTitle}</h1>{view !== 'screen' && <p>{props.movieTitle}</p>}</div>
+        {!failed && <CinemaScene characterPreview={characterPreview} video={projection.video} screenFullscreen={screenFullscreen} capacity={capacity} seats={seats} members={props.members} selected={picked} currentMemberId={props.memberId} poster={props.poster} title={props.movieTitle} view={view} resetKey={resetKey} onSelect={select} onReady={() => setReady(true)} onError={() => setFailed(true)} />}
         {!ready && !failed && <div className={styles.loading} role="status"><Armchair size={28} /><span>Đang mở cửa rạp…</span></div>}
         {failed && <div className={styles.loading} role="status"><Armchair size={36} /><h2>Chọn ghế bằng sơ đồ</h2><p>Thiết bị chưa mở được 3D. Bạn vẫn có thể chọn chỗ và vào xem phim.</p><button onClick={() => { setFailed(false); setReady(false) }}>Thử mở lại 3D</button></div>}
         <div className={styles.sceneNotices}>
@@ -184,11 +196,13 @@ export default function CinemaRoom(props: Props) {
           <button aria-pressed={view === 'overview'} onClick={() => setView('overview')}><Move3d size={17} /><span>Toàn cảnh</span></button>
           <button aria-pressed={view === 'screen'} onClick={() => { setView('screen'); void enterFullscreen() }}><MonitorPlay size={17} /><span>Màn chiếu</span></button>
           <button disabled={!picked} aria-pressed={view === 'seat'} onClick={() => { setView('seat'); setResetKey(k => k + 1) }}><Armchair size={17} /><span>Từ ghế</span></button>
+          {characterPreview && <button disabled={!picked} aria-pressed={view === 'character'} onClick={() => setView('character')}><span>Nhân vật</span></button>}
           <button aria-label="Đặt lại góc nhìn hiện tại" onClick={() => setResetKey(k => k + 1)}><RotateCcw size={17} /></button>
         </div>
-        <p className={styles.hint}><Expand size={13} />{view === 'overview' ? 'Kéo để xoay quanh rạp · Cuộn hoặc chụm để zoom' : view === 'screen' ? 'Cuộn hoặc chụm để zoom màn chiếu · Góc nhìn cố định' : 'Kéo để nhìn quanh từ ghế · Cuộn hoặc chụm để đổi độ rộng'}</p>
+        <p className={styles.hint}><Expand size={13} />{view === 'overview' || view === 'character' ? 'Kéo để xoay quanh rạp · Cuộn hoặc chụm để zoom' : view === 'screen' ? 'Cuộn hoặc chụm để zoom màn chiếu · Góc nhìn cố định' : 'Kéo để nhìn quanh từ ghế · Cuộn hoặc chụm để đổi độ rộng'}</p>
       </section>
       {props.sidePanel ? <aside className={styles.chatPanel} aria-label="Trò chuyện trong rạp">{props.sidePanel}</aside> : showSeats && <aside id={seatPanelId} className={styles.panel} aria-label="Chọn và xác nhận ghế">
+        {props.demo ? props.characterPicker : <CinemaCharacterPicker character={character.preview.character} choose={character.choose} status={character.status} saved={character.saved} replay={character.replay} allowVip={Boolean(props.canUseVip)} localOnly synchronized={Boolean(props.onCharacterChange)} pending={character.pending} syncError={character.syncError} hasSeat={Boolean(ownSeat)} />}
         <div className={styles.panelHeading}><h2>Chỗ ngồi</h2><span>{props.snapshot ? Object.keys(seats).length : '—'}/{capacity} đã xác nhận</span></div>
         {!props.demo && <p className={styles.occupancySummary}>{props.members.filter(member => member.connected).length} người online · {props.snapshot ? `${Object.keys(seats).length} ghế đã giữ` : 'Đang tải ghế chung'}</p>}
         <div className={styles.legend}><span><i />Trống</span><span><i className={styles.occupiedDot} />Có người</span><span><i className={styles.selectedDot} />Bạn chọn</span></div>
@@ -213,9 +227,9 @@ export default function CinemaRoom(props: Props) {
         {isVipSeat(picked) && !props.canUseVip && <p className={styles.error}>Ghế VIP cần gói CinePass Ultra.</p>}
         {error && <p className={styles.error} role="alert">{error}</p>}
         {!props.demo && (props.seatSyncError ? <div className={styles.error} role="status"><p>{props.seatSyncError}</p><button className={styles.returnButton} type="button" disabled={!props.connected} onClick={props.onRetrySeats}>Kết nối lại sơ đồ ghế</button></div> : !props.snapshot && <p className={styles.error} role="status">Đang tải sơ đồ ghế chung từ máy chủ…</p>)}
-        <button className={styles.confirm} disabled={!available || busy || !props.connected || !props.snapshot} onClick={() => void confirm()}>{busy ? 'Đang xác nhận…' : ownSeat === picked && ownSeat ? 'Vào xem phim' : picked && available ? `Xác nhận ghế ${picked}` : 'Chọn một ghế để tiếp tục'}<MonitorPlay size={18} /></button>
+        <button className={styles.confirm} disabled={!available || busy || !props.connected || !props.snapshot} onClick={() => void confirm()}>{busy ? 'Đang xác nhận…' : props.demo && props.characterPreview && picked && available ? `Ngồi thử ghế ${picked}` : ownSeat === picked && ownSeat ? 'Vào xem phim' : picked && available ? `Xác nhận ghế ${picked}` : 'Chọn một ghế để tiếp tục'}<MonitorPlay size={18} /></button>
         {props.canReturn && ownSeat && <button className={styles.returnButton} onClick={props.onEnter}>Quay lại phim · Giữ ghế {ownSeat}</button>}
-        <p className={styles.note}>{props.demo ? '12 khán giả minh họa. Chọn ghế để thử trải nghiệm trước khi vào phòng thật.' : props.preview ? 'Chọn ghế xem trước: chỗ của bạn chỉ lưu trên thiết bị này, chưa đồng bộ với người khác.' : 'Mỗi người xác nhận một ghế, kể cả chủ phòng. Người đang online chưa chắc đã chọn ghế.'}</p>
+        <p className={styles.note}>{props.demo ? 'Khán giả minh họa. Bản thử mở cả ghế thường và VIP; chưa đồng bộ với phòng thật.' : props.preview ? 'Chọn ghế xem trước: chỗ của bạn chỉ lưu trên thiết bị này, chưa đồng bộ với người khác.' : 'Mỗi người xác nhận một ghế, kể cả chủ phòng. Người đang online chưa chắc đã chọn ghế.'}</p>
       </aside>}
     </div>
     {props.overlays}
