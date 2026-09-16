@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ identity: vi.fn(), user: vi.fn(), audit: vi.fn(), marker: null as unknown }))
-vi.mock('@/lib/server/firebase-admin', () => ({ requireUser: mocks.identity, getFirebaseAdminApp: () => ({}) }))
+const mocks = vi.hoisted(() => ({ identity: vi.fn(), user: vi.fn(), audit: vi.fn(), marker: null as unknown, AdminAccessError: class extends Error { status = 401 } }))
+vi.mock('@/lib/server/firebase-admin', () => ({ AdminAccessError: mocks.AdminAccessError, requireUser: mocks.identity, getFirebaseAdminApp: () => ({}) }))
 vi.mock('firebase-admin/auth', () => ({ getAuth: () => ({ getUser: mocks.user }) }))
 vi.mock('firebase-admin/database', () => ({ getDatabase: () => ({ ref: () => ({ transaction: async (update: (value: unknown) => unknown) => {
   const next = update(mocks.marker)
@@ -21,8 +21,8 @@ it('does not create a new-account event for existing accounts', async () => {
   expect(mocks.audit).not.toHaveBeenCalled()
 })
 it('requires authentication before accessing account data', async () => {
-  mocks.identity.mockRejectedValue(new Error('Unauthenticated'))
+  mocks.identity.mockRejectedValue(new mocks.AdminAccessError('Unauthenticated'))
   const response = await POST(new Request('http://localhost/api/me/bootstrap', { method: 'POST' }))
-  expect(response.status).toBeGreaterThanOrEqual(400)
+  expect(response.status).toBe(401)
   expect(mocks.user).not.toHaveBeenCalled()
 })

@@ -20,17 +20,9 @@ Lựa chọn ngoại hình được nhớ bằng khóa localStorage `cinemind:ch
 | Nam VIP | male_vip_3d.glb | male_vip_3d.optimized.glb | 13.032 |
 | Nữ VIP | female_vip_3d.glb | female_vip_3d.optimized.glb | 17.216 |
 
-Bốn bản tối ưu có dung lượng tổng khoảng 2,35 MiB, so với khoảng 107 MiB của bản gốc. File gốc được giữ nguyên. Ảnh chọn nhân vật hiện lấy từ bốn PNG người dùng cung cấp: `male.png`, `female.png`, `male_vip.png`, `female_vip.png`. Bản WebP nhẹ nằm ở `public/3d/character-cards` (tổng khoảng 27 KiB), tạo lại bằng `node scripts/prepare-cinema-character-cards.cjs`. Các ảnh render GLB cũ trong `portraits` được giữ nguyên.
+Bốn bản tối ưu có dung lượng tổng khoảng 2,35 MiB, so với khoảng 107 MiB của bản gốc. GLB gốc được giữ trong workspace thiết kế; repository dùng bốn GLB tối ưu. Ảnh chọn nhân vật hiện lấy từ bốn PNG người dùng cung cấp: `male.png`, `female.png`, `male_vip.png`, `female_vip.png`. Bản WebP nhẹ nằm ở `public/3d/character-cards` (tổng khoảng 27 KiB), tạo lại bằng `node scripts/prepare-cinema-character-cards.cjs`.
 
-Tái tạo tài nguyên:
-
-```powershell
-node scripts/optimize-cinema-characters.mjs
-# Hai biến này chỉ cần đặt nếu Playwright/browser không nằm ở đường dẫn mặc định.
-$env:CINEMIND_PLAYWRIGHT_PATH = '<duong-dan-goi-playwright>'
-$env:CINEMIND_CHROMIUM_PATH = '<duong-dan-chrome.exe>'
-node scripts/preview-cinema-character-assets.cjs
-```
+Tạo lại ảnh chọn từ PNG gốc bằng `node scripts/prepare-cinema-character-cards.cjs`. Các GLB tối ưu đã có trong repository; chạy ứng dụng không cần GLB gốc hay công cụ tối ưu.
 
 ## Chuyển động và giới hạn
 

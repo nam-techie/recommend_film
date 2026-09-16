@@ -28,7 +28,6 @@ vi.mock('firebase-admin/database', () => ({ getDatabase: () => database }))
 vi.mock('@/lib/server/firebase-admin', () => ({ getFirebaseAdminApp: () => ({}) }))
 vi.mock('@/lib/server/plan-catalog', () => ({ getPaidPlanPrice: vi.fn() }))
 vi.mock('@/lib/server/audit', () => ({ createPendingAudit: vi.fn(), finishAudit: vi.fn(), validateAuditReason: vi.fn() }))
-vi.mock('@/lib/server/operational-delivery', () => ({ queueUserOperationalDelivery: vi.fn() }))
 vi.mock('@/lib/server/affiliate', () => ({ assignAffiliateForWatch: vi.fn(async (_uid, _plan, _movie, _episode, requestId) => ({ id: requestId, affiliate: null })) }))
 
 import { claimWatchAccess } from '@/lib/server/monetization'
