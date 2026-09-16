@@ -45,7 +45,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
   const analyticsDurationRef = useRef(0)
   const searchParams = useSearchParams()
   const { user, loading: authLoading } = useAuth()
-  const [watchAccessState, setWatchAccessState] = useState<'idle' | 'checking' | 'allowed' | 'denied'>('idle')
+  const [watchAccessState, setWatchAccessState] = useState<'idle' | 'checking' | 'allowed' | 'denied' | 'error'>('idle')
   const [watchAccessError, setWatchAccessError] = useState<string | null>(null)
   const [affiliateGate, setAffiliateGate] = useState<AffiliateCreative | null>(null)
   const [watchUsage, setWatchUsage] = useState<DailyUsage | null>(null)
@@ -84,7 +84,8 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
     const target = watchPartyEpisodes.find((episode) => episode.serverIndex === serverIndex && episode.episodeIndex === episodeIndex)
     if (!target) { setWatchAccessError('Không xác định được tập phim.'); return { allowed: false, affiliate: null } }
     latestOpenRequestRef.current = requestId
-    setWatchAccessState('checking'); setWatchAccessError(null)
+    setWatchAccessState('checking'); setWatchAccessError(null); setWatchUsage(null)
+    let failureState: 'denied' | 'error' = 'error'
     try {
       const token = await user.getIdToken()
       const response = await fetch('/api/me/watch-access', {
@@ -92,8 +93,9 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ movieSlug: movie.slug, episodeKey: target.slug || target.id, requestId, context: 'solo' }),
       })
-      const payload = await response.json().catch(() => ({})) as Partial<WatchAccessResponse> & { error?: string; usage?: DailyUsage }
+      const payload = await response.json().catch(() => ({})) as Partial<WatchAccessResponse> & { error?: string; code?: string; usage?: DailyUsage }
       if (!response.ok) {
+        failureState = response.status === 403 && (payload.code === 'MOVIE_DAILY_LIMIT' || payload.code === 'EPISODE_DAILY_LIMIT') ? 'denied' : 'error'
         if (latestOpenRequestRef.current === requestId && payload.usage) setWatchUsage(payload.usage)
         throw new Error(payload.error || 'Tài khoản hiện không thể mở tập phim này.')
       }
@@ -105,7 +107,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
       return { allowed: true, affiliate: payload.viewSession?.affiliate || null, plan: payload.plan, usage: payload.usage || null, playbackGrant: payload.playbackGrant }
     } catch (error) {
       if (latestOpenRequestRef.current !== requestId) return { allowed: false, affiliate: null }
-      setWatchAccessState('denied')
+      setWatchAccessState(failureState)
       setWatchAccessError(error instanceof Error ? error.message : 'Không thể kiểm tra quyền xem phim.')
       return { allowed: false, affiliate: null }
     }
@@ -271,6 +273,7 @@ export function MovieDetailPage({ slug, initialDetail }: { slug: string; initial
 
       <div className="relative z-10 mx-auto -mt-4 max-w-shell space-y-8 px-4 sm:px-6 lg:px-8">
         {watchAccessState === 'checking' && <div className="flex items-center justify-center gap-2 rounded-2xl border border-accent/20 bg-accent/[0.07] p-4 text-sm text-accent-soft"><Loader2 className="h-4 w-4 animate-spin" />Đang kiểm tra quyền xem của tài khoản…</div>}
+        {watchAccessState === 'error' && <section role="alert" className="flex flex-col gap-4 rounded-2xl border border-warn/25 bg-warn/10 p-5 sm:flex-row sm:items-center"><Info className="h-6 w-6 shrink-0 text-warn" /><div className="min-w-0 flex-1"><h2 className="font-semibold text-fg">Chưa kiểm tra được quyền xem</h2><p className="mt-1 text-sm text-fg-secondary">{watchAccessError || 'Kết nối kiểm tra quyền xem bị gián đoạn.'} Vui lòng thử lại.</p></div><Button onClick={() => void selectEpisode(selectedServer, selectedEpisode, true)}>Thử lại</Button></section>}
         {watchAccessState === 'denied' && watchAccessError && <section className="flex flex-col gap-4 rounded-2xl border border-warn/25 bg-warn/10 p-5 sm:flex-row sm:items-center"><LockKeyhole className="h-6 w-6 shrink-0 text-warn" /><div className="min-w-0 flex-1"><h2 className="font-semibold text-fg">Tập phim đang bị khóa</h2><p className="mt-1 text-sm text-fg-secondary">{watchAccessError}</p>{watchUsage && <p className="mt-2 text-xs font-medium text-warn">Đã dùng {watchUsage.moviesUsed}/{watchUsage.moviesLimit} phim hôm nay · {watchUsage.episodesUsed}/{watchUsage.episodesLimit} tập trong phim này · đặt lại lúc {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(watchUsage.resetsAt)}</p>}</div><div className="flex gap-2">{!user && <Button asChild variant="outline"><Link href={`/login?returnUrl=${encodeURIComponent(`/movie/${movie.slug}?watch=1`)}`}>Đăng nhập</Link></Button>}<Button asChild><Link href="/pricing">Xem gói nâng cấp</Link></Button></div></section>}
         {watchAccessState === 'allowed' && resolvedPlan && <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-fg-secondary"><span>{resolvedPlan === 'normal' && watchUsage ? `${watchUsage.moviesUsed}/${watchUsage.moviesLimit} phim hôm nay · ${watchUsage.episodesUsed}/${watchUsage.episodesLimit} tập trong phim này` : 'Gói hiện tại được xem không giới hạn'}</span>{resolvedPlan === 'normal' && <Link href="/pricing" className="font-semibold text-accent-soft hover:underline">Nâng cấp để xem không giới hạn</Link>}</div>}
         {affiliateGate && currentEpisode && <section className="overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_30px_90px_rgba(0,0,0,.55)]"><AffiliateInterstitial creative={affiliateGate} onContinue={() => { if (activeViewSessionRef.current) activeViewSessionRef.current.gateCompleted = true; setAffiliateGate(null); setShowPlayer(true) }} /><div className="border-t border-white/10 bg-[#0e1019] p-4"><p className="font-bold text-fg">Sắp xem: {currentEpisode.name}</p><p className="mt-1 text-xs text-fg-muted">Player chưa được tải cho tới khi bạn bấm Tiếp tục xem.</p></div></section>}

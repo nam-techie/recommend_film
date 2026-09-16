@@ -8,10 +8,14 @@ import { cinemaLayout, CinemaPerson } from '@/lib/cinema-layout'
 import { buildCinemaArchitecture } from './cinema-architecture'
 import { createCinemaCamera } from './cinema-camera'
 import { projectCinemaVideo } from './cinema-projection'
+import type { CinemaView } from './cinema-camera'
+import type { CinemaCharacterPreview } from '@/lib/cinema-character'
+import { createCinemaAudience } from './cinema-audience'
 
 export interface CinemaSceneProps {
   capacity: number; seats: Record<string, string>; members: CinemaPerson[]; selected: string | null; currentMemberId: string
-  screenFullscreen?: boolean; video?: HTMLVideoElement | null; poster?: string; title: string; view: 'overview' | 'screen' | 'seat'; resetKey: number
+  screenFullscreen?: boolean; video?: HTMLVideoElement | null; poster?: string; title: string; view: CinemaView; resetKey: number
+  characterPreview?: CinemaCharacterPreview
   onSelect: (seat: string) => void; onReady: () => void; onError: () => void
 }
 
@@ -45,6 +49,7 @@ export default function CinemaScene(props: CinemaSceneProps) {
     const layout = cinemaLayout(props.capacity)
     const rows = 9, back = 8 * 1.65 + 3.4
     let architecture: ReturnType<typeof buildCinemaArchitecture> | undefined
+    let audience: ReturnType<typeof createCinemaAudience> | undefined
     const render = () => { if (!disposed && document.visibilityState !== 'hidden') { architecture?.update(camera); renderer.render(scene, camera) } }
     const mat = (color: string, roughness = 0.85, emissive?: string) => {
       const value = new THREE.MeshStandardMaterial({ color, roughness, ...(emissive ? { emissive, emissiveIntensity: 2 } : {}) })
@@ -159,6 +164,7 @@ export default function CinemaScene(props: CinemaSceneProps) {
       }
       return texture
     }
+    if (props.characterPreview) audience = createCinemaAudience(scene, render, badge)
     const hitGeometry = new THREE.BoxGeometry(1.1, 1.65, 1.1); geometries.add(hitGeometry)
     const hitMaterial = new THREE.MeshBasicMaterial({ visible: false }); materials.add(hitMaterial)
     const ringGeometry = new THREE.RingGeometry(0.48, 0.55, 28); geometries.add(ringGeometry)
@@ -183,13 +189,17 @@ export default function CinemaScene(props: CinemaSceneProps) {
         markers[i].visible = Boolean(occupantId || selected)
         ;(markers[i].material as THREE.MeshBasicMaterial).color.set(color)
         const initials = person?.displayName.split(' ').filter(Boolean).slice(-2).map(n => n[0]).join('').toUpperCase()
+        labels[i].visible = !audience || !occupantId
         labels[i].material.map = badge(occupantId ? initials || '•' : seat.id, color, person?.avatar)
         labels[i].material.needsUpdate = true
         labels[i].scale.setScalar(occupantId || selected ? 0.58 : 0.36)
         seatedAvatars[i].material.map = labels[i].material.map
         seatedAvatars[i].material.needsUpdate = true
-        seatedAvatars[i].visible = Boolean(occupantId && seat.id !== p.selected)
-      }); render()
+        seatedAvatars[i].visible = !audience && Boolean(occupantId && seat.id !== p.selected)
+      })
+      if (p.characterPreview) audience?.sync(p.seats, p.currentMemberId, p.characterPreview, p.members)
+      audience?.hideAtSeat(p.view === 'seat' ? p.selected : null)
+      render()
     }
     const raycaster = new THREE.Raycaster(); raycaster.layers.set(2); raycaster.layers.enable(0)
     const selectSeat = (event: PointerEvent) => {
@@ -199,7 +209,10 @@ export default function CinemaScene(props: CinemaSceneProps) {
       if (hit) latest.current.onSelect(hit.object.userData.seatId)
     }
     const cameraControls = createCinemaCamera(camera, renderer.domElement, props.capacity, render, selectSeat)
-    const setCamera = () => cameraControls.setView(latest.current.view, latest.current.selected, Boolean(latest.current.screenFullscreen), latest.current.video?.videoWidth && latest.current.video?.videoHeight ? latest.current.video.videoWidth / latest.current.video.videoHeight : 16 / 9)
+    const setCamera = () => {
+      audience?.hideAtSeat(latest.current.view === 'seat' ? latest.current.selected : null)
+      cameraControls.setView(latest.current.view, latest.current.selected, Boolean(latest.current.screenFullscreen), latest.current.video?.videoWidth && latest.current.video?.videoHeight ? latest.current.video.videoWidth / latest.current.video.videoHeight : 16 / 9)
+    }
     let releaseVideo = () => {}
     const bindVideo = () => {
       releaseVideo()
@@ -226,14 +239,14 @@ export default function CinemaScene(props: CinemaSceneProps) {
       disposed = true; controller.current = null; cancelAnimationFrame(frame); observer.disconnect(); cameraControls.dispose(); releaseVideo()
       document.removeEventListener('visibilitychange', render)
       renderer.domElement.removeEventListener('webglcontextlost', onLoss)
-      architecture?.dispose(); instances.forEach(mesh => mesh.dispose()); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); renderer.dispose(); renderer.domElement.remove(); scene.clear()
+      audience?.dispose(); architecture?.dispose(); instances.forEach(mesh => mesh.dispose()); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); renderer.dispose(); renderer.domElement.remove(); scene.clear()
       void front
     }
   }, [props.capacity, props.poster, props.title])
 
-  useEffect(() => { controller.current?.refresh() }, [props.seats, props.selected, props.members, props.currentMemberId])
+  useEffect(() => { controller.current?.refresh() }, [props.seats, props.selected, props.members, props.currentMemberId, props.characterPreview])
   useEffect(() => { controller.current?.camera() }, [props.view, props.resetKey, props.screenFullscreen])
-  useEffect(() => { if (props.view === 'seat') controller.current?.camera() }, [props.selected, props.view])
+  useEffect(() => { if (props.view === 'seat' || props.view === 'character') controller.current?.camera() }, [props.selected, props.view])
   useEffect(() => { controller.current?.video() }, [props.video])
   return <div ref={container} style={{ width: '100%', height: '100%' }} />
 }

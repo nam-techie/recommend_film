@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { cinemaLayout } from '@/lib/cinema-layout'
 
-export type CinemaView = 'overview' | 'screen' | 'seat'
+export type CinemaView = 'overview' | 'screen' | 'seat' | 'character'
 
 export function createCinemaCamera(camera: THREE.PerspectiveCamera, canvas: HTMLCanvasElement, capacity: number, render: () => void, onSelect: (event: PointerEvent) => void) {
   const orbit = new OrbitControls(camera, canvas)
@@ -27,14 +27,20 @@ export function createCinemaCamera(camera: THREE.PerspectiveCamera, canvas: HTML
   }
   const setView = (next: CinemaView, seatId: string | null, fullscreen = false, videoAspect = 16 / 9) => {
     fullScreen = fullscreen; mediaAspect = videoAspect
-    view = next; selected = seatId; orbit.enabled = next === 'overview'
+    view = next; selected = seatId; orbit.enabled = next === 'overview' || next === 'character'
+    orbit.minDistance = next === 'character' ? 1.3 : 8
+    orbit.maxDistance = next === 'character' ? 8 : 65
     camera.layers.set(next === 'screen' ? 1 : 0)
     if (next === 'overview') camera.layers.enable(2)
     if (next === 'seat') camera.layers.enable(3)
     points.clear(); pinched = false; moved = false
     camera.fov = next === 'seat' ? 78 : 48; camera.updateProjectionMatrix()
     const seat = layout.find(s => s.id === seatId)
-    if (next === 'seat' && seat) {
+    if (next === 'character' && seat) {
+      orbit.target.set(seat.x, seat.y + .95, seat.z)
+      camera.position.set(seat.x + 1.6, seat.y + 1.9, seat.z - 2.4)
+      orbit.update(); render()
+    } else if (next === 'seat' && seat) {
       // Eye position stays on the chair; dragging rotates the viewer's head.
       camera.position.set(seat.x, seat.y + (seat.vip ? 1.65 : 1.42), seat.z - (seat.vip ? 0.28 : 0.24))
       camera.lookAt(projection); camera.rotation.order = 'YXZ'
@@ -59,7 +65,7 @@ export function createCinemaCamera(camera: THREE.PerspectiveCamera, canvas: HTML
     points.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (points.size === 1) { down = { x: event.clientX, y: event.clientY }; moved = false; pinched = false }
     else { pinched = true; moved = true; lastPinch = pinchDistance() }
-    if (view !== 'overview') canvas.setPointerCapture(event.pointerId)
+    if (view !== 'overview' && view !== 'character') canvas.setPointerCapture(event.pointerId)
   }
   const pointerMove = (event: PointerEvent) => {
     const previous = points.get(event.pointerId)
@@ -67,7 +73,7 @@ export function createCinemaCamera(camera: THREE.PerspectiveCamera, canvas: HTML
     const dx = event.clientX - previous.x, dy = event.clientY - previous.y
     points.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) moved = true
-    if (view === 'overview') return
+    if (view === 'overview' || view === 'character') return
     if (points.size > 1) {
       const distance = pinchDistance()
       if (distance > 0 && lastPinch > 0) zoom(lastPinch / distance)
@@ -84,9 +90,9 @@ export function createCinemaCamera(camera: THREE.PerspectiveCamera, canvas: HTML
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
   }
   const pointerCancel = (event: PointerEvent) => { points.delete(event.pointerId); moved = true }
-  const wheel = (event: WheelEvent) => { if (view === 'overview') return; event.preventDefault(); zoom(Math.exp(THREE.MathUtils.clamp(event.deltaY, -100, 100) * 0.003)) }
+  const wheel = (event: WheelEvent) => { if (view === 'overview' || view === 'character') return; event.preventDefault(); zoom(Math.exp(THREE.MathUtils.clamp(event.deltaY, -100, 100) * 0.003)) }
   const key = (event: KeyboardEvent) => {
-    if (view === 'overview') return
+    if (view === 'overview' || view === 'character') return
     if (event.key === '+' || event.key === '=') { event.preventDefault(); zoom(0.9) }
     else if (event.key === '-') { event.preventDefault(); zoom(1.1) }
     else if (view === 'seat' && event.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {

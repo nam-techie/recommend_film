@@ -1,3 +1,4 @@
+import { CinemaCharacterStore, registerCharacterHandler } from './cinema-characters.js'
 import http from 'node:http'
 import crypto from 'node:crypto'
 import jwt from 'jsonwebtoken'
@@ -253,6 +254,12 @@ if (REDIS_URL) {
   await redisClient.connect()
   store = new RedisStore(redisClient)
 }
+const characters = new CinemaCharacterStore(redisClient)
+const readStoredRoom = store.getRoom.bind(store)
+store.getRoom = async (id) => characters.hydrate(await readStoredRoom(id))
+const deleteStoredRoom = store.deleteRoom.bind(store)
+store.deleteRoom = async (id) => { await deleteStoredRoom(id); await characters.delete(id) }
+
 
 const cinemaSeats = new CinemaSeatStore(redisClient)
 const log = (event, data = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...data }))
@@ -876,6 +883,7 @@ io.on('connection', async (socket) => {
     if (claimedHost) { io.to(roomId).emit('host:changed', { previousHostMemberId: '', hostMemberId: memberId, room: clientRoom(room) }); log('host_claimed', { roomId, hostMemberId: memberId }) }
   }
 
+  registerCharacterHandler(socket, { io, store, characters })
   socket.on('room:resume', async (ack) => { const fresh = await store.getRoom(roomId); ack?.({ ok: Boolean(fresh), room: fresh ? clientRoom(fresh) : null }); if (fresh) socket.emit('room:snapshot', clientRoom(fresh)) })
   socket.on('cinema:sync', async (_payload, ack) => {
     try {
