@@ -15,7 +15,10 @@ function configureCloudinary() {
   const cloud_name = process.env.CLOUDINARY_CLOUD_NAME?.trim()
   const api_key = process.env.CLOUDINARY_API_KEY?.trim()
   const api_secret = process.env.CLOUDINARY_API_SECRET?.trim()
-  if (!cloud_name || !api_key || !api_secret) throw new AdminAccessError(503, 'Upload ảnh đang tạm tắt vì Cloudinary chưa được cấu hình.')
+  if (!cloud_name || !api_key || !api_secret) {
+    console.error('profile_media_configuration_missing', { provider: 'cloudinary', missing: [!cloud_name && 'CLOUDINARY_CLOUD_NAME', !api_key && 'CLOUDINARY_API_KEY', !api_secret && 'CLOUDINARY_API_SECRET'].filter(Boolean) })
+    throw new AdminAccessError(503, 'Tính năng tải ảnh tạm thời không khả dụng. Vui lòng thử lại sau.')
+  }
   cloudinary.config({ cloud_name, api_key, api_secret, secure: true })
 }
 
@@ -34,9 +37,23 @@ async function normalizeImage(file: File, kind: ProfileMediaKind) {
     : image.resize(1600, 600, { fit: 'cover', position: 'attention' }).webp({ quality: 80 }).toBuffer()
 }
 
+function uploadError(error: unknown) {
+  const details = error && typeof error === 'object' ? error as { http_code?: number; message?: string; code?: string } : {}
+  const status = Number(details.http_code) || 0
+  const invalidSignature = typeof details.message === 'string' && /invalid signature/i.test(details.message)
+  // Log categories only: provider messages may contain signatures and account identifiers.
+  console.error('profile_media_upload_failed', { provider: 'cloudinary', status, cloudName: process.env.CLOUDINARY_CLOUD_NAME?.trim(), category: invalidSignature ? 'invalid_signature' : status === 401 || status === 403 ? 'authentication' : 'upload', ...(invalidSignature || status === 401 || status === 403 ? { action: 'Verify CLOUDINARY_CLOUD_NAME is the product environment cloud name, not the API key name; verify the key and secret belong to that environment.' } : {}) })
+  if (invalidSignature || status === 401 || status === 403) {
+    return new AdminAccessError(502, 'Chưa thể tải ảnh lên. Vui lòng thử lại sau.')
+  }
+  return new AdminAccessError(502, 'Chưa thể tải ảnh lên. Vui lòng thử lại sau.')
+}
+
 function uploadBuffer(buffer: Buffer, options: { publicId: string; type: 'upload' | 'authenticated' }) {
   return new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream({
+      // This wrapper owns the promise; disable the SDK's otherwise unhandled rejection.
+      disable_promises: true,
       public_id: options.publicId,
       resource_type: 'image',
       type: options.type,
@@ -44,7 +61,11 @@ function uploadBuffer(buffer: Buffer, options: { publicId: string; type: 'upload
       overwrite: false,
       invalidate: true,
       tags: ['cinemind-profile'],
-    }, (error, result) => error || !result ? reject(error || new Error('Cloudinary không trả kết quả upload.')) : resolve(result))
+    }, (error, result) => {
+      if (error || !result) reject(uploadError(error))
+      else resolve(result)
+    })
+    stream.on('error', (error) => reject(uploadError(error)))
     stream.end(buffer)
   })
 }

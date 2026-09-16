@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Activity, Ban, Bookmark, CalendarDays, Check, Film, Flag, Heart, Loader2, LockKeyhole, MoreHorizontal, Share2, Star, UserPlus, Users } from 'lucide-react'
 import { get, ref } from 'firebase/database'
+import { useProfileCover } from '@/hooks/useProfileCover'
 import { useAccount } from '@/hooks/useAccount'
 import { useWatchProgress } from '@/hooks/useWatchProgress'
 import { AccountAvatar } from '@/components/account/AccountAvatar'
@@ -27,6 +28,7 @@ interface RecentItem { movieSlug: string; movieTitle: string; poster?: string; e
 export function PublicProfilePage({ username }: { username: string }) {
   const { records: ownProgressRecords } = useWatchProgress()
   const router = useRouter(); const account = useAccount(); const [profile, setProfile] = useState<PublicProfile | null>(null); const [membershipPlan, setMembershipPlan] = useState<AccountPlan | null>(null); const [loading, setLoading] = useState(true); const [notFound, setNotFound] = useState(false); const [following, setFollowing] = useState(false); const [followers, setFollowers] = useState(0); const [followingCount, setFollowingCount] = useState(0); const [recent, setRecent] = useState<RecentItem[]>([]); const [watchlist, setWatchlist] = useState<WatchlistMovie[]>([]); const [reviews, setReviews] = useState<SocialReview[]>([]); const [activities, setActivities] = useState<SocialActivity[]>([]); const [tab, setTab] = useState<ProfileTab>('overview'); const [menuOpen, setMenuOpen] = useState(false); const [copied, setCopied] = useState(false); const [friendActionLoading, setFriendActionLoading] = useState(false); const [friendActionError, setFriendActionError] = useState('')
+  const cover = useProfileCover(profile?.cover, Boolean(profile?.uid && profile.uid === account.profile?.uid))
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -97,7 +99,7 @@ export function PublicProfilePage({ username }: { username: string }) {
     <section className="relative isolate rounded-3xl border border-white/10 bg-[#0d111d]">
       <div
         className="h-36 rounded-t-[calc(1.5rem-1px)] bg-gradient-to-br from-accent-strong/70 via-slate-900 to-surface-2 sm:h-52"
-        style={profile.cover ? { backgroundImage: `linear-gradient(rgba(4,6,12,.25),rgba(4,6,12,.7)),url(${profile.cover})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+        style={cover.url ? { backgroundImage: `linear-gradient(rgba(4,6,12,.25),rgba(4,6,12,.7)),url(${cover.url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
       />
       <div className="px-4 pb-5 sm:px-7">
         <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 lg:flex-row lg:items-end">

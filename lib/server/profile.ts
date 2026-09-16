@@ -5,6 +5,7 @@ import { getDatabase } from 'firebase-admin/database'
 import type { DecodedIdToken } from 'firebase-admin/auth'
 import { getFirebaseAdminApp, AdminAccessError } from '@/lib/server/firebase-admin'
 import { getUserEntitlement } from '@/lib/server/monetization'
+import { MonetizationError } from '@/lib/server/monetization-error'
 import type { PublicProfile, SocialActivity, SocialReview, WatchlistMovie } from '@/lib/account-types'
 import { type ShareCardContext, type ShareCardRange } from '@/lib/profile'
 import { normalizeProfilePatch } from '@/lib/profile-validation'
@@ -84,21 +85,38 @@ function dayKey(date: Date) {
 }
 
 export async function getOwnShareCardContext(uid: string, range: ShareCardRange): Promise<ShareCardContext> {
+  const entitlement = await getUserEntitlement(uid)
+  if (entitlement.plan !== 'ultra') throw new MonetizationError('ULTRA_REQUIRED', 'Studio thẻ điện ảnh dành riêng cho CinePass Ultra.', 403)
   const db = getDatabase(getFirebaseAdminApp())
-  const [profileSnapshot, watchlistSnapshot, aggregateSnapshot, entitlement] = await Promise.all([
-    db.ref(`publicProfiles/${uid}`).get(), db.ref(`watchlists/${uid}`).get(), db.ref(`analytics/aggregates/userDaily/${uid}`).get(), getUserEntitlement(uid),
+  const [profileSnapshot, watchlistSnapshot, aggregateSnapshot, progressSnapshot] = await Promise.all([
+    db.ref(`publicProfiles/${uid}`).get(), db.ref(`watchlists/${uid}`).get(), db.ref(`analytics/aggregates/userDaily/${uid}`).get(),
+    db.ref(`users/${uid}/watchProgressV2`).get(),
   ])
   if (!profileSnapshot.exists()) throw new AdminAccessError(404, 'Hồ sơ chưa được khởi tạo.')
   const profile = profileSnapshot.val() as PublicProfile
   const days = range === '90d' ? 90 : 30
   const start = new Date(Date.now() - (days - 1) * 86_400_000)
   const startKey = dayKey(start)
-  const rows = Object.entries((aggregateSnapshot.val() || {}) as Record<string, { qualifiedViews?: number; watchSeconds?: number; completedViews?: number; startedAt?: number }>)
-    .filter(([key]) => key >= startKey).map(([, value]) => value)
+  const rowEntries = Object.entries((aggregateSnapshot.val() || {}) as Record<string, { qualifiedViews?: number; activeSeconds?: number; completedViews?: number }>)
+    .filter(([key, value]) => key >= startKey && key <= dayKey(new Date()) && value && typeof value === 'object')
+  const rows = rowEntries.map(([, value]) => value)
   const qualifiedViews = rows.reduce((sum, row) => sum + Number(row.qualifiedViews || 0), 0)
-  const watchSeconds = rows.reduce((sum, row) => sum + Number(row.watchSeconds || 0), 0)
+  const activeSeconds = rows.reduce((sum, row) => sum + Math.max(0, Number(row.activeSeconds) || 0), 0)
   const completedViews = rows.reduce((sum, row) => sum + Number(row.completedViews || 0), 0)
-  const collectedFrom = rows.length ? Math.min(...rows.map((row) => Number(row.startedAt || Date.now()))) : null
+  const oldestDayKey = rowEntries.map(([key]) => key).sort()[0]
+  const collectedFrom = oldestDayKey ? new Date(`${oldestDayKey}T00:00:00+07:00`).getTime() : null
+  const progressMovies = Object.values((progressSnapshot.val() || {}) as Record<string, {
+    resume?: { secondsWatched?: number }
+    episodes?: Record<string, { secondsWatched?: number }>
+  }>).filter((movie) => movie && typeof movie === 'object')
+  const moviesOpened = progressMovies.filter((movie) => Boolean(movie.resume)).length
+  const progressEpisodes = progressMovies.flatMap((movie) => Object.values(movie.episodes || {}))
+  const episodesWatched = progressEpisodes.length
+  const estimatedSeconds = progressEpisodes.reduce((sum, episode) => sum + Math.max(0, Number(episode.secondsWatched) || 0), 0)
+  const hasVerifiedAnalytics = activeSeconds > 0 || qualifiedViews > 0
+  const hasLegacyResume = moviesOpened > 0 || episodesWatched > 0 || estimatedSeconds > 0
+  const verifiedWatchHours = activeSeconds / 3600
+  const legacyWatchHours = estimatedSeconds / 3600
   const favorites = Object.values((watchlistSnapshot.val() || {}) as Record<string, WatchlistMovie>)
     .filter((movie) => movie.favorite === true || movie.status === 'favorite').sort((a, b) => b.updatedAt - a.updatedAt)
     .map((movie) => ({ movieSlug: movie.movieSlug, title: movie.title, ...(movie.poster ? { poster: movie.poster } : {}) }))
@@ -106,7 +124,13 @@ export async function getOwnShareCardContext(uid: string, range: ShareCardRange)
     profile: { displayName: profile.displayName, username: profile.username, ...(profile.avatar ? { avatar: profile.avatar } : {}), createdAt: profile.createdAt, favoriteGenres: profile.favoriteGenres || [] },
     plan: entitlement.plan,
     range,
-    analytics: { available: rows.length > 0, collectedFrom, qualifiedViews, watchHours: watchSeconds / 3600, completionRate: qualifiedViews ? completedViews / qualifiedViews * 100 : 0 },
+    analytics: { available: hasVerifiedAnalytics, collectedFrom, qualifiedViews, watchHours: verifiedWatchHours, completionRate: qualifiedViews ? completedViews / qualifiedViews * 100 : 0 },
+    activity: {
+      moviesOpened,
+      episodesWatched,
+      watchHours: hasVerifiedAnalytics ? verifiedWatchHours : legacyWatchHours,
+      source: hasVerifiedAnalytics ? 'verified' : hasLegacyResume ? 'legacy_resume' : 'none',
+    },
     favoriteMovies: favorites,
     mediaUploadEnabled: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
   }

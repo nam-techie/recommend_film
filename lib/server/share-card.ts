@@ -3,97 +3,149 @@ import 'server-only'
 import sharp from 'sharp'
 import { AdminAccessError } from '@/lib/server/firebase-admin'
 import { getOwnShareCardContext } from '@/lib/server/profile'
-import type { ShareCardAccent, ShareCardFormat, ShareCardOptionalField, ShareCardRange, ShareCardRenderInput } from '@/lib/profile'
+import { buildShareCardSvg, SHARE_CARD_ACCENTS, SHARE_CARD_DIMENSIONS, shareCardFilename } from '@/lib/share-card-artwork'
+import type {
+  ShareCardAccent,
+  ShareCardAvatarLayout,
+  ShareCardFormat,
+  ShareCardOptionalField,
+  ShareCardRange,
+  ShareCardRenderInput,
+} from '@/lib/profile'
 
-const allowedFields = new Set<ShareCardOptionalField>(['plan', 'joinedAt', 'favoriteGenres', 'qualifiedViews', 'watchHours', 'completionRate', 'favoriteMovies'])
-const accents: Record<ShareCardAccent, string> = { fuchsia: '#d946ef', violet: '#8b5cf6', cyan: '#22d3ee', amber: '#f59e0b' }
-
-function escapeXml(value: unknown) {
-  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!)
-}
+const allowedFields = new Set<ShareCardOptionalField>([
+  'plan', 'joinedAt', 'favoriteGenres', 'moviesOpened', 'episodesWatched',
+  'watchHours', 'completionRate', 'favoriteMovies',
+])
+const avatarLayouts = new Set<ShareCardAvatarLayout>(['corner', 'right', 'floating'])
+const avatarHosts = new Set(['res.cloudinary.com'])
+const posterHosts = new Set(['phimimg.com', 'img.ophim.live', 'media.themoviedb.org', 'img.phimapi.com'])
 
 function parseInput(value: unknown): ShareCardRenderInput {
   const input = (value || {}) as Partial<ShareCardRenderInput>
   const range: ShareCardRange = input.range === '90d' ? '90d' : '30d'
   const format: ShareCardFormat = input.format === 'story' ? 'story' : 'portrait'
-  const accent: ShareCardAccent = input.accent && input.accent in accents ? input.accent : 'fuchsia'
-  const fields = Array.from(new Set(Array.isArray(input.fields) ? input.fields.filter((field): field is ShareCardOptionalField => allowedFields.has(field as ShareCardOptionalField)) : []))
-  const favoriteMovieSlugs = Array.from(new Set(Array.isArray(input.favoriteMovieSlugs) ? input.favoriteMovieSlugs.map(String).slice(0, 3) : []))
-  return { range, format, accent, fields, favoriteMovieSlugs }
+  const accent: ShareCardAccent = input.accent && Object.prototype.hasOwnProperty.call(SHARE_CARD_ACCENTS, input.accent) ? input.accent : 'fuchsia'
+  const avatarLayout: ShareCardAvatarLayout = input.avatarLayout && avatarLayouts.has(input.avatarLayout) ? input.avatarLayout : 'corner'
+  const fields = Array.from(new Set(Array.isArray(input.fields)
+    ? input.fields.filter((field): field is ShareCardOptionalField => allowedFields.has(field as ShareCardOptionalField))
+    : []))
+  const favoriteMovieSlugs = Array.from(new Set(Array.isArray(input.favoriteMovieSlugs)
+    ? input.favoriteMovieSlugs.map((slug) => String(slug).trim().slice(0, 160)).filter(Boolean).slice(0, 3)
+    : []))
+  const avatarSeed = typeof input.avatarSeed === 'number' && Number.isInteger(input.avatarSeed) && input.avatarSeed >= 0 && input.avatarSeed <= 65535 ? input.avatarSeed : 0
+  const theme = input.theme === 'noir' || input.theme === 'premiere' ? input.theme : 'signature'
+  return { range, format, accent, avatarLayout, avatarSeed, fields, favoriteMovieSlugs, theme }
 }
 
-async function avatarDataUrl(url?: string) {
-  if (!url) return null
-  try {
-    const parsed = new URL(url, 'https://cine-mind.invalid')
-    const allowed = parsed.hostname === 'res.cloudinary.com' || parsed.hostname.endsWith('.googleusercontent.com')
-    if (!allowed || parsed.protocol !== 'https:') return null
-    const response = await fetch(parsed.toString(), { signal: AbortSignal.timeout(4_000), cache: 'no-store' })
-    if (!response.ok) return null
+async function readBodyLimited(response: Response, maxBytes: number) {
+  const declared = Number(response.headers.get('content-length') || 0)
+  if (declared > maxBytes) throw new Error('Remote image is too large.')
+  if (!response.body) {
     const bytes = Buffer.from(await response.arrayBuffer())
-    if (bytes.length > 3 * 1024 * 1024) return null
-    const normalized = await sharp(bytes, { limitInputPixels: 10_000_000 }).resize(280, 280, { fit: 'cover' }).webp({ quality: 82 }).toBuffer()
-    return `data:image/webp;base64,${normalized.toString('base64')}`
-  } catch { return null }
+    if (bytes.length > maxBytes) throw new Error('Remote image is too large.')
+    return bytes
+  }
+  const reader = response.body.getReader()
+  const chunks: Buffer[] = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) throw new Error('Remote image is too large.')
+      chunks.push(Buffer.from(value))
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return Buffer.concat(chunks, total)
 }
 
-function textRows(value: string, max = 30) {
-  const words = value.split(/\s+/).filter(Boolean)
-  const rows: string[] = []
-  for (const word of words) {
-    const previous = rows.at(-1)
-    if (!previous || `${previous} ${word}`.length > max) rows.push(word)
-    else rows[rows.length - 1] = `${previous} ${word}`
+function isAllowedRemoteImage(url: URL, kind: 'avatar' | 'poster') {
+  const allowed = kind === 'avatar'
+    ? avatarHosts.has(url.hostname) || url.hostname.endsWith('.googleusercontent.com')
+    : posterHosts.has(url.hostname)
+  return url.protocol === 'https:' && allowed
+}
+
+async function fetchAllowedRemoteImage(value: string, kind: 'avatar' | 'poster') {
+  const source = kind === 'poster' && value.startsWith('/api/img?') ? new URL(value, 'https://local.invalid').searchParams.get('u') : value
+  if (!source) return undefined
+  let current = new URL(source)
+  for (let hop = 0; hop <= 2; hop += 1) {
+    if (!isAllowedRemoteImage(current, kind)) return undefined
+    const response = await fetch(current.toString(), {
+      headers: { accept: 'image/avif,image/webp,image/png,image/jpeg' },
+      signal: AbortSignal.timeout(5_000),
+      cache: 'no-store',
+      redirect: 'manual',
+    })
+    if (response.status < 300 || response.status >= 400) return response
+    const location = response.headers.get('location')
+    if (!location) return undefined
+    current = new URL(location, current)
   }
-  return rows.slice(0, 2)
+  return undefined
+}
+async function remoteImageDataUri(url: string | undefined, kind: 'avatar' | 'poster') {
+  if (!url) return undefined
+  try {
+    const response = await fetchAllowedRemoteImage(url, kind)
+    if (!response?.ok) throw new Error('Image download failed')
+    const contentType = response.headers.get('content-type') || ''
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+    if (!allowedTypes.has(contentType.toLowerCase().split(';', 1)[0])) throw new Error('Unsupported image type')
+    const bytes = await readBodyLimited(response, kind === 'avatar' ? 4 * 1024 * 1024 : 6 * 1024 * 1024)
+    const size = kind === 'avatar' ? { width: 420, height: 420 } : { width: 360, height: 540 }
+    const image = sharp(bytes, {
+      animated: false,
+      failOn: 'error',
+      limitInputPixels: kind === 'avatar' ? 16_000_000 : 24_000_000,
+    })
+    const metadata = await image.metadata()
+    const allowedFormats = new Set(['jpeg', 'png', 'webp', 'avif', 'heif'])
+    if (!metadata.format || !allowedFormats.has(metadata.format)) throw new Error('Unsupported image format')
+    // Embed PNG: SVG rasterizers may not have a WebP image loader.
+    const normalized = await image.rotate().resize({ ...size, fit: 'cover' }).png().toBuffer()
+    return `data:image/png;base64,${normalized.toString('base64')}`
+  } catch {
+    console.error('share_card_image_failed', { kind })
+    throw new AdminAccessError(502, 'Chưa tải đủ ảnh để xuất thẻ. Vui lòng thử lại sau.')
+  }
 }
 
 export async function renderOwnShareCard(uid: string, raw: unknown) {
   const input = parseInput(raw)
   const context = await getOwnShareCardContext(uid, input.range)
-  const fields = new Set(input.fields)
-  const analyticsFields: ShareCardOptionalField[] = ['qualifiedViews', 'watchHours', 'completionRate']
-  if (!context.analytics.available && analyticsFields.some((field) => fields.has(field))) throw new AdminAccessError(409, 'Chưa có analytics đã xác minh cho khoảng thời gian này.')
   const allowedMovies = new Map(context.favoriteMovies.map((movie) => [movie.movieSlug, movie]))
-  const selectedMovies = input.favoriteMovieSlugs?.map((slug) => allowedMovies.get(slug)).filter(Boolean).slice(0, 3) || []
-  if (selectedMovies.length !== (input.favoriteMovieSlugs?.length || 0)) throw new AdminAccessError(400, 'Phim trên thẻ phải thuộc danh sách Yêu thích của bạn.')
+  const requestedSlugs = input.favoriteMovieSlugs || []
+  const selectedMovies = requestedSlugs.map((slug) => allowedMovies.get(slug)).filter((movie): movie is NonNullable<typeof movie> => Boolean(movie)).slice(0, 3)
+  if (selectedMovies.length !== requestedSlugs.length) {
+    throw new AdminAccessError(400, 'Phim trên thẻ phải thuộc danh sách Yêu thích của bạn.')
+  }
 
-  const width = 1080
-  const height = input.format === 'story' ? 1920 : 1350
-  const accent = accents[input.accent]
-  const avatar = await avatarDataUrl(context.profile.avatar)
-  const initials = context.profile.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
-  const top = input.format === 'story' ? 260 : 150
-  const stats: Array<{ label: string; value: string }> = []
-  if (fields.has('qualifiedViews')) stats.push({ label: 'LƯỢT XEM ĐỦ CHUẨN', value: new Intl.NumberFormat('vi-VN').format(context.analytics.qualifiedViews) })
-  if (fields.has('watchHours')) stats.push({ label: 'GIỜ XEM XÁC MINH', value: context.analytics.watchHours.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) })
-  if (fields.has('completionRate')) stats.push({ label: 'HOÀN THÀNH', value: `${Math.round(context.analytics.completionRate)}%` })
-  const planLabel = context.plan === 'ultra' ? 'CinePass Ultra' : context.plan === 'premium' ? 'CinePass Plus' : 'CinePass'
-  const joined = new Intl.DateTimeFormat('vi-VN', { month: '2-digit', year: 'numeric' }).format(context.profile.createdAt)
-  const titleRows = textRows(context.profile.displayName, 22)
-  const movieRows = selectedMovies.map((movie) => escapeXml(movie!.title)).join(' · ')
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#06070b"/><stop offset="0.58" stop-color="#10121b"/><stop offset="1" stop-color="#171020"/></linearGradient>
-      <radialGradient id="glow" cx="0.8" cy="0.05" r="0.7"><stop stop-color="${accent}" stop-opacity="0.34"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient>
-      <clipPath id="avatar"><circle cx="190" cy="${top + 140}" r="108"/></clipPath>
-    </defs>
-    <rect width="100%" height="100%" rx="54" fill="url(#bg)"/><rect width="100%" height="100%" rx="54" fill="url(#glow)"/>
-    <rect x="68" y="68" width="944" height="${height - 136}" rx="42" fill="#090b12" fill-opacity=".64" stroke="#fff" stroke-opacity=".12"/>
-    <text x="110" y="130" fill="#fff" font-family="Arial,sans-serif" font-size="35" font-weight="700">Cine<tspan fill="${accent}">Mind</tspan></text>
-    <text x="970" y="130" fill="#a8adbd" text-anchor="end" font-family="Arial,sans-serif" font-size="24">MY CINEMA PROFILE</text>
-    ${avatar ? `<image href="${avatar}" x="82" y="${top + 32}" width="216" height="216" preserveAspectRatio="xMidYMid slice" clip-path="url(#avatar)"/>` : `<circle cx="190" cy="${top + 140}" r="108" fill="${accent}" fill-opacity=".24" stroke="${accent}" stroke-width="3"/><text x="190" y="${top + 165}" fill="#fff" text-anchor="middle" font-family="Arial,sans-serif" font-size="70" font-weight="800">${escapeXml(initials)}</text>`}
-    ${titleRows.map((row, index) => `<text x="340" y="${top + 96 + index * 62}" fill="#fff" font-family="Arial,sans-serif" font-size="52" font-weight="800">${escapeXml(row)}</text>`).join('')}
-    <text x="340" y="${top + 220}" fill="${accent}" font-family="Arial,sans-serif" font-size="30">@${escapeXml(context.profile.username)}</text>
-    ${fields.has('plan') ? `<rect x="340" y="${top + 252}" width="260" height="54" rx="27" fill="${accent}" fill-opacity=".16" stroke="${accent}"/><text x="470" y="${top + 288}" fill="${accent}" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" font-weight="700">${escapeXml(planLabel)}</text>` : ''}
-    ${fields.has('joinedAt') ? `<text x="970" y="${top + 285}" fill="#a8adbd" text-anchor="end" font-family="Arial,sans-serif" font-size="23">Tham gia ${escapeXml(joined)}</text>` : ''}
-    <line x1="110" y1="${top + 360}" x2="970" y2="${top + 360}" stroke="#fff" stroke-opacity=".12"/>
-    ${stats.map((stat, index) => { const x = 110 + index * (860 / Math.max(stats.length, 1)); const column = 860 / Math.max(stats.length, 1); return `<text x="${x + column / 2}" y="${top + 470}" fill="#fff" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="800">${escapeXml(stat.value)}</text><text x="${x + column / 2}" y="${top + 516}" fill="#959bad" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" letter-spacing="2">${escapeXml(stat.label)}</text>` }).join('')}
-    ${fields.has('favoriteGenres') && context.profile.favoriteGenres.length ? `<text x="110" y="${top + 650}" fill="#959bad" font-family="Arial,sans-serif" font-size="21" letter-spacing="2">GU PHIM</text><text x="110" y="${top + 710}" fill="#fff" font-family="Arial,sans-serif" font-size="31">${escapeXml(context.profile.favoriteGenres.slice(0, 5).join('  ·  '))}</text>` : ''}
-    ${fields.has('favoriteMovies') && movieRows ? `<text x="110" y="${top + 830}" fill="#959bad" font-family="Arial,sans-serif" font-size="21" letter-spacing="2">PHIM YÊU THÍCH</text><text x="110" y="${top + 890}" fill="#fff" font-family="Arial,sans-serif" font-size="27">${movieRows}</text>` : ''}
-    <text x="110" y="${height - 120}" fill="#777e91" font-family="Arial,sans-serif" font-size="21">${input.range === '90d' ? '90 ngày gần nhất' : '30 ngày gần nhất'} · Số liệu playback đã xác minh</text>
-    <circle cx="943" cy="${height - 128}" r="10" fill="${accent}"/><text x="920" y="${height - 120}" fill="#fff" text-anchor="end" font-family="Arial,sans-serif" font-size="21">cine-mind.namtechie.id.vn</text>
-  </svg>`
-  return { png: await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer(), width, height }
+  const [avatar, posterData] = await Promise.all([
+    remoteImageDataUri(context.profile.avatar, 'avatar'),
+    Promise.all(selectedMovies.map((movie) => remoteImageDataUri(movie.poster, 'poster'))),
+  ])
+  const artworkContext = { ...context, profile: { ...context.profile, avatar } }
+  const artworkMovies = selectedMovies.map((movie, index) => ({ ...movie, poster: posterData[index] }))
+  const svg = buildShareCardSvg({
+    context: artworkContext,
+    range: input.range,
+    format: input.format,
+    accent: input.accent,
+    theme: input.theme,
+    avatarLayout: input.avatarLayout,
+    avatarSeed: input.avatarSeed,
+    fields: input.fields,
+    selectedMovies: artworkMovies,
+  })
+  const { width, height } = SHARE_CARD_DIMENSIONS[input.format]
+  const png = await sharp(Buffer.from(svg), { limitInputPixels: width * height * 2 })
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toBuffer()
+  return { png, width, height, filename: shareCardFilename(context.profile.displayName, input.theme || 'signature', input.format) }
 }

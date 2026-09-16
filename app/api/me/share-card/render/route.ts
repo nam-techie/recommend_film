@@ -5,6 +5,7 @@ import { assertVerifiedMember } from '@/lib/server/profile'
 import { renderOwnShareCard } from '@/lib/server/share-card'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
     return new NextResponse(result.png, {
       headers: {
         'Content-Type': 'image/png',
-        'Content-Disposition': `attachment; filename="cinemind-profile-${result.width}x${result.height}.png"`,
+        'Content-Disposition': `attachment; filename="${result.filename}"`,
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
       },

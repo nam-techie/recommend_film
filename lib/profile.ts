@@ -9,7 +9,9 @@ export type ProfileMediaKind = 'avatar' | 'cover'
 export type ShareCardRange = '30d' | '90d'
 export type ShareCardFormat = 'portrait' | 'story'
 export type ShareCardAccent = 'fuchsia' | 'violet' | 'cyan' | 'amber'
-export type ShareCardOptionalField = 'plan' | 'joinedAt' | 'favoriteGenres' | 'qualifiedViews' | 'watchHours' | 'completionRate' | 'favoriteMovies'
+export type ShareCardAvatarLayout = 'corner' | 'right' | 'floating'
+export type ShareCardTheme = 'signature' | 'noir' | 'premiere'
+export type ShareCardOptionalField = 'plan' | 'joinedAt' | 'favoriteGenres' | 'moviesOpened' | 'episodesWatched' | 'watchHours' | 'completionRate' | 'favoriteMovies'
 
 export interface ProfilePatchInput {
   expectedUpdatedAt: number
@@ -43,14 +45,18 @@ export interface ShareCardContext {
   plan: AccountPlan
   range: ShareCardRange
   analytics: { available: boolean; collectedFrom: number | null; qualifiedViews: number; watchHours: number; completionRate: number }
+  activity: { moviesOpened: number; episodesWatched: number; watchHours: number; source: 'verified' | 'legacy_resume' | 'none' }
   favoriteMovies: ShareCardMovie[]
   mediaUploadEnabled: boolean
 }
 
 export interface ShareCardRenderInput {
+  theme?: ShareCardTheme
   range: ShareCardRange
   format: ShareCardFormat
   accent: ShareCardAccent
+  avatarLayout: ShareCardAvatarLayout
+  avatarSeed?: number
   fields: ShareCardOptionalField[]
   favoriteMovieSlugs?: string[]
 }
