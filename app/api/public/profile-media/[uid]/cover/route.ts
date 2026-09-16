@@ -8,6 +8,6 @@ export async function GET(_request: Request, context: { params: Promise<{ uid: s
   try {
     const { uid } = await context.params
     const result = await getCoverProxy(uid, false)
-    return new NextResponse(result.bytes, { headers: { 'Content-Type': result.contentType, 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' } })
+    return new NextResponse(result.bytes, { headers: { 'Content-Type': result.contentType, 'Cache-Control': 'private, no-store' } })
   } catch (error) { return apiError(error, 'Không thể tải ảnh bìa.') }
 }
