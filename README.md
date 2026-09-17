@@ -1,3 +1,13 @@
+## Star History
+
+<a href="https://www.star-history.com/?repos=nam-techie%2Frecommend_film&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=nam-techie/recommend_film&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=nam-techie/recommend_film&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=nam-techie/recommend_film&type=date&legend=top-left" />
+ </picture>
+</a>
+
 # CineMind
 
 Web xem phim tiếng Việt: duyệt phim theo thể loại/quốc gia, xem HLS trực tiếp trong trang,
