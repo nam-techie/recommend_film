@@ -26,6 +26,7 @@ const monoFont = Overpass_Mono({
   display: "swap",
 });
 import { ThemeProvider } from '@/components/theme-provider'
+import { OnlineSessionTracker } from '@/components/auth/OnlineSessionTracker'
 import { AuthProvider } from '@/components/auth/AuthProvider'
 import { MonetizationProvider } from '@/components/monetization/MonetizationProvider'
 import { AppChrome } from '@/components/AppChrome'
@@ -70,7 +71,7 @@ export default async function RootLayout({
             <body
                 className={`antialiased ${bodyFont.variable} ${displayFont.variable} ${monoFont.variable} font-sans min-h-screen bg-bg flex flex-col`}
             >
-                <AuthProvider><MonetizationProvider><ThemeProvider
+                <AuthProvider><OnlineSessionTracker /><MonetizationProvider><ThemeProvider
                     attribute="class"
                     defaultTheme="dark"
                     enableSystem={false}

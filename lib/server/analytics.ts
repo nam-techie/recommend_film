@@ -1,3 +1,4 @@
+import { getOnlineSnapshot, sampleOnlinePeak, pruneOnlineSessions } from '@/lib/server/online-presence'
 import 'server-only'
 
 import { randomUUID } from 'crypto'
@@ -237,14 +238,14 @@ export async function rebuildDirtyAnalyticsDays(limit = 10) {
 export async function maintainAnalyticsRetention() {
   const now = Date.now()
   const [presence, oldSessions, oldGrants, recommendationEvents] = await Promise.all([
-    database().ref('presenceConnections').get(),
+    getOnlineSnapshot(),
     database().ref('analytics/playbackSessions').orderByChild('startedAt').endAt(now - 90 * 86_400_000).limitToFirst(1000).get(),
     database().ref('analytics/playbackGrants').orderByChild('expiresAt').endAt(now - 86_400_000).limitToFirst(1000).get(),
     database().ref('personalization/recommendationEvents').get(),
   ])
-  const onlineNow = Object.values((presence.val() || {}) as Record<string, Record<string, true>>).filter((connections) => Object.keys(connections || {}).length > 0).length
-  const bucket = Math.floor(now / 300_000) * 300_000
-  const updates: Record<string, number | null> = { [`analytics/aggregates/presence5m/${bucket}/online`]: onlineNow, [`analytics/aggregates/presence5m/${bucket}/recordedAt`]: now, 'analytics/health/lastCronAt': now }
+  const onlineNow = presence.onlineNow
+  await Promise.all([sampleOnlinePeak(onlineNow, now), pruneOnlineSessions()])
+  const updates: Record<string, number | null> = { 'analytics/health/lastCronAt': now }
   Object.keys(oldSessions.val() || {}).forEach((id) => { updates[`analytics/playbackSessions/${id}`] = null })
   Object.keys(oldGrants.val() || {}).forEach((id) => { updates[`analytics/playbackGrants/${id}`] = null })
   let deletedRecommendationEvents = 0
@@ -275,8 +276,8 @@ export async function getAnalyticsOverview(range: '7d' | '30d' | '90d' = '30d'):
     Promise.all(keys.map((day) => database().ref(`analytics/aggregates/movieDaily/${day}`).get())),
     Promise.all(keys.map((day) => database().ref(`analytics/aggregates/genreDaily/${day}`).get())),
     database().ref('analytics/playbackSessions').orderByChild('lastHeartbeatAt').startAt(sessionCutoff).get(),
-    database().ref('presenceConnections').get(),
-    database().ref('analytics/aggregates/presence5m').orderByKey().startAt(String(Date.now() - days * 86_400_000)).get(),
+    getOnlineSnapshot(),
+    database().ref('analytics/aggregates/onlinePresence5m').orderByKey().startAt(String(Date.now() - days * 86_400_000)).get(),
     database().ref('analytics/health').get(),
   ])
   const totals = { ...EMPTY_ANALYTICS_TOTALS }; globalRows.forEach((row) => sumTotals(totals, row.val()))
@@ -284,10 +285,10 @@ export async function getAnalyticsOverview(range: '7d' | '30d' | '90d' = '30d'):
   movieRows.forEach((row) => Object.values((row.val() || {}) as Record<string, AnalyticsMovieRow>).forEach((movie) => { const current = movies.get(movie.slug) || { slug: movie.slug, title: movie.title, genres: movie.genres || [], ...EMPTY_ANALYTICS_TOTALS }; sumTotals(current, movie); movies.set(movie.slug, current) }))
   const genres = new Map<string, { genre: string; qualifiedViews: number; activeSeconds: number }>()
   genreRows.forEach((row) => Object.values((row.val() || {}) as Record<string, { genre: string; qualifiedViews: number; activeSeconds: number }>).forEach((genre) => { const current = genres.get(genre.genre) || { genre: genre.genre, qualifiedViews: 0, activeSeconds: 0 }; current.qualifiedViews += Number(genre.qualifiedViews) || 0; current.activeSeconds += Number(genre.activeSeconds) || 0; genres.set(genre.genre, current) }))
-  const activeSessions = Object.values((sessions.val() || {}) as Record<string, PlaybackSessionRecord>).filter((session) => session.lastHeartbeatAt >= sessionCutoff && !session.finalized && session.isPlaying && session.reliability === 'verified')
-  const onlineNow = Object.values((presence.val() || {}) as Record<string, Record<string, true>>).filter((connections) => Object.keys(connections || {}).length > 0).length
-  const peakOnline = Math.max(0, ...Object.values((presenceBuckets.val() || {}) as Record<string, { online?: number }>).map((value) => Number(value.online) || 0))
-  return { generatedAt: Date.now(), range, since: Number((health.val() as AnalyticsHealthRecord | null)?.firstSessionAt) || null, totals, concurrentViewers: new Set(activeSessions.map((session) => session.uid)).size, onlineNow, peakOnline, topMovies: [...movies.values()].sort((a, b) => b.qualifiedViews - a.qualifiedViews).slice(0, 20), topGenres: [...genres.values()].sort((a, b) => b.qualifiedViews - a.qualifiedViews).slice(0, 12) }
+  const activeSessions = Object.values((sessions.val() || {}) as Record<string, PlaybackSessionRecord>).filter((session) => session.lastHeartbeatAt >= sessionCutoff && !session.finalized && session.isPlaying && (session.visible || session.pictureInPicture) && session.reliability === 'verified')
+  const onlineNow = presence.onlineNow
+  const peakOnline = Math.max(onlineNow, ...Object.values((presenceBuckets.val() || {}) as Record<string, { online?: number }>).map((value) => Number(value.online) || 0))
+  return { generatedAt: Date.now(), range, since: Number((health.val() as AnalyticsHealthRecord | null)?.firstSessionAt) || null, totals, concurrentViewers: new Set(activeSessions.map((session) => session.uid)).size, onlineNow, interactingNow: presence.interactingNow, peakOnline, topMovies: [...movies.values()].sort((a, b) => b.qualifiedViews - a.qualifiedViews).slice(0, 20), topGenres: [...genres.values()].sort((a, b) => b.qualifiedViews - a.qualifiedViews).slice(0, 12) }
 }
 
 export async function getAnalyticsMovies(range: '7d' | '30d' | '90d' = '30d', sort: 'qualifiedViews' | 'watchHours' | 'completion' = 'qualifiedViews') {

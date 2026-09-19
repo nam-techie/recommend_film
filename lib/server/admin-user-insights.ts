@@ -1,3 +1,4 @@
+import { getUserOnlinePresence } from '@/lib/server/online-presence'
 import 'server-only'
 
 import { getDatabase } from 'firebase-admin/database'
@@ -10,7 +11,7 @@ import type { WatchProgressMovieV2 } from '@/lib/watch-party-types'
 
 function database() { return getDatabase(getFirebaseAdminApp()) }
 
-export async function getUserAnalyticsSummary(uid: string, range: '30d' | '90d') {
+export async function getUserAnalyticsSummary(uid: string, range: '7d' | '30d' | '90d') {
   const days = Number(range.slice(0, -1))
   const keys = Array.from({ length: days }, (_, index) => vietnamDayKey(Date.now() - index * 86_400_000))
   const [rows, health] = await Promise.all([Promise.all(keys.map((day) => database().ref(`analytics/aggregates/userDaily/${uid}/${day}`).get())), getAnalyticsHealth()])
@@ -20,10 +21,10 @@ export async function getUserAnalyticsSummary(uid: string, range: '30d' | '90d')
 }
 
 export async function getAdminUserInsights(uid: string, range: '7d' | '30d' | '90d'): Promise<AdminUserInsights> {
-  const summary = await getUserAnalyticsSummary(uid, range === '7d' ? '30d' : range)
-  const [presence, lastSeen, features] = await Promise.all([database().ref(`presenceConnections/${uid}`).get(), database().ref(`presenceLastSeen/${uid}`).get(), computeUserFeatures(uid)])
+  const summary = await getUserAnalyticsSummary(uid, range)
+  const [presence, features] = await Promise.all([getUserOnlinePresence(uid), computeUserFeatures(uid)])
   const preferredTimeBand = Object.entries(features.preferredTimeBands).sort(([, a], [, b]) => b - a)[0]
-  return { uid, online: presence.exists() && Object.keys(presence.val() || {}).length > 0, lastSeen: lastSeen.exists() ? Number(lastSeen.val()) : null, qualifiedViews: summary.qualifiedViews, watchHours: summary.watchHours, completionRate: summary.completionRate, topGenres: Object.entries(features.genreAffinity).sort(([, a], [, b]) => b - a).slice(0, 5).map(([genre, score]) => ({ genre, score })), preferredTimeBand: preferredTimeBand?.[1] ? preferredTimeBand[0] : null, personalizationEnabled: features.enabled, eligibleForPersonalization: features.eligible, range, collectionState: summary.collectionState, collectionStartedAt: summary.collectionStartedAt }
+  return { uid, presence, online: presence.online, lastSeen: presence.lastSeen, qualifiedViews: summary.qualifiedViews, watchHours: summary.watchHours, completionRate: summary.completionRate, topGenres: Object.entries(features.genreAffinity).sort(([, a], [, b]) => b - a).slice(0, 5).map(([genre, score]) => ({ genre, score })), preferredTimeBand: preferredTimeBand?.[1] ? preferredTimeBand[0] : null, personalizationEnabled: features.enabled, eligibleForPersonalization: features.eligible, range, collectionState: summary.collectionState, collectionStartedAt: summary.collectionStartedAt }
 }
 
 export async function getAdminSensitiveTimeline(uid: string, days = 90): Promise<AdminSensitiveTimelineItem[]> {
