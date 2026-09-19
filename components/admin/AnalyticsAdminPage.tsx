@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, BarChart3, CheckCircle2, Clock3, Eye, Loader2, RefreshCw, Users } from 'lucide-react'
 import { AccessDenied, AdminLogin, AdminShell } from '@/components/admin/AdminShell'
 import { AdminPage, AdminPageHeader, AdminSection, AdminState, DataSourceIndicator, MetricCard } from '@/components/admin/AdminPrimitives'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useAdminLivePresence } from '@/hooks/useAdminLivePresence'
 import { useAdminApi } from '@/hooks/useAdminApi'
 import type { AnalyticsHealth, AnalyticsOverview } from '@/lib/analytics'
 import { analyticsCompletionRate } from '@/lib/analytics'
@@ -14,20 +15,24 @@ const number = new Intl.NumberFormat('vi-VN')
 
 export function AnalyticsAdminPage() {
   const { user, loading: authLoading, logout, request, denied } = useAdminApi()
+  const live = useAdminLivePresence(request, Boolean(user))
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
   const [data, setData] = useState<AnalyticsOverview | null>(null)
   const [health, setHealth] = useState<AnalyticsHealth | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
+  const loadVersion = useRef(0)
   const load = useCallback(async () => {
     if (!user) return
+    const version = ++loadVersion.current
     setLoading(true); setError(null)
-    try { const [overview, healthState] = await Promise.all([request<AnalyticsOverview>(`/api/admin/analytics/overview?range=${range}`), request<AnalyticsHealth>('/api/admin/analytics/health')]); setData(overview); setHealth(healthState); setLoadedAt(Date.now()) }
-    catch (next) { setError(next instanceof Error ? next.message : 'Không thể tải analytics.') }
-    finally { setLoading(false) }
+    try { const [overview, healthState] = await Promise.all([request<AnalyticsOverview>(`/api/admin/analytics/overview?range=${range}`), request<AnalyticsHealth>('/api/admin/analytics/health')]); if (version !== loadVersion.current) return; setData(overview); setHealth(healthState); setLoadedAt(Date.now()) }
+    catch (next) { if (version === loadVersion.current) setError(next instanceof Error ? next.message : 'Không thể tải analytics.') }
+    finally { if (version === loadVersion.current) setLoading(false) }
   }, [range, request, user])
-  useEffect(() => { if (user) void load() }, [load, user])
+  useEffect(() => { if (user) void load(); return () => { loadVersion.current += 1 } }, [load, user])
+  useEffect(() => { if (live.data && !live.error) setData(previous => previous ? { ...previous, peakOnline: Math.max(previous.peakOnline, live.data!.onlineNow) } : previous) }, [live.data, live.error])
   const handleLogout = () => void logout().catch(() => undefined)
   if (authLoading) return <AdminState kind="loading" title="Đang kiểm tra quyền analytics" />
   if (!user) return <AdminLogin />
@@ -36,18 +41,24 @@ export function AnalyticsAdminPage() {
 
   return <AdminShell viewer={{ uid: user.uid, email: user.email }} refreshedAt={loadedAt || Date.now()} refreshing={loading} onRefresh={() => void load()} onLogout={handleLogout}>
     <AdminPage><div className="mx-auto max-w-shell">
-      <AdminPageHeader eyebrow="Nội dung" title="Phân tích nội dung" description="Số liệu chỉ lấy từ playback session được server xác nhận. Watch progress của người dùng không được dùng để backfill KPI." actions={<><Select value={range} onValueChange={(value) => setRange(value as typeof range)}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">7 ngày</SelectItem><SelectItem value="30d">30 ngày</SelectItem><SelectItem value="90d">90 ngày</SelectItem></SelectContent></Select><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />Làm mới</Button></>} />
-      <div className="mt-5"><DataSourceIndicator state={error ? 'unavailable' : hasData ? 'real' : 'empty'} since={data?.since} /></div>
+      <AdminPageHeader eyebrow="Nội dung" title="Phân tích nội dung" description="Lượt xem và giờ xem theo khoảng ngày đã chọn. Trạng thái trực tuyến bên dưới là số liệu hiện tại, độc lập với lịch sử xem phim." actions={<><Select value={range} onValueChange={(value) => setRange(value as typeof range)}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">7 ngày</SelectItem><SelectItem value="30d">30 ngày</SelectItem><SelectItem value="90d">90 ngày</SelectItem></SelectContent></Select><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />Làm mới</Button></>} />
+      <section className="mt-5 overflow-hidden rounded-lg border border-white/[0.08]">
+        <div className="border-b border-white/[0.08] px-5 py-4"><h2 className="font-semibold">Trực tuyến lúc này</h2><p className="mt-1 text-xs text-fg-muted">Tự cập nhật mỗi 15 giây · mỗi tài khoản chỉ tính một lần, kể cả tài khoản admin · không tính khách chưa đăng nhập.</p><p role="status" className="mt-2 text-xs text-fg-secondary">{live.error ? 'Mất kết nối cập nhật. Các số trực tuyến tạm ẩn cho đến khi kết nối lại.' : live.data ? `Cập nhật lúc ${new Date(live.data.generatedAt).toLocaleTimeString('vi-VN')}` : 'Đang kết nối dữ liệu trực tuyến…'}</p></div>
+        <div className="grid gap-px bg-white/[0.08] md:grid-cols-3">
+          <MetricCard label="Online" value={live.data && !live.error ? number.format(live.data.onlineNow) : '—'} detail="Có heartbeat trong 90 giây, kể cả tab nền" icon={Users} tone="ok" />
+          <MetricCard label="Đang tương tác" value={live.data && !live.error ? number.format(live.data.interactingNow) : '—'} detail="Tab hiển thị và có thao tác trong 60 giây" icon={Activity} tone="ok" />
+          <MetricCard label="Đang xem phim" value={live.data && !live.error ? number.format(live.data.concurrentViewers) : '—'} detail="Player đang phát, hiển thị hoặc PiP; heartbeat ≤60 giây" icon={Eye} tone="ok" />
+        </div>
+      </section>
+      <div className="mt-8"><h2 className="mb-3 font-semibold">Hiệu suất nội dung · {range.slice(0, -1)} ngày</h2><DataSourceIndicator state={error ? 'unavailable' : hasData ? 'real' : 'empty'} since={data?.since} /></div>
       {error && <p role="alert" className="mt-4 border border-bad/25 bg-bad/10 px-4 py-3 text-sm text-bad">{error}</p>}
       {loading && !data ? <AdminState kind="loading" title="Đang tổng hợp playback session" /> : data && <>
         <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Qualified views" value={number.format(data.totals.qualifiedViews)} detail="≥30 giây active playback" icon={Eye} />
-          <MetricCard label="Unique viewers" value={number.format(data.totals.uniqueViewers)} detail="Một account / phim / ngày" icon={Users} />
+          <MetricCard label="Người xem theo phim / ngày" value={number.format(data.totals.uniqueViewers)} detail="Một account / phim / ngày" icon={Users} />
           <MetricCard label="Giờ xem" value={number.format(Math.round(data.totals.activeSeconds / 36) / 100)} detail="Không cộng pause hoặc seek" icon={Clock3} />
           <MetricCard label="Completion" value={`${analyticsCompletionRate(data.totals)}%`} detail="Qualified view đạt ngưỡng hoàn thành" icon={CheckCircle2} />
-          <MetricCard label="Đang xem" value={number.format(data.concurrentViewers)} detail="Heartbeat trong 60 giây" icon={Activity} tone="ok" />
-          <MetricCard label="Online hiện tại" value={number.format(data.onlineNow)} detail="Unique account có presence" icon={Users} tone="ok" />
-          <MetricCard label="Peak online" value={number.format(data.peakOnline)} detail="Unique online, bucket 5 phút" icon={BarChart3} />
+          <MetricCard label="Đỉnh online ghi nhận" value={number.format(Math.max(data.peakOnline, live.error ? 0 : live.data?.onlineNow || 0))} detail="Mẫu admin / cron; chỉ tính nguồn heartbeat mới" icon={BarChart3} />
         </div>
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,.6fr)]">
           <AdminSection title="Được xem nhiều" description={`${range} · xếp theo qualified views`}>

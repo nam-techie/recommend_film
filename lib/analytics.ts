@@ -74,6 +74,7 @@ export interface AnalyticsOverview {
   totals: AnalyticsTotals
   concurrentViewers: number
   onlineNow: number
+  interactingNow?: number
   peakOnline: number
   topMovies: AnalyticsMovieRow[]
   topGenres: Array<{ genre: string; qualifiedViews: number; activeSeconds: number }>

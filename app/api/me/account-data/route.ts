@@ -20,6 +20,7 @@ export async function DELETE(request: Request) {
     ])
     const updates: Record<string, null> = {
       [`accountSessions/${identity.uid}`]: null,
+      [`analytics/onlineSessions/${identity.uid}`]: null,
       [`analytics/aggregates/userDaily/${identity.uid}`]: null,
       [`personalization/userFeatures/${identity.uid}`]: null,
       [`personalization/recommendationEvents/${identity.uid}`]: null,

@@ -2,6 +2,8 @@
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useAdminApi } from '@/hooks/useAdminApi'
+import { useAdminLivePresence } from '@/hooks/useAdminLivePresence'
 import { usePathname } from 'next/navigation'
 import {
   Activity,
@@ -265,7 +267,7 @@ function HealthStatus({ status }: { status: AdminDashboardSnapshot['health'][num
   return <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', status === 'operational' ? 'bg-ok/10 text-ok' : status === 'degraded' ? 'bg-warn/10 text-warn' : 'bg-info/10 text-info-soft')}><span className={cn('h-1.5 w-1.5 rounded-full', status === 'operational' ? 'bg-ok' : status === 'degraded' ? 'bg-warn' : 'bg-info')} />{label}</span>
 }
 
-function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
+function DashboardContent({ data, live }: { data: AdminDashboardSnapshot; live: ReturnType<typeof useAdminLivePresence> }) {
   const paymentTotal = data.payments.successful + data.payments.failed + data.payments.pending
   const successRate = paymentTotal ? data.payments.successful / paymentTotal * 100 : 0
   return <main id="admin-main" tabIndex={-1} className="relative px-4 py-7 sm:px-6 xl:px-8 xl:py-9">
@@ -276,17 +278,18 @@ function DashboardContent({ data }: { data: AdminDashboardSnapshot }) {
         <div className="flex items-center gap-2 self-start rounded-xl border border-white/[0.08] bg-surface-1 px-3 py-2 text-xs text-fg-secondary md:self-auto"><Activity className="h-4 w-4 text-ok" /><span>Cập nhật {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(data.generatedAt)}</span></div>
       </div>
 
-      <div className="mt-5"><DataSourceIndicator state={data.sources.views === 'live' ? 'real' : data.sources.views === 'unavailable' ? 'unavailable' : 'empty'} since={data.analyticsSince} /></div>
+      <div className="mt-5"><p className="mb-2 text-xs text-fg-muted">Nguồn dữ liệu xem phim</p><DataSourceIndicator state={data.sources.views === 'live' ? 'real' : data.sources.views === 'unavailable' ? 'unavailable' : 'empty'} since={data.analyticsSince} /></div>
+      <p role="status" className="mt-3 text-xs text-fg-muted">Trực tuyến tự cập nhật mỗi 15 giây. {live.error ? 'Tạm mất kết nối cập nhật.' : live.data ? `Lần cuối ${new Date(live.data.generatedAt).toLocaleTimeString('vi-VN')}.` : 'Đang kết nối…'} Tính cả tài khoản admin, mỗi tài khoản một lần.</p>
       <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Doanh thu hôm nay" value={formatCurrency(data.metrics.revenueToday)} detail={`Tháng này ${formatCurrency(data.metrics.revenueMonth)}`} icon={CircleDollarSign} source={data.sources.revenue} accent />
         <MetricCard label="Tổng người dùng" value={formatNumber.format(data.metrics.totalUsers)} detail="Mặc định CinePass khi chưa có gói" icon={Users} source={data.sources.users} />
         <MetricCard label="Qualified views" value={formatNumber.format(data.metrics.totalViews)} detail="Tối thiểu 30 giây active playback" icon={Eye} source={data.sources.views} />
-        <MetricCard label="Unique viewers" value={formatNumber.format(data.metrics.uniqueViewers)} detail="Một account / phim / ngày" icon={Users} source={data.sources.views} />
+        <MetricCard label="Người xem theo phim / ngày" value={formatNumber.format(data.metrics.uniqueViewers)} detail="Một account / phim / ngày" icon={Users} source={data.sources.views} />
         <MetricCard label="Giờ xem" value={formatNumber.format(data.metrics.watchHours)} detail="Active playback được server chấp nhận" icon={Activity} source={data.sources.views} />
         <MetricCard label="Tỷ lệ hoàn thành" value={`${data.metrics.completionRate}%`} detail="Qualified view đạt ngưỡng hoàn thành" icon={TrendingUp} source={data.sources.views} />
-        <MetricCard label="Người đang xem" value={formatNumber.format(data.metrics.concurrentViewers)} detail="Heartbeat trong 60 giây gần nhất" icon={Clapperboard} source={data.sources.views} />
-        <MetricCard label="Online hiện tại" value={formatNumber.format(data.metrics.onlineNow)} detail="Unique account có kết nối presence" icon={Users} source={data.sources.views} />
-        <MetricCard label="Peak online" value={formatNumber.format(data.metrics.peakOnline)} detail="Đỉnh unique online trong bucket 5 phút" icon={BarChart3} source={data.sources.views} />
+        <MetricCard label="Người đang xem" value={live.data && !live.error ? formatNumber.format(live.data.concurrentViewers) : '—'} detail="Player đang phát và hiển thị / PiP, heartbeat ≤60 giây" icon={Clapperboard} source={live.data && !live.error ? 'live' : 'unavailable'} />
+        <MetricCard label="Online hiện tại" value={live.data && !live.error ? formatNumber.format(live.data.onlineNow) : '—'} detail="Tài khoản có heartbeat trong 90 giây" icon={Users} source={live.data && !live.error ? 'live' : 'unavailable'} />
+        <MetricCard label="Đỉnh online ghi nhận" value={formatNumber.format(data.metrics.peakOnline)} detail="30 ngày · mẫu heartbeat mới từ admin / cron" icon={BarChart3} source="live" />
         <MetricCard label="Phòng đang mở" value={formatNumber.format(data.metrics.activeRooms)} detail={`${data.rooms.participants} người đang tham gia`} icon={Clapperboard} source={data.sources.rooms} />
         <MetricCard label="Mã đang chạy" value={formatNumber.format(data.metrics.activeDiscounts)} detail={`${data.discounts.redemptions} lượt sử dụng`} icon={BadgePercent} source={data.sources.discounts} />
         <MetricCard label="Thanh toán thành công" value={`${successRate.toFixed(1)}%`} detail={`${data.payments.failed} giao dịch thất bại`} icon={WalletCards} source={data.sources.payments} />
@@ -333,10 +336,14 @@ export function AccessDenied({ message, onLogout }: { message: string; onLogout:
 
 export function AdminDashboardPage() {
   const { user, loading: authLoading, logout } = useAuth()
+  const { request } = useAdminApi()
+  const live = useAdminLivePresence(request, Boolean(user))
   const [data, setData] = useState<AdminDashboardSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [denied, setDenied] = useState(false)
+
+  useEffect(() => { if (live.data && !live.error) setData(previous => previous ? { ...previous, metrics: { ...previous.metrics, peakOnline: Math.max(previous.metrics.peakOnline, live.data!.onlineNow) } } : previous) }, [live.data, live.error])
 
   const load = useCallback(async () => {
     if (!user) return
@@ -362,5 +369,5 @@ export function AdminDashboardPage() {
   if (!data && loading) return <div className="flex min-h-screen items-center justify-center bg-bg"><div className="text-center"><Loader2 className="mx-auto h-7 w-7 animate-spin text-accent" /><p className="mt-3 text-sm text-fg-secondary">Đang dựng dashboard...</p></div></div>
   if (!data) return <div className="flex min-h-screen items-center justify-center bg-bg px-4"><div className="w-full max-w-md rounded-xl border border-warn/25 bg-surface-1 p-7 text-center"><ShieldAlert className="mx-auto h-8 w-8 text-warn" /><h1 className="mt-4 text-title-2">Chưa tải được dashboard</h1><p className="mt-3 text-sm text-fg-secondary">{error || 'Đã xảy ra lỗi không xác định.'}</p><div className="mt-6 flex gap-2"><Button variant="outline" onClick={handleLogout} className="flex-1">Đăng xuất</Button><Button onClick={() => void load()} className="flex-1 bg-accent-strong hover:bg-accent">Thử lại</Button></div></div></div>
 
-  return <AdminShell viewer={data.viewer} refreshedAt={refreshedAt} refreshing={loading} onRefresh={() => void load()} onLogout={handleLogout}><DashboardContent data={data} /></AdminShell>
+  return <AdminShell viewer={data.viewer} refreshedAt={refreshedAt} refreshing={loading} onRefresh={() => void load()} onLogout={handleLogout}><DashboardContent data={data} live={live} /></AdminShell>
 }

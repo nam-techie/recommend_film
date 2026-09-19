@@ -1,7 +1,9 @@
+import type { OnlinePresence } from '@/lib/online-presence'
 import type { AnalyticsCollectionState, AnalyticsReliability } from '@/lib/analytics'
 
 export interface AdminUserInsights {
   uid: string
+  presence: OnlinePresence
   online: boolean
   lastSeen: number | null
   qualifiedViews: number
