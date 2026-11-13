@@ -11,7 +11,7 @@ export function AppChrome({ children, genres, countries }: { children: ReactNode
   const pathname = usePathname()
   const [immersive, setImmersive] = useState(false)
   useEffect(() => { const listener = (event: Event) => setImmersive(Boolean((event as CustomEvent<boolean>).detail)); window.addEventListener('cinemind:immersive-change', listener); return () => window.removeEventListener('cinemind:immersive-change', listener) }, [])
-  const isRoom = /^\/watch-party\/[^/]+/.test(pathname)
+  const isRoom = /^\/(watch-party|karaoke)\/[^/]+/.test(pathname)
   const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/')
   if (isRoom || isAdmin) return <main className="min-h-screen">{children}</main>
   return (
