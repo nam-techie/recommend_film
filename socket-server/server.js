@@ -1,3 +1,4 @@
+import { registerKaraoke } from './karaoke.js'
 import { CinemaCharacterStore, registerCharacterHandler } from './cinema-characters.js'
 import http from 'node:http'
 import crypto from 'node:crypto'
@@ -855,6 +856,8 @@ async function transferHost(roomId) {
   clearTimeout(hostTimers.get(roomId)); hostTimers.delete(roomId)
   await store.setRoom(room); io.to(room.id).emit('host:changed', { previousHostMemberId: previous, hostMemberId: room.hostMemberId, room: clientRoom(room) }); log('host_transferred', { roomId, hostMemberId: room.hostMemberId })
 }
+
+registerKaraoke(io, { verifyFirebaseToken, livekit: livekitRooms, credentials: { url: LIVEKIT_URL, key: LIVEKIT_API_KEY, secret: LIVEKIT_API_SECRET } })
 
 io.on('connection', async (socket) => {
   const { roomId, memberId, deviceRole } = socket.data.identity; let room = await store.getRoom(roomId); if (!room) return socket.disconnect(true)

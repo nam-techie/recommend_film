@@ -19,6 +19,7 @@ export async function DELETE(request: Request) {
       database.ref('reviewLikes').get(), database.ref('reviewReplies').get(), database.ref('friendRequests').get(), database.ref('sentFriendRequests').get(), database.ref('blocks').get(), database.ref('notifications').get(),
     ])
     const updates: Record<string, null> = {
+      [`karaokeLibraries/${identity.uid}`]: null,
       [`accountSessions/${identity.uid}`]: null,
       [`analytics/onlineSessions/${identity.uid}`]: null,
       [`analytics/aggregates/userDaily/${identity.uid}`]: null,
