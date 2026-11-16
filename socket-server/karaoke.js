@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { AccessToken, TrackSource } from 'livekit-server-sdk'
+import { karaokeCapabilities } from './karaoke-capabilities.mjs'
 
 export function youtubeId(input) {
   const u = new URL(input)
@@ -26,15 +27,15 @@ export class KaraokePilot {
     return job
   }
   create(uid, name) {
-    if (this.rooms.size >= 2) throw Error('Đã đủ 2 phòng thử nghiệm.')
+    if (this.rooms.size >= 100) throw Error('Máy chủ đang đủ phòng. Hãy thử lại sau.')
     if ([...this.rooms.values()].some(r => r.hostUid === uid)) throw Error('Bạn đã sở hữu một phòng.')
     const now = this.now(), id = crypto.randomBytes(5).toString('hex').toUpperCase()
     const room = { id, name: String(name || 'Phòng hát thử').slice(0, 80), hostUid: uid, members: {}, queue: [], performance: null, micBlocked: {}, banned: {}, removalPending: {}, revision: 0, expiresAt: now + 7200000, emptySince: now, seen: new Map() }
     this.rooms.set(id, room); return room
   }
   snapshot(r) {
-    const { seen, hostUid, removalPending, ...data } = r
-    return { ...data, members: Object.fromEntries(Object.entries(r.members).map(([id,m]) => [id, { memberId:id, displayName:m.displayName, connected:m.connected, host:m.uid === hostUid }])) }
+    const { seen, hostUid, removalPending, planCheckedAt, ...data } = r
+    return { ...data, members: Object.fromEntries(Object.entries(r.members).map(([id,m]) => [id, { memberId:id, displayName:m.displayName, connected:m.connected, host:m.uid === hostUid, accountPlan:m.accountPlan || 'normal' }])) }
   }
   room(id) { const r = this.rooms.get(id); if (!r || r.expiresAt <= this.now()) throw Error('Phòng không còn tồn tại.'); return r }
   async revokeMember(r, id) {
@@ -105,6 +106,9 @@ export class KaraokePilot {
   }
   async command(r, member, event, data) {
     const host = member.uid === r.hostUid, p = r.performance
+    const access = karaokeCapabilities(member.accountPlan)
+    if ((event.startsWith('queue:') || event.startsWith('performance:')) && !access.canSing) throw Error('CinePass Plus mới có thể thêm bài và hát. Bạn vẫn có thể nghe và thả cảm xúc.')
+    if (event.startsWith('duet:') && !['duet:withdraw', 'duet:leave'].includes(event) && !access.canDuet) throw Error('CinePass Ultra mới có thể song ca.')
     const requireHost = () => { if (!host) throw Error('Chỉ host được thao tác.') }
     if (event.startsWith('performance:') && event !== 'performance:prepare' && data.performanceId !== p?.performanceId) throw Error('Lượt hát đã thay đổi.')
     if (event === 'queue:add' || event === 'queue:add-many') {
@@ -166,7 +170,7 @@ export class KaraokePilot {
         if (event === 'duet:reject') turn.requests = (turn.requests || []).filter(id => id !== data.memberId)
         else if (event === 'duet:select' || event === 'duet:remove') {
           const target = event === 'duet:remove' ? null : data.memberId
-          if (target && (!turn.requests?.includes(target) || !r.members[target]?.connected || r.micBlocked[target] || r.banned[target] || target === owner)) throw Error('Người song ca không còn sẵn sàng.')
+          if (target && (!turn.requests?.includes(target) || !r.members[target]?.connected || !karaokeCapabilities(r.members[target].accountPlan).canDuet || r.micBlocked[target] || r.banned[target] || target === owner)) throw Error('Người song ca không còn sẵn sàng hoặc cần CinePass Ultra.')
           if (turn.duetMemberId !== target) { if (!song) await this.dropDuet(r); turn.duetMemberId=target }
         } else throw Error('Thao tác không hợp lệ.')
       }
@@ -205,11 +209,20 @@ export function localKaraokeAccess(env, address, origin) {
   try { const u = new URL(origin); return ['http:', 'https:'].includes(u.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname) } catch { return false }
 }
 
-export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials, env = process.env }) {
+export function registerKaraoke(io, { verifyFirebaseToken, getAccountPlan = async () => 'normal', livekit, credentials, env = process.env }) {
   const nsp = io.of('/karaoke'), pilot = new KaraokePilot({ livekit, credentials })
-  const allowed = (uid, socket) => env.KARAOKE_PILOT_ENABLED === 'true' && ((env.KARAOKE_PILOT_UIDS || '').split(',').map(s => s.trim()).includes(uid) || (socket ? localKaraokeAccess(env, socket.handshake.address, socket.handshake.headers.origin) : env.NODE_ENV === 'development' && env.KARAOKE_PILOT_ALLOW_ALL_LOCAL === 'true'))
+  const enabled = () => env.KARAOKE_ENABLED !== 'false'
   nsp.use(async (s, next) => {
-    try { const a = await verifyFirebaseToken(s.handshake.auth?.firebaseIdToken); if (!allowed(a.uid, s) || a.firebase?.sign_in_provider === 'anonymous') throw Error('Pilot chưa mở cho tài khoản này.'); s.data.actor = a; next() } catch { next(Error('Pilot chưa mở hoặc phiên đăng nhập đã hết hạn.')) }
+    try {
+      if (!enabled()) throw Error('Karaoke đang bảo trì. Hãy thử lại sau.')
+      const actor = await verifyFirebaseToken(s.handshake.auth?.firebaseIdToken)
+      if (actor.firebase?.sign_in_provider === 'anonymous') throw Error('Hãy đăng nhập bằng tài khoản Google để tham gia karaoke.')
+      s.data.actor = actor
+      s.data.accountPlan = karaokeCapabilities(await getAccountPlan(actor.uid)).plan
+      next()
+    } catch (error) {
+      next(Error(error.statusCode >= 500 ? 'Dịch vụ xác thực đang gián đoạn. Hãy thử lại sau.' : error.message?.startsWith('Karaoke') || error.message?.startsWith('Hãy đăng nhập') ? error.message : 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.'))
+    }
   })
   const broadcast = r => nsp.to(r.id).emit('room:snapshot', pilot.snapshot(r))
   const detach = async (s, voluntary = false) => {
@@ -229,12 +242,15 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
     let count = 0, windowAt = Date.now()
     const bind = (event, fn) => s.on(event, async (data = {}, ack = () => {}) => {
       try {
-        if (!allowed(s.data.actor.uid, s) || s.data.actor.exp * 1000 <= Date.now()) throw Error('Phiên thử nghiệm đã hết hạn.')
+        if (!enabled()) throw Error('Karaoke đang bảo trì. Hãy thử lại sau.')
+        if (s.data.actor.exp * 1000 <= Date.now()) throw Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.')
         if (Date.now() - windowAt > 10000) { windowAt = Date.now(); count = 0 }
         if (++count > 100 || !data || typeof data !== 'object' || JSON.stringify(data).length > 4096) throw Error('Yêu cầu quá nhanh hoặc quá lớn.')
         const result = await fn(data); ack({ ok: true, ...result })
       } catch (e) { ack({ ok: false, error: /[À-ỹĐđ]/.test(e.message || '') ? e.message : 'Chưa thực hiện được. Hãy thử lại.' }); if (s.data.roomId) { const r = pilot.rooms.get(s.data.roomId); if (r) broadcast(r) } }
     })
+    s.emit('account:access', karaokeCapabilities(s.data.accountPlan))
+    bind('account:access', () => ({ access: karaokeCapabilities(s.data.accountPlan) }))
     bind('sync:ping', () => ({ serverTime: Date.now() }))
     const join = async r => {
       const uid = s.data.actor.uid
@@ -247,11 +263,11 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
         const previous = nsp.sockets.get(old.socketId)
         if (previous) { previous.data.roomId = null; previous.emit('room:replaced'); previous.disconnect() }
       }
-      r.members[uid] = { uid, memberId: uid, displayName: String(s.data.actor.name || 'Tester').slice(0, 40), connected: true, socketId: s.id }
+      r.members[uid] = { uid, memberId: uid, accountPlan: s.data.accountPlan, displayName: String(s.data.actor.name || 'Thành viên').slice(0, 40), connected: true, socketId: s.id }
       r.emptySince = null; if (r.performance?.singerMemberId === uid) r.performance.ownerDeadline = null; if (uid === r.hostUid) r.hostDeadline = null
       s.data.roomId = r.id; await s.join(r.id); r.revision++; broadcast(r); return { room: pilot.snapshot(r) }
     }
-    bind('room:create', async d => { const previous = s.data.roomId; await detach(s, true); if (previous) await s.leave(previous); return pilot.lock('create', async () => join(pilot.create(s.data.actor.uid, d.name))) })
+    bind('room:create', async d => { s.data.accountPlan = karaokeCapabilities(await getAccountPlan(s.data.actor.uid)).plan; if (!karaokeCapabilities(s.data.accountPlan).canCreate) throw Error('CinePass Ultra mới có thể tạo phòng karaoke. Bạn có thể vào phòng bằng link được chia sẻ.'); const previous = s.data.roomId; await detach(s, true); if (previous) await s.leave(previous); return pilot.lock('create', async () => join(pilot.create(s.data.actor.uid, d.name))) })
     bind('room:join', async d => { if (s.data.roomId && s.data.roomId !== d.roomId) { await s.leave(s.data.roomId); await detach(s, true) } return pilot.lock(d.roomId, () => join(pilot.room(d.roomId))) })
     bind('room:leave', async () => { const id = s.data.roomId; await detach(s, true); if (id) await s.leave(id); return {} })
     const context = fn => d => pilot.lock(s.data.roomId, async () => {
@@ -260,6 +276,13 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
       return fn(r, m, d)
     })
     for (const event of ['queue:add', 'queue:add-many', 'queue:remove', 'queue:move', 'queue:shuffle', 'performance:prepare', 'performance:start', 'performance:pause', 'performance:end', 'duet:request', 'duet:withdraw', 'duet:leave', 'duet:select', 'duet:reject', 'duet:remove', 'member:mic', 'member:ban', 'room:close']) bind(event, context(async (r, m, d) => {
+      m.accountPlan = karaokeCapabilities(await getAccountPlan(m.uid)).plan
+      s.data.accountPlan = m.accountPlan
+      s.emit('account:access', karaokeCapabilities(m.accountPlan))
+      if (m.uid === r.hostUid && !karaokeCapabilities(m.accountPlan).canCreate) {
+        await pilot.close(r); nsp.to(r.id).emit('room:closed')
+        throw Error('CinePass Ultra đã hết hạn. Phòng đã kết thúc.')
+      }
       if (typeof d.clientEventId !== 'string' || d.clientEventId.length > 100) throw Error('Thiếu command ID.')
       const key = `${m.memberId}:${d.clientEventId}`
       if (!r.seen.has(key)) {
@@ -283,6 +306,14 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
       else if (d.state === 'error' || (d.state === 'paused' && p.state === 'playing')) await pilot.revoke(r)
       r.revision++; broadcast(r); return {}
     }))
+    let lastReaction = 0
+    bind('reaction:send', context(async (r, m, d) => {
+      if (!karaokeCapabilities(m.accountPlan).reactions.includes(d.kind)) throw Error('Cảm xúc không hợp lệ.')
+      if (Date.now() - lastReaction < 1200) throw Error('Hãy chờ một chút trước khi thả cảm xúc tiếp.')
+      lastReaction = Date.now()
+      nsp.to(r.id).emit('room:reaction', { id: crypto.randomUUID(), kind: d.kind, memberId: m.memberId, displayName: m.displayName })
+      return {}
+    }))
     bind('voice:credentials', context(async (r, m) => {
       if (!livekit) throw Error('LiveKit chưa được cấu hình.')
       const token = new AccessToken(credentials.key, credentials.secret, { identity: m.memberId, ttl: '10m' })
@@ -290,6 +321,9 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
       return { serverUrl: credentials.url, participantToken: await token.toJwt() }
     }))
     bind('voice:authorize', context(async (r, m, d) => {
+      m.accountPlan = karaokeCapabilities(await getAccountPlan(m.uid)).plan
+      const access = karaokeCapabilities(m.accountPlan)
+      if (!access.canSing || (r.performance?.duetMemberId === m.memberId && !access.canDuet)) throw Error('Gói hiện tại không có quyền sử dụng mic ở lượt này.')
       const p = r.performance
       if (!livekit || !p || p.performanceId !== d.performanceId || ![p.singerMemberId,p.duetMemberId].includes(m.memberId) || r.micBlocked[m.memberId] || p.ownerDeadline || p.finishPending || p.duetRemovalPending || Object.values(p.mics).some(mic => mic.revocationPending) || !['preparing','paused','playing'].includes(p.state)) throw Error('Bạn chưa được chọn hát hoặc mic đang được thu hồi.')
       if (p.mics[m.memberId]?.authorized) return {}
@@ -318,7 +352,27 @@ export function registerKaraoke(io, { verifyFirebaseToken, livekit, credentials,
   })
   const timer = setInterval(() => {
     for (const r of pilot.rooms.values()) void pilot.lock(r.id, async () => {
-      if (!allowed(r.hostUid) || r.expiresAt <= Date.now() || (r.hostDeadline && r.hostDeadline <= Date.now()) || (r.emptySince && Date.now() - r.emptySince > 300000)) { await pilot.close(r); nsp.to(r.id).emit('room:closed'); return }
+      if (!enabled() || r.expiresAt <= Date.now() || (r.hostDeadline && r.hostDeadline <= Date.now()) || (r.emptySince && Date.now() - r.emptySince > 300000)) { await pilot.close(r); nsp.to(r.id).emit('room:closed'); return }
+      if (!r.planCheckedAt || Date.now() - r.planCheckedAt >= 15000) {
+        r.planCheckedAt = Date.now()
+        for (const m of Object.values(r.members).filter(m => m.connected)) {
+          try { m.accountPlan = karaokeCapabilities(await getAccountPlan(m.uid)).plan }
+          catch { m.accountPlan = 'normal' }
+          const access = karaokeCapabilities(m.accountPlan)
+          nsp.sockets.get(m.socketId)?.emit('account:access', access)
+          if (m.uid === r.hostUid && !access.canCreate) { await pilot.close(r); nsp.to(r.id).emit('room:closed'); return }
+          if (!access.canSing) {
+            r.queue = r.queue.filter(song => song.addedBy !== m.memberId)
+            if (r.performance?.singerMemberId === m.memberId && r.performance.state !== 'ended') await pilot.finish(r)
+          }
+          if (!access.canDuet) {
+            for (const song of r.queue) { song.requests = song.requests.filter(id => id !== m.memberId); if (song.duetMemberId === m.memberId) song.duetMemberId = null }
+            if (r.performance) r.performance.requests = r.performance.requests.filter(id => id !== m.memberId)
+            if (r.performance?.duetMemberId === m.memberId) await pilot.dropDuet(r)
+          }
+        }
+        r.revision++; broadcast(r)
+      }
       await Promise.allSettled(Object.keys(r.removalPending).map(id => pilot.removeBannedVoice(r,id)))
       const p=r.performance
       if (!p) return

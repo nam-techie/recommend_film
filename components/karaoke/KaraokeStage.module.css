@@ -268,3 +268,17 @@
   .singerAvatar::before, .singerAvatar::after, .micButton::before { transform: none; }
   .page input[type='range']:hover::-webkit-slider-thumb, .page input[type='range']:active::-webkit-slider-thumb { transform: none; }
 }
+
+/* Short shared cheers inspired by React Bits interactions and Uiverse controls. */
+.accessNote { color: var(--stage-muted); font-size: 13px; line-height: 1.6; margin: 8px 0; }
+.reactions { position: relative; flex-shrink: 0; padding: 8px 0; border-top: 1px solid var(--stage-line); }
+.reactionControls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.reactionControls > span { color: var(--stage-muted); font-size: 13px; }
+.reactionControls button { min-height: 40px; transition: background-color 140ms, color 140ms; }
+.reactionControls button:active:not(:disabled) svg { transform: scale(1.15); }
+.reactionStatus { margin: 4px 0 0; font-size: 12px; color: var(--stage-muted); min-height: 18px; }
+.reactionStream { position: absolute; inset: auto 0 100%; height: 160px; overflow: hidden; pointer-events: none; }
+.reactionFloat { position: absolute; bottom: 0; display: grid; justify-items: center; gap: 4px; color: var(--stage-accent); animation: cheer 2400ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.reactionFloat small { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 6px; color: var(--stage-ink); background: var(--stage-surface); font-size: 11px; }
+@keyframes cheer { 0% { opacity: 1; transform: translateY(0) rotate(-8deg); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-130px) rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) { .reactionStream { display: none; } .reactionControls button:active:not(:disabled) svg { transform: none; } }

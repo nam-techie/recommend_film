@@ -46,3 +46,6 @@ next-env.d.ts
 # clerk configuration (can include secrets)
 /.clerk/
 .env
+
+# Local room verification fixtures and browser artifacts
+/.qa/

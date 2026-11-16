@@ -17,16 +17,15 @@ test('open local access requires explicit development flag, loopback and a local
   assert.equal(localKaraokeAccess(env, '127.0.0.1', 'invalid'), false)
 })
 
-test('local development admits authenticated users without allowlisting but rejects anonymous and production access', async t => {
+test('authenticated users connect in development and production; anonymous users must sign in', async t => {
   for (const mode of ['development', 'production']) {
     const server = http.createServer(), io = new Server(server), clients = []
-    const pilot = registerKaraoke(io, { verifyFirebaseToken: async uid => ({ uid, exp: Math.floor(Date.now() / 1000) + 3600, firebase: { sign_in_provider: uid === 'anon' ? 'anonymous' : 'google.com' } }), env: { NODE_ENV: mode, KARAOKE_PILOT_ENABLED: 'true', KARAOKE_PILOT_ALLOW_ALL_LOCAL: 'true' } })
+    const pilot = registerKaraoke(io, { getAccountPlan:async()=> 'ultra',verifyFirebaseToken: async uid => ({ uid, exp: Math.floor(Date.now() / 1000) + 3600, firebase: { sign_in_provider: uid === 'anon' ? 'anonymous' : 'google.com' } }), env: { NODE_ENV: mode, KARAOKE_PILOT_ENABLED: 'true', KARAOKE_PILOT_ALLOW_ALL_LOCAL: 'true' } })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     t.after(() => { clients.forEach(s => s.disconnect()); io.close(); server.close() })
     const open = uid => new Promise((resolve, reject) => { const s = connect(`http://127.0.0.1:${server.address().port}/karaoke`, { auth: { firebaseIdToken: uid }, forceNew: true, reconnection: false }); clients.push(s); s.once('connect', () => resolve(s)); s.once('connect_error', reject) })
-    await assert.rejects(open('anon'), /Pilot/)
-    if (mode === 'production') await assert.rejects(open('unlisted'), /Pilot/)
-    else {
+    await assert.rejects(open('anon'), /đăng nhập/)
+    {
       const client = await open('unlisted')
       const created = await new Promise(resolve => client.emit('room:create', { name: 'Local' }, resolve))
       assert.equal(created.ok, true)
@@ -35,15 +34,15 @@ test('local development admits authenticated users without allowlisting but reje
   }
 })
 
-test('real namespace enforces allowlist, turns, subscribe-only tokens and deduplication', async t => {
+test('real namespace enforces turns, subscribe-only tokens and deduplication', async t => {
   const server=http.createServer(), io=new Server(server), grants=[]
   let failRevocation=false
-  const pilot=registerKaraoke(io, {verifyFirebaseToken:async token=>({uid:token,name:token,exp:Math.floor(Date.now()/1000)+3600}),env:{KARAOKE_PILOT_ENABLED:'true',KARAOKE_PILOT_UIDS:'a,b'},livekit:{updateParticipant:async(...args)=>{grants.push(args);if(failRevocation && !args[2].permission.canPublish){failRevocation=false;throw Error('temporary outage')}},deleteRoom:async()=>{}},credentials:{key:'key',secret:'secret-at-least-thirty-two-characters-long',url:'wss://example.test'}})
+  const pilot=registerKaraoke(io, {getAccountPlan:async()=> 'ultra',verifyFirebaseToken:async token=>({uid:token,name:token,exp:Math.floor(Date.now()/1000)+3600}),env:{KARAOKE_PILOT_ENABLED:'true',KARAOKE_PILOT_UIDS:'a,b'},livekit:{updateParticipant:async(...args)=>{grants.push(args);if(failRevocation && !args[2].permission.canPublish){failRevocation=false;throw Error('temporary outage')}},deleteRoom:async()=>{}},credentials:{key:'key',secret:'secret-at-least-thirty-two-characters-long',url:'wss://example.test'}})
   await new Promise(r=>server.listen(0,'127.0.0.1',r))
   const clients=[]
   t.after(()=>{ clients.forEach(s=>s.disconnect()); io.close(); server.close() })
   const open=uid=>new Promise((resolve,reject)=>{ const s=connect(`http://127.0.0.1:${server.address().port}/karaoke`,{auth:{firebaseIdToken:uid},forceNew:true,reconnection:false});clients.push(s);s.once('connect',()=>resolve(s));s.once('connect_error',reject) })
-  await assert.rejects(open('outsider'),/Pilot/)
+  assert.ok((await open('outsider')).connected)
   const a=await open('a'),b=await open('b')
   const call=(s,event,data={})=>new Promise((resolve,reject)=>s.timeout(2000).emit(event,{clientEventId:crypto.randomUUID(),...data},(err,r)=>err?reject(err):resolve(r)))
   const created=await call(a,'room:create',{name:'Test'});assert.equal(created.ok,true)
@@ -79,7 +78,7 @@ test('real namespace enforces allowlist, turns, subscribe-only tokens and dedupl
 test('duet grants at most two microphones and blocks replacement while revocation fails',async t=>{
   const server=http.createServer(),io=new Server(server),clients=[],grants=[]
   let fail=false
-  const pilot=registerKaraoke(io,{verifyFirebaseToken:async uid=>({uid,name:uid,exp:Math.floor(Date.now()/1000)+3600}),env:{KARAOKE_PILOT_ENABLED:'true',KARAOKE_PILOT_UIDS:'a,b,c,d'},credentials:{key:'key',secret:'secret-at-least-thirty-two-characters-long',url:'wss://example.test'},livekit:{updateParticipant:async(room,id,options)=>{if(fail && id==='c' && !options.permission.canPublish)throw Error('provider secret');grants.push([id,options.permission.canPublish])},removeParticipant:async()=>{},deleteRoom:async()=>{}}})
+  const pilot=registerKaraoke(io,{getAccountPlan:async()=> 'ultra',verifyFirebaseToken:async uid=>({uid,name:uid,exp:Math.floor(Date.now()/1000)+3600}),env:{KARAOKE_PILOT_ENABLED:'true',KARAOKE_PILOT_UIDS:'a,b,c,d'},credentials:{key:'key',secret:'secret-at-least-thirty-two-characters-long',url:'wss://example.test'},livekit:{updateParticipant:async(room,id,options)=>{if(fail && id==='c' && !options.permission.canPublish)throw Error('provider secret');grants.push([id,options.permission.canPublish])},removeParticipant:async()=>{},deleteRoom:async()=>{}}})
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
   t.after(()=>{clients.forEach(s=>s.disconnect());io.close();server.close()})
   const open=uid=>new Promise((resolve,reject)=>{const s=connect(`http://127.0.0.1:${server.address().port}/karaoke`,{auth:{firebaseIdToken:uid},forceNew:true,reconnection:false});clients.push(s);s.once('connect',()=>resolve(s));s.once('connect_error',reject)})
@@ -111,7 +110,7 @@ test('duet grants at most two microphones and blocks replacement while revocatio
   assert.equal(room.performance.duetMemberId,null);assert.equal(room.performance.state,'playing')
   await call(a,'member:ban',{memberId:'c',blocked:true})
   assert.equal(room.banned.c,true)
-  await assert.rejects(open('outsider'),/Pilot/)
-  // A new socket for the banned UID cannot join even though it is allowlisted.
+  assert.ok((await open('outsider')).connected)
+  // A new socket for the banned UID cannot join despite holding a valid account.
   const replacement=await open('c');assert.equal((await call(replacement,'room:join',{roomId:id})).ok,false)
 })

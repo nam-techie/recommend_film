@@ -9,7 +9,7 @@ import KaraokePilotPage from '@/components/karaoke/KaraokePilotPage'
 describe('karaoke pilot access and error states', () => {
   beforeEach(()=>{fixture.user=null;fixture.handlers={};vi.stubEnv('NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL','http://localhost:4001')})
   it('requires sign-in before room actions',()=>{render(<KaraokePilotPage/>);expect(screen.getByRole('button',{name:'Đăng nhập bằng Google'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Tạo phòng'})).toBeNull()})
-  it('shows allowlist/service errors and disables creation before connection',()=>{
+  it('shows service errors and disables creation before connection',()=>{
     fixture.user={uid:'tester'};render(<KaraokePilotPage/>);
     expect(screen.getByRole('button',{name:'Tạo phòng'})).toBeDisabled()
     act(()=>fixture.handlers.connect_error(new Error('Pilot chưa mở cho tài khoản này.')))
@@ -17,6 +17,6 @@ describe('karaoke pilot access and error states', () => {
   })
   it('validates room codes before navigation',()=>{
     fixture.user={uid:'tester'};render(<KaraokePilotPage/>);
-    fireEvent.click(screen.getByRole('button',{name:'Vào phòng'}));expect(screen.getByRole('alert')).toHaveTextContent('10 ký tự')
+    fireEvent.change(screen.getByLabelText('Link hoặc mã phòng'),{target:{value:'bad'}});fireEvent.click(screen.getByRole('button',{name:'Vào phòng'}));expect(screen.getByRole('alert')).toHaveTextContent('10 ký tự')
   })
 })

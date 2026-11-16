@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronDown, Film, Menu, MessageSquarePlus, Search, Sparkles, Tv, UserRound, Users, X } from 'lucide-react'
+import { ChevronDown, Film, Menu, Mic2, MessageSquarePlus, Search, Sparkles, Tv, UserRound, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete'
 import { useAuth } from '@/components/auth/AuthProvider'
@@ -57,14 +57,14 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
       <div className="ml-auto flex items-center gap-1.5">
         <button type="button" className="touch-target flex items-center justify-center text-fg-secondary xl:hidden" aria-label="Tìm kiếm" aria-expanded={openPanel === 'search'} onClick={() => toggle('search')}><Search className="h-5 w-5" /></button>
         <GithubRepoControl compact={false} />
-        <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" />Xem chung</Link>
+        <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" />Xem chung</Link><Link href="/karaoke" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Mic2 className="h-4 w-4" />Karaoke</Link>
         {!authLoading && user && <FeedbackLauncher />}
         {!authLoading && <div className="shrink-0">{user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="icon" variant="outline" aria-label="Đăng nhập" className="h-11 w-11 rounded-full"><UserRound className="h-5 w-5" /></Button></AuthDialog>}</div>}
       </div>
     </div>
 
     {openPanel === 'search' && <div className="border-t border-white/[0.06] px-4 py-3 xl:hidden"><div className="mx-auto max-w-xl"><SearchAutocomplete variant="mobile" initialValue={initialSearch} preservedQuery={preservedQuery} autoFocus /></div></div>}
-    {openPanel === 'nav' && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink>{user && <button type="button" onClick={() => window.dispatchEvent(new Event('cinemind:open-feedback'))} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 text-sm font-medium text-fg-secondary hover:bg-white/[0.06]"><MessageSquarePlus className="h-4 w-4 text-accent-soft" />Góp ý</button>}</div></nav>}
+    {openPanel === 'nav' && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/karaoke" icon={Mic2}>Karaoke</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink>{user && <button type="button" onClick={() => window.dispatchEvent(new Event('cinemind:open-feedback'))} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 text-sm font-medium text-fg-secondary hover:bg-white/[0.06]"><MessageSquarePlus className="h-4 w-4 text-accent-soft" />Góp ý</button>}</div></nav>}
   </header>
 }
 

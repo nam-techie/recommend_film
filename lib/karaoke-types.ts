@@ -9,7 +9,7 @@ export interface KaraokePerformance {
 }
 export interface KaraokeRoom {
   id: string; name: string; revision: number; expiresAt: number
-  members: Record<string, { memberId: string; displayName: string; connected: boolean; host: boolean }>
+  members: Record<string, { memberId: string; displayName: string; connected: boolean; host: boolean; accountPlan?: 'normal' | 'premium' | 'ultra' }>
   queue: KaraokeQueueItem[]; performance: KaraokePerformance | null
   micBlocked: Record<string, boolean>; banned: Record<string, boolean>
 }
@@ -21,3 +21,5 @@ export interface KaraokeDiagnostics {
 export function karaokeTarget(p: KaraokePerformance, now: number, offsetMs: number) {
   return Math.max(0, p.playback.currentTime + (p.playback.isPlaying ? Math.max(0, now - p.playback.serverUpdatedAt) / 1000 : 0) - offsetMs / 1000)
 }
+
+export interface KaraokeReaction { id: string; kind: 'heart' | 'clap' | 'fire'; memberId: string; displayName: string }
