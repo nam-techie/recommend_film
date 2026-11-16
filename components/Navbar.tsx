@@ -4,17 +4,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronDown, Film, Menu, Mic2, MessageSquarePlus, Search, Sparkles, Tv, UserRound, Users, X } from 'lucide-react'
+import { ChevronDown, Film, Menu, MessageSquarePlus, Search, Sparkles, Tv, UserRound, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { AuthDialog } from '@/components/auth/AuthDialog'
+import { VipDropdown, VipLinks } from '@/components/VipNavigation'
 import { GithubRepoControl } from '@/components/GithubRepoControl'
 import type { Country, Genre } from '@/lib/api'
 
 const AccountControls = dynamic(() => import('@/components/account/AccountControls'), { ssr: false })
 const FeedbackLauncher = dynamic(() => import('@/components/feedback/FeedbackLauncher').then((module) => module.FeedbackLauncher), { ssr: false })
-type OpenPanel = null | 'nav' | 'search' | 'genres' | 'countries'
+type OpenPanel = null | 'nav' | 'search' | 'genres' | 'countries' | 'vip'
 
 export default function Navbar({ genres, countries }: { genres: Genre[]; countries: Country[] }) {
   const pathname = usePathname()
@@ -43,28 +44,28 @@ export default function Navbar({ genres, countries }: { genres: Genre[]; countri
 
   return <header ref={headerRef} className={`sticky top-0 z-50 w-full border-b border-white/[0.07] ${isHome ? 'bg-[#080911]/85' : 'bg-[#080911]/95'} backdrop-blur-xl`}>
     <div className="relative mx-auto flex h-16 max-w-shell items-center gap-2 px-3 sm:px-5 lg:h-[72px] lg:px-7">
-      <button type="button" className="touch-target -ml-2 flex items-center justify-center text-fg-secondary lg:hidden" aria-label={openPanel === 'nav' ? 'Đóng menu' : 'Mở menu'} aria-expanded={openPanel === 'nav'} onClick={() => toggle('nav')}>{openPanel === 'nav' ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}</button>
+      <button type="button" className="touch-target -ml-2 flex items-center justify-center text-fg-secondary xl:hidden" aria-label={openPanel === 'nav' ? 'Đóng menu' : 'Mở menu'} aria-expanded={openPanel === 'nav'} onClick={() => toggle('nav')}>{openPanel === 'nav' ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}</button>
       <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="CineMind - Trang chủ"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-strong shadow-lg shadow-accent"><Film className="h-5 w-5 text-fg" /></span><span className="hidden text-xl font-black tracking-tight text-fg sm:block">Cine<span className="text-accent">Mind</span></span></Link>
 
-      <div className="ml-2 hidden min-w-[220px] max-w-[340px] flex-1 xl:block"><SearchAutocomplete variant="header" initialValue={initialSearch} preservedQuery={preservedQuery} /></div>
-      <nav className="ml-1 hidden min-w-0 items-center gap-0.5 lg:flex" aria-label="Điều hướng chính">
+      <div className="ml-2 hidden min-w-[220px] max-w-[340px] flex-1 2xl:block"><SearchAutocomplete variant="header" initialValue={initialSearch} preservedQuery={preservedQuery} /></div>
+      <nav className="ml-1 hidden min-w-0 items-center gap-0.5 xl:flex" aria-label="Điều hướng chính">
         <NavLink href="/search?type=phim-le">Phim lẻ</NavLink><NavLink href="/tv-series">Phim bộ</NavLink><NavLink href="/search?type=tv-shows">TV Shows</NavLink>
         <span className="2xl:hidden"><NavLink href="/community"><Users className="mr-1.5 h-4 w-4" />Cộng đồng</NavLink></span>
         <MenuDropdown label="Thể loại" open={openPanel === 'genres'} onToggle={() => toggle('genres')} items={genres} base="/genre" allHref="/genres" />
         <MenuDropdown label="Quốc gia" open={openPanel === 'countries'} onToggle={() => toggle('countries')} items={countries} base="/country" allHref="/countries" align="right" />
+        <VipDropdown open={openPanel === 'vip'} onToggle={() => toggle('vip')} onClose={() => setOpenPanel(null)} pathname={pathname} />
       </nav>
 
       <div className="ml-auto flex items-center gap-1.5">
-        <button type="button" className="touch-target flex items-center justify-center text-fg-secondary xl:hidden" aria-label="Tìm kiếm" aria-expanded={openPanel === 'search'} onClick={() => toggle('search')}><Search className="h-5 w-5" /></button>
+        <button type="button" className="touch-target flex items-center justify-center text-fg-secondary 2xl:hidden" aria-label="Tìm kiếm" aria-expanded={openPanel === 'search'} onClick={() => toggle('search')}><Search className="h-5 w-5" /></button>
         <GithubRepoControl compact={false} />
-        <Link href="/watch-party" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Users className="h-4 w-4" />Xem chung</Link><Link href="/karaoke" className="hidden min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-fg-secondary hover:bg-white/[0.06] 2xl:flex"><Mic2 className="h-4 w-4" />Karaoke</Link>
         {!authLoading && user && <FeedbackLauncher />}
         {!authLoading && <div className="shrink-0">{user ? <AccountControls user={user} logout={logout} /> : <AuthDialog><Button size="icon" variant="outline" aria-label="Đăng nhập" className="h-11 w-11 rounded-full"><UserRound className="h-5 w-5" /></Button></AuthDialog>}</div>}
       </div>
     </div>
 
-    {openPanel === 'search' && <div className="border-t border-white/[0.06] px-4 py-3 xl:hidden"><div className="mx-auto max-w-xl"><SearchAutocomplete variant="mobile" initialValue={initialSearch} preservedQuery={preservedQuery} autoFocus /></div></div>}
-    {openPanel === 'nav' && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 lg:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><MobileLink href="/watch-party" icon={Users}>Xem chung</MobileLink><MobileLink href="/karaoke" icon={Mic2}>Karaoke</MobileLink><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink>{user && <button type="button" onClick={() => window.dispatchEvent(new Event('cinemind:open-feedback'))} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 text-sm font-medium text-fg-secondary hover:bg-white/[0.06]"><MessageSquarePlus className="h-4 w-4 text-accent-soft" />Góp ý</button>}</div></nav>}
+    {openPanel === 'search' && <div className="border-t border-white/[0.06] px-4 py-3 2xl:hidden"><div className="mx-auto max-w-xl"><SearchAutocomplete variant="mobile" initialValue={initialSearch} preservedQuery={preservedQuery} autoFocus /></div></div>}
+    {openPanel === 'nav' && <nav className="border-t border-white/[0.07] bg-[#0b0d17] px-4 py-4 xl:hidden" aria-label="Menu di động"><div className="grid grid-cols-2 gap-2"><MobileLink href="/search?type=phim-le" icon={Film}>Phim lẻ</MobileLink><MobileLink href="/tv-series" icon={Tv}>Phim bộ</MobileLink><MobileLink href="/genres" icon={Sparkles}>Thể loại</MobileLink><MobileLink href="/countries" icon={Film}>Quốc gia</MobileLink><details className="col-span-2 rounded-xl border border-white/[0.06] bg-white/[0.025]"><summary className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm font-semibold text-fg-secondary">VIP<ChevronDown className="h-4 w-4" aria-hidden="true" /></summary><div className="p-2"><VipLinks pathname={pathname} onNavigate={() => setOpenPanel(null)} /></div></details><MobileLink href="/community" icon={Users}>Cộng đồng</MobileLink>{user && <button type="button" onClick={() => window.dispatchEvent(new Event('cinemind:open-feedback'))} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 text-sm font-medium text-fg-secondary hover:bg-white/[0.06]"><MessageSquarePlus className="h-4 w-4 text-accent-soft" />Góp ý</button>}</div></nav>}
   </header>
 }
 
