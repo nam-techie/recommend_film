@@ -9,6 +9,9 @@ import { KaraokeLibraryPanel } from './KaraokeLibraryPanel'
 import { useKaraokeTitles } from '@/hooks/useKaraokeTitles'
 import { fetchKaraokeYoutubeTitle, karaokeYoutubeId } from '@/lib/karaoke-youtube-title'
 import { StageButton } from './KaraokePrimitives'
+import { karaokeCapabilities } from '@/lib/karaoke-capabilities'
+import { KaraokeReactions } from './KaraokeReactions'
+import type { KaraokeReaction } from '@/lib/karaoke-types'
 import { KaraokeLobby } from './KaraokeLobby'
 import { KaraokePerformanceDesk } from './KaraokePerformanceDesk'
 import { KaraokeRoomPanels } from './KaraokeRoomPanels'
@@ -31,6 +34,8 @@ const base = () => process.env.NEXT_PUBLIC_WATCH_PARTY_SOCKET_URL || process.env
 export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
   const auth = useAuth(), socket = useRef<Socket>(), player = useRef<Player>(), mount = useRef<HTMLDivElement>(null), stageRef = useRef<HTMLDivElement>(null)
   const [room, setRoom] = useState<KaraokeRoom | null>(null), [error, setError] = useState(''), [connected, setConnected] = useState(false)
+  const [access, setAccess] = useState(karaokeCapabilities('normal'))
+  const [reactions, setReactions] = useState<Array<KaraokeReaction & { at: number }>>([])
   const [queueNotice, setQueueNotice] = useState('')
   const displayRoom = useKaraokeTitles(room)
   const [link, setLink] = useState(''), [label, setLabel] = useState(''), [name, setName] = useState('Phòng hát thử'), [joinId, setJoinId] = useState('')
@@ -52,6 +57,7 @@ export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
   const run = async (job: () => Promise<unknown>) => { setBusy(true); setError(''); try { await job() } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
   const { mic, pending, micError, track, tracks, voiceState, settings, connectVoice, prepareMic, mute } = useKaraokeVoice(room, auth.user?.uid, connected, voiceVolume, command, participantVolumes)
   useEffect(() => {
+    setAccess(karaokeCapabilities('normal')); setReactions([])
     if (!auth.user || !base()) return
     const s = io(`${base().replace(/\/$/, '')}/karaoke`, { auth: async cb => cb({ firebaseIdToken: await auth.getIdToken() }) }); socket.current = s
     const calibrate = async () => {
@@ -59,9 +65,11 @@ export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
       for (let i = 0; i < 5 && s.connected; i++) { const sent = Date.now(); try { const r = await command('sync:ping'); const end = Date.now(); samples.push({ rtt: end - sent, offset: r.serverTime - (sent + end) / 2 }) } catch {} }
       samples.sort((a, b) => a.rtt - b.rtt); if (samples[0]) clocks.current = samples[0]
     }
-    s.on('connect', () => { setConnected(true); setError(''); void calibrate(); if (roomId) void command('room:join', { roomId: roomId.toUpperCase() }).catch(e => setError(e.message)) })
+    s.on('connect', () => { setConnected(true); setError(''); void command('account:access').then(r => setAccess(karaokeCapabilities(r.access?.plan))).catch(e => setError(e.message)); void calibrate(); if (roomId) void command('room:join', { roomId: roomId.toUpperCase() }).catch(e => setError(e.message)) })
     s.on('disconnect', () => { setConnected(false); mute(); player.current?.pauseVideo(); stats.current.reconnects++ })
-    s.on('connect_error', e => setError(e.message))
+    s.on('connect_error', e => { setConnected(false); setError(e.message) })
+    s.on('account:access', a => setAccess(karaokeCapabilities(a.plan)))
+    s.on('room:reaction', (event: KaraokeReaction) => { if (['heart','clap','fire'].includes(event.kind)) setReactions(old => [...old.slice(-7), { ...event, at: Date.now() }]) })
     s.on('room:snapshot', (r: KaraokeRoom) => {
       if (!r.micBlocked || !r.banned || (r.performance && !r.performance.mics)) {
         mute(); player.current?.pauseVideo(); setRoom(null)
@@ -74,7 +82,8 @@ export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
     s.on('room:banned', () => { mute(); player.current?.pauseVideo(); setRoom(null); setError('Bạn đã bị ban khỏi phòng này.') })
     s.on('room:closed', () => { mute(); player.current?.pauseVideo(); setRoom(null); setError('Phòng đã kết thúc. Quay lại /karaoke để tạo phòng mới.') })
     const timer = setInterval(() => void calibrate(), 30000)
-    return () => { clearInterval(timer); s.disconnect(); mute() }
+    const reactionTimer = setInterval(() => setReactions(old => old.length ? old.filter(r => Date.now() - r.at < 2400) : old), 500)
+    return () => { clearInterval(timer); clearInterval(reactionTimer); s.disconnect(); mute() }
   // Auth API functions are recreated on context updates; reconnect only on identity change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.user?.uid, roomId])
@@ -137,12 +146,12 @@ export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
   const disabled = busy || !connected
   return <div ref={pageRef} className={styles.page} data-room={!!room && tab==='room'}>
     <nav className={`${styles.row} ${styles.tabs}`} aria-label="Karaoke"><StageButton aria-pressed={tab==='room'} onClick={()=>setTab('room')}>Phòng hát</StageButton><StageButton aria-pressed={tab==='favorites'} onClick={()=>setTab('favorites')}>Yêu thích</StageButton><StageButton aria-pressed={tab==='playlists'} onClick={()=>setTab('playlists')}>Playlist của tôi</StageButton></nav>
-    <header className={styles.header}><div><h1>Karaoke cùng bạn bè</h1><p>Chọn bài. Bật mic. Cùng nhau lên sân khấu.</p></div><span className={styles.pilotBadge}>Bản thử riêng · tối đa 4 người</span></header>
+    <header className={styles.header}><div><h1>Karaoke cùng bạn bè</h1><p>Chọn bài. Bật mic. Cùng nhau lên sân khấu.</p></div><span className={styles.pilotBadge}>Mọi tài khoản · tối đa 4 người</span></header>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {personal.loadError && <p role="alert" className={styles.error}>{personal.loadError} Hãy bấm Tải lại trong thư viện.</p>}
-    {tab!=='room' && (auth.user ? <KaraokeLibraryPanel library={personal.library} loading={personal.loading} playlistMode={tab==='playlists'} remaining={20-(room?.queue.length || 0)} canQueue={!!room && connected} busy={busy} mutate={personal.mutate} reload={personal.reload} exportSongs={personal.exportSongs} enqueue={songs=>command('queue:add-many',{songs})} run={run}/> : <p>Hãy đăng nhập trong Phòng hát để mở thư viện riêng.</p>)}
+    {tab!=='room' && (auth.user ? <KaraokeLibraryPanel library={personal.library} loading={personal.loading} playlistMode={tab==='playlists'} remaining={20-(room?.queue.length || 0)} canQueue={!!room && connected && access.canSing} busy={busy} mutate={personal.mutate} reload={personal.reload} exportSongs={personal.exportSongs} enqueue={songs=>command('queue:add-many',{songs})} run={run}/> : <p>Hãy đăng nhập trong Phòng hát để mở thư viện riêng.</p>)}
     <div className={styles.roomView} hidden={tab!=='room'}>
-    {!room ? <KaraokeLobby signedIn={!!auth.user} loading={auth.loading} connected={connected} busy={busy} name={name} setName={setName} joinId={joinId} setJoinId={setJoinId}
+    {!room ? <KaraokeLobby access={access} signedIn={!!auth.user} loading={auth.loading} connected={connected} busy={busy} name={name} setName={setName} joinId={joinId} setJoinId={setJoinId}
       signIn={() => void run(() => auth.signInWithGoogle())}
       create={() => void run(async () => { const r = await command('room:create', { name }); location.href = `/karaoke/${r.room.id}` })}
       join={() => { const id = joinId.trim().split('/').filter(Boolean).pop(); if (id && /^[A-Fa-f0-9]{10}$/.test(id)) location.href = `/karaoke/${id.toUpperCase()}`; else setError('Mã phòng gồm 10 ký tự.') }} /> : <>
@@ -161,13 +170,14 @@ export default function KaraokePilotPage({ roomId }: { roomId?: string }) {
           pause={() => void run(async () => { mute(); await command('performance:pause', { performanceId: p?.performanceId }) })}
           end={() => void run(async () => { mute(); await command('performance:end', { performanceId: p?.performanceId }) })}
           mute={() => void run(async () => { mute(); await command('voice:release', { performanceId: p?.performanceId }) })} />
-        <KaraokeRoomPanels room={displayRoom!} host={host} uid={auth.user?.uid} library={personal.library} favorite={song=>void run(async()=>{setQueueNotice('');await personal.favorite(song);setQueueNotice('Đã cập nhật Yêu thích.')})} command={(event,data)=>void run(()=>command(event,data))} link={link} setLink={setLink} label={label} setLabel={setLabel} disabled={disabled} queueNotice={queueNotice}
+        <KaraokeRoomPanels canSing={access.canSing} room={displayRoom!} host={host} uid={auth.user?.uid} library={personal.library} favorite={song=>void run(async()=>{setQueueNotice('');await personal.favorite(song);setQueueNotice('Đã cập nhật Yêu thích.')})} command={(event,data)=>void run(()=>command(event,data))} link={link} setLink={setLink} label={label} setLabel={setLabel} disabled={disabled} queueNotice={queueNotice}
           add={() => void run(async () => { const id = karaokeYoutubeId(link); const title = label.trim() || (id ? await fetchKaraokeYoutubeTitle(id) : null) || ''; await command('queue:add', { url: link, label: title }); setLink(''); setLabel('') })}
           select={songId => void run(() => command('performance:prepare', { songId }))}
           move={(id, direction) => void run(() => command('queue:move', { id, direction }))}
           shuffle={() => void run(async () => { setQueueNotice('Đang trộn bài…'); try { await command('queue:shuffle'); setQueueNotice('Đã trộn lại thứ tự hàng chờ.') } catch (e) { setQueueNotice('Chưa trộn được hàng chờ.'); throw e } })}
           remove={id => void run(() => command('queue:remove', { id }))} />
       </div>
+      <KaraokeReactions events={reactions} disabled={disabled} send={kind => void run(() => command('reaction:send', { kind }))} />
     </>}
     </div>
     <details className={styles.diagnostics}><summary>Chẩn đoán và đánh giá buổi thử</summary>

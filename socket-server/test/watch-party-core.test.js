@@ -182,3 +182,9 @@ test('fresh entitlement resolution downgrades cancelled or expired members befor
   assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.ultra.maxMembers, 36)
   assert.equal(WATCH_PARTY_PLAN_CAPABILITIES.premium.maxMembers, 8)
 })
+
+test('current movie CDN a.kvp726.com is allowed without admitting lookalikes', () => {
+  const episode = { linkM3u8: 'https://a.kvp726.com/20261112/mzuAjwmg/index.m3u8' }
+  assert.equal(findDeniedMediaEpisode([episode]), null)
+  for (const url of ['https://a.kvp726.com.evil.test/a.m3u8', 'https://a.kvp726.com@evil.test/a.m3u8', 'https://b.kvp726.com/a.m3u8']) assert.equal(isAllowedMediaUrl(url), false)
+})
